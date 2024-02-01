@@ -197,7 +197,7 @@ func (cpd *CompPatternDict) WriteToFile(filename string) error {
 
 // CPInitList describes configuration parameters for the Funcs of a CompPattern
 type CPInitList struct {
-	// label of the Func being initialized
+	// label of the Computation Pattern whose Funcs are being initialized
 	Name string `json:"name" yaml:"name"`
 
 	// CPType of CP being initialized
@@ -208,6 +208,9 @@ type CPInitList struct {
 
 	// Params is indexed by Func label, mapping to a serialized representation of a struct
 	Params map[string]string `json:"params" yaml:"params"`
+
+	// ExecType saves the execution type of the function whose parameter is being saved
+	ExecType map[string]string
 
 	// Msgs holds a list of CompPatternMsgs used between Funcs in a CompPattern
 	Msgs []CompPatternMsg `json:"msgs" yaml:"msgs"`
@@ -220,13 +223,16 @@ func CreateCPInitList(name string, cptype string, useYAML bool) *CPInitList {
 	cpil.CPType = cptype
 	cpil.UseYAML = useYAML
 	cpil.Params = make(map[string]string)
+	cpil.ExecType = make(map[string]string)
+
 	cpil.Msgs = make([]CompPatternMsg, 0)
 	return cpil
 }
 
 // AddParam puts a serialized initialization struct in the dictionary indexed by Func label
-func (cpil *CPInitList) AddParam(label, param string) {
+func (cpil *CPInitList) AddParam(label, execType string, param string) {
 	cpil.Params[label] = param
+	cpil.ExecType[label] = execType
 }
 
 // AddMsg appends description of a ComPatternMsg to the CPInitList's slice of messages used by the CompPattern
@@ -453,6 +459,111 @@ func DecodeRndParameters(paramStr string) (*RndParameters, error) {
 	err := yaml.Unmarshal([]byte(paramStr), &rndResp)
 	return &rndResp, err
 }
+
+// A CPFuncState structure holds state updates for functions in the named computation pattern
+type CPFuncState struct {
+	CmpPtnName string	
+	LabelToMap map[string]map[string]string
+}
+
+// CreateCPFuncState is a constructor that remembers the name of the computation pattern
+// being represented, and initializes the map from function label names to state maps
+func CreateCPFuncState(name string) *CPFuncState {
+	cpfs := new(CPFuncState)
+	cpfs.CmpPtnName = name
+	cpfs.LabelToMap = make(map[string]map[string]string)
+	return cpfs
+}
+
+// AddStateMap copies the offered statemap and notes its association with the identified function
+func (cpfs *CPFuncState) AddStateMap(label string, state map[string]string) {
+	cpfs.LabelToMap[label] = make(map[string]string)
+
+	// copy the state to avoid pointer problems
+	for key, value := range state {
+		cpfs.LabelToMap[label][key] = value
+	}
+}
+
+// CPFuncStateDict holds the function state maps for multiple computation patterns, indexed by the pattern name
+type CPFuncStateDict struct {
+	DictName struct
+	StateByCP map[string]CPFuncState
+}
+
+// CreateCPFuncStateDict is a constructor that saves the dictionary name and initialize the StateByCP map
+func CreateCPFuncStateDict(dictname string) *CPFuncStateDict {
+	cpfsd := new(CPFuncStateDict)
+	cpfsd.DictName = dictname
+	cpfsd.StateByCP = make(map[string]CPFuncState)
+	return cpfsd
+}
+
+// AddCPState copies the offered CPStateFunc
+func (cpfsd *CPFuncStateDict) AddCPState(cpsf *CPStateFunc) {
+	cofsd.StateByCP[cpsf.CmpPtnName] = *cpsf
+}
+
+// WriteToFile stores the FuncExecList struct to the file whose name is given.
+// Serialization to json or to yaml is selected based on the extension of this name.
+func (cpfsd *CPFuncStateDict) WriteToFile(filename string) error {
+	pathExt := path.Ext(filename)
+	var bytes []byte
+	var merr error = nil
+
+	if pathExt == ".yaml" || pathExt == ".YAML" || pathExt == ".yml" {
+		bytes, merr = yaml.Marshal(*cpfsd)
+	} else if pathExt == ".json" || pathExt == ".JSON" {
+		bytes, merr = json.MarshalIndent(*fel, "", "\t")
+	}
+
+	if merr != nil {
+		panic(merr)
+	}
+
+	f, cerr := os.Create(filename)
+	if cerr != nil {
+		panic(cerr)
+	}
+	_, werr := f.WriteString(string(bytes[:]))
+	if werr != nil {
+		panic(werr)
+	}
+	f.Close()
+
+	return werr
+}
+
+// ReadFuncExecList deserializes a byte slice holding a representation of an FuncExecList struct.
+// If the input argument of dict (those bytes) is empty, the file whose name is given is read
+// to acquire them.  A deserialized representation is returned, or an error if one is generated
+// from a file read or the deserialization.
+func ReadCPFuncStateDict(filename string, useYAML bool, dict []byte) (*CPFuncStateDict, error) {
+	var err error
+
+	// if the dict slice of bytes is empty we get them from the file whose name is an argument
+	if len(dict) == 0 {
+		dict, err = os.ReadFile(filename)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	example := CPFuncStateDict{}
+
+	if useYAML {
+		err = yaml.Unmarshal(dict, &example)
+	} else {
+		err = json.Unmarshal(dict, &example)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &example, nil
+}
+
 
 // CompPatternMsg defines the structure of identification of messages that pass between Funcs in a CompPattern.
 // Structures of this sort are transformed by a simulation run into a form that include experiment-defined payloads,

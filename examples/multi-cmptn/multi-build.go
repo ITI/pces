@@ -29,7 +29,8 @@ func gatherParameters() *cmdline.CmdParser {
 	cp.AddFlag(cmdline.StringFlag, "topoPrb", false)     // name of file used for topo templates
 
 	cp.AddFlag(cmdline.StringFlag, "cpOutput", false)       // path to output file of completed comp patterns
-	cp.AddFlag(cmdline.StringFlag, "cpInitOutput", false)   // path to output file of completed comp patterns
+	cp.AddFlag(cmdline.StringFlag, "cpInitOutput", false)   // path to output file of completed comp pattern initializations
+	cp.AddFlag(cmdline.StringFlag, "cpStateOutput", false)  // path to output file of completed comp patterns state over-rides
 	cp.AddFlag(cmdline.StringFlag, "funcExecOutput", false) // path to output file of execution maps of function timings
 	cp.AddFlag(cmdline.StringFlag, "devExecOutput", false)  // path to output file of execution maps of device timings
 	cp.AddFlag(cmdline.StringFlag, "mapOutput", false)      // path to output file describing mapping of comp pattern functions to host
@@ -131,6 +132,7 @@ func main() {
 
 	cpOutputFile = filepath.Join(exptLibDir, cpOutputFile)         // path to output file of comp patterns
 	cpInitOutputFile = filepath.Join(exptLibDir, cpInitOutputFile) // path to output file of comp patterns
+	cpStateOutputFile = filepath.Join(exptLibDir, cpStateOutputFile) // path to output file of comp patterns
 
 	cpInitExt = path.Ext(cpInitOutputFile)
 	cpInitIsYAML := (cpInitExt == ".yaml" || cpInitExt == ".YAML" || cpInitExt == ".yml")
@@ -140,6 +142,16 @@ func main() {
 	} else {
 		fmt.Println("cp initiation is JSON formatted")
 	}
+
+	cpStateExt = path.Ext(cpStateOutputFile)
+	cpStateIsYAML := (cpStateExt == ".yaml" || cpStateExt == ".YAML" || cpStateExt == ".yml")
+
+	if cpStateIsYAML {
+		fmt.Println("cp state is YAML formatted")
+	} else {
+		fmt.Println("cp state is JSON formatted")
+	}
+
 
 	funcExecOutputFile = filepath.Join(exptLibDir, funcExecOutputFile) // path to output file of completed execution maps of timings
 	devExecOutputFile = filepath.Join(exptLibDir, devExecOutputFile)   // path to output file of completed execution maps of timings
@@ -162,7 +174,8 @@ func main() {
 		panic(err)
 	}
 
-	outputFiles := []string{cpOutputFile, cpInitOutputFile, funcExecOutputFile, devExecOutputFile, mapOutputFile, topoOutputFile, expOutputFile}
+	outputFiles := []string{cpOutputFile, cpInitOutputFile, cpStateOutputFile, funcExecOutputFile, devExecOutputFile, 
+		mapOutputFile, topoOutputFile, expOutputFile}
 
 	// check for the uniqueness of each name
 	for idx := 0; idx < len(outputFiles)-1; idx++ {
@@ -199,6 +212,14 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+
+		cpfsd := CreateCPFuncStateDict("state update")
+		for cpName, cpinitlist := range cpInitPrbDict.InitList {
+			for funcName, paramString := range cpinitlist {
+
+
+
+
 		fmt.Printf("Read comp pattern init file %s\n", cpInitPrbFile)
 	}
 

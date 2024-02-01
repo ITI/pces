@@ -18,14 +18,14 @@ func cmdlineParams() *cmdline.CmdParser {
 	// keep them here so that all the programs that build templates can use the same arguments file
 	// create an argument parser
 	cp := cmdline.NewCmdParser()
-	cp.AddFlag(cmdline.StringFlag, "prbLib", false)      // directory of tmplates
-	cp.AddFlag(cmdline.StringFlag, "cpPrb", false)       // name of output file used for comp pattern templates
+	cp.AddFlag(cmdline.StringFlag, "prbLib", true)       // directory of tmplates
+	cp.AddFlag(cmdline.StringFlag, "cpPrb", true)        // name of output file used for comp pattern templates
 	cp.AddFlag(cmdline.StringFlag, "expPrb", false)      // name of output file used for expCfg templates
 	cp.AddFlag(cmdline.StringFlag, "funcExecPrb", false) // name of output file used for exec templates
 	cp.AddFlag(cmdline.StringFlag, "devExecPrb", false)  // name of output file used for exec templates
 	cp.AddFlag(cmdline.StringFlag, "prbCSV", false)      // name of output file used for exec templates
 	cp.AddFlag(cmdline.StringFlag, "topoPrb", false)     // name of output file used for topo templates
-	cp.AddFlag(cmdline.StringFlag, "CPInitPrb", false)   // name of output file used for func parameters templates
+	cp.AddFlag(cmdline.StringFlag, "CPInitPrb", true)    // name of output file used for func parameters templates
 
 	return cp
 }
@@ -154,7 +154,7 @@ func main() {
 
 	// serialize and save initialization struct for src
 	dfparamStr, _ := dfparams.Serialize(CPInitOutputIsYAML)
-	DFCPInit.AddParam(src.Label, dfparamStr)
+	DFCPInit.AddParam(src.Label, src.ExecType, dfparamStr)
 
 	// create state for 'branch' func
 	dfstate = make(map[string]string)
@@ -166,18 +166,18 @@ func main() {
 	dfparams.AddResponse(src.Label, DFMarkedMsg.MsgType, DFResultMsg.MsgType, consumer1.Label, 0.0)
 	dfparams.AddResponse(src.Label, DFMarkedMsg.MsgType, DFResultMsg.MsgType, consumer2.Label, 0.0)
 	dfparamStr, _ = dfparams.Serialize(CPInitOutputIsYAML)
-	DFCPInit.AddParam(branch.Label, dfparamStr)
+	DFCPInit.AddParam(branch.Label, branch.ExecType, dfparamStr)
 
 	// initialization parameters for customer1 and customer2 are to just consume the message and not generate a response
 	sparams := cmptn.CreateStaticParameters(StatefulFlag.CPType, consumer1.Label)
 	sparams.AddResponse(consumer1.Label, DFResultMsg.MsgType, "", "", 0.0)
 	sparamStr, _ := sparams.Serialize(CPInitOutputIsYAML)
-	DFCPInit.AddParam(consumer1.Label, sparamStr)
+	DFCPInit.AddParam(consumer1.Label, consumer1.ExecType, sparamStr)
 
 	sparams = cmptn.CreateStaticParameters(StatefulFlag.CPType, consumer2.Label)
 	sparams.AddResponse(consumer2.Label, DFResultMsg.MsgType, "", "", 0.0)
 	sparamStr, _ = sparams.Serialize(CPInitOutputIsYAML)
-	DFCPInit.AddParam(consumer2.Label, sparamStr)
+	DFCPInit.AddParam(consumer2.Label, consumer2.ExecType, sparamStr)
 
 	// the initialization for the "StatefulTest" is done, save it in the initialization dictionary
 	CPInitPrbDict.AddCPInitList(DFCPInit, false)
@@ -239,7 +239,7 @@ func main() {
 
 	// serialize this initialization struct for src1 and save it
 	paramStr, _ := params.Serialize(CPInitOutputIsYAML)
-	RBCPInit.AddParam(src1.Label, paramStr)
+	RBCPInit.AddParam(src1.Label, src1.ExecType, paramStr)
 
 	// when src2 gets a message of type "initiate" from self, respond by
 	// generating a message of type "data" and send to function branch. Time between
@@ -247,7 +247,7 @@ func main() {
 	params = cmptn.CreateStaticParameters(RndBranch.CPType, src2.Label)
 	params.AddResponse(src2.Label, RBInitMsg.MsgType, RBDataMsg.MsgType, branch.Label, 2.125)
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	RBCPInit.AddParam(src2.Label, paramStr)
+	RBCPInit.AddParam(src2.Label, src2.ExecType, paramStr)
 
 	// now the initialization parameters for 'branch'
 	rndparams := cmptn.CreateRndParameters(RndBranch.CPType, branch.Label)
@@ -284,21 +284,21 @@ func main() {
 	// on the json marshalling of this particular response structure, so just
 	// avoiding the potential for a run-time error
 	rndparamStr, _ := rndparams.Serialize(CPInitOutputIsYAML)
-	RBCPInit.AddParam(branch.Label, rndparamStr)
+	RBCPInit.AddParam(branch.Label, branch.ExecType, rndparamStr)
 
 	// when consumer1 gets message of type "decrypted" from "decrypt", respond by doing nothing
 	params = cmptn.CreateStaticParameters(RndBranch.CPType, consumer1.Label)
 	params.AddResponse(branch.Label, RBConsumeMsg.MsgType, "", "", 0.0)
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	RBCPInit.AddParam(consumer1.Label, paramStr)
+	RBCPInit.AddParam(consumer1.Label, consumer1.ExecType, paramStr)
 
 	// when consumer2 gets message of type "decrypted" from "decrypt", respond by doing nothing
 	params = cmptn.CreateStaticParameters(RndBranch.CPType, consumer2.Label)
 	params.AddResponse(branch.Label, RBConsumeMsg.MsgType, "", "", 0.0)
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	RBCPInit.AddParam(consumer2.Label, paramStr)
+	RBCPInit.AddParam(consumer2.Label, consumer2.ExecType, paramStr)
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	RBCPInit.AddParam(consumer2.Label, paramStr)
+	RBCPInit.AddParam(consumer2.Label, consumer2.ExecType, paramStr)
 
 	// include this CompPattern's initialization informtion into the CP initialization dictionary
 	CPInitPrbDict.AddCPInitList(RBCPInit, false)
@@ -354,28 +354,28 @@ func main() {
 	// self-initiate, message src -> encrypt every 1.0 second
 	params.AddResponse(src.Label, RSAInitMsg.MsgType, RSADataMsg.MsgType, encrypt.Label, 1.0)
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	RSACPInit.AddParam(src.Label, paramStr)
+	RSACPInit.AddParam(src.Label, src.ExecType, paramStr)
 
 	// when encrypt gets a message of type "data" from source "src", respond by
 	// generating a message of type "encrypted" and send to "decrypt"
 	params = cmptn.CreateStaticParameters(RSAChain.CPType, encrypt.Label)
 	params.AddResponse(src.Label, RSADataMsg.MsgType, RSAEncryptMsg.MsgType, decrypt.Label, 0.0)
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	RSACPInit.AddParam(encrypt.Label, paramStr)
+	RSACPInit.AddParam(encrypt.Label, encrypt.ExecType, paramStr)
 
 	// when decrypt gets a message of type "encrypted" from "encrypt", respond by
 	// generating a message of type "decrypted" and send to function "sink"
 	params = cmptn.CreateStaticParameters(RSAChain.CPType, decrypt.Label)
 	params.AddResponse(encrypt.Label, RSAEncryptMsg.MsgType, RSADecryptMsg.MsgType, sink.Label, 0.0)
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	RSACPInit.AddParam(decrypt.Label, paramStr)
+	RSACPInit.AddParam(decrypt.Label, decrypt.ExecType, paramStr)
 
 	// when sink gets message of type "decrypted" from "decrypt", respond by
 	// doing nothing
 	params = cmptn.CreateStaticParameters(RSAChain.CPType, sink.Label)
 	params.AddResponse(decrypt.Label, RSADecryptMsg.MsgType, "", "", 0.0)
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	RSACPInit.AddParam(sink.Label, paramStr)
+	RSACPInit.AddParam(sink.Label, sink.ExecType, paramStr)
 
 	// add the RSAChain Initialization to the dictionary
 	CPInitPrbDict.AddCPInitList(RSACPInit, false)
@@ -430,28 +430,28 @@ func main() {
 	// self-initiate, message src -> encrypt every 1.0 second
 	params.AddResponse(src.Label, AESInitMsg.MsgType, AESDataMsg.MsgType, encrypt.Label, 1.0)
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	AESCPInit.AddParam(src.Label, paramStr)
+	AESCPInit.AddParam(src.Label, src.ExecType, paramStr)
 
 	// when encrypt gets a message of type "data" from source "src", respond by
 	// generating a message of type "encrypted" and send to "decrypt"
 	params = cmptn.CreateStaticParameters(AESChain.CPType, encrypt.Label)
 	params.AddResponse(src.Label, AESDataMsg.MsgType, AESEncryptMsg.MsgType, decrypt.Label, 0.0)
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	AESCPInit.AddParam(encrypt.Label, paramStr)
+	AESCPInit.AddParam(encrypt.Label, encrypt.ExecType, paramStr)
 
 	// when decrypt gets a message of type "encrypted" from "encrypt", respond by
 	// generating a message of type "decrypted" and send to function "sink"
 	params = cmptn.CreateStaticParameters(AESChain.CPType, decrypt.Label)
 	params.AddResponse(encrypt.Label, AESEncryptMsg.MsgType, AESDecryptMsg.MsgType, sink.Label, 0.0)
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	AESCPInit.AddParam(decrypt.Label, paramStr)
+	AESCPInit.AddParam(decrypt.Label, decrypt.ExecType, paramStr)
 
 	// when sink gets message of type "decrypted" from "decrypt", respond by
 	// doing nothing
 	params = cmptn.CreateStaticParameters(AESChain.CPType, sink.Label)
 	params.AddResponse(decrypt.Label, AESDecryptMsg.MsgType, "", "", 0.0)
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	AESCPInit.AddParam(sink.Label, paramStr)
+	AESCPInit.AddParam(sink.Label, sink.ExecType, paramStr)
 
 	// add the AESChain Initialization to the dictionary
 	CPInitPrbDict.AddCPInitList(AESCPInit, false)
@@ -492,7 +492,7 @@ func main() {
 
 	// save the server initialization structure
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	SimpleWebCPInit.AddParam(client.Label, paramStr)
+	SimpleWebCPInit.AddParam(client.Label, client.ExecType, paramStr)
 
 	// when "server" gets message of type "request" from "client", respond by
 	// sending "response" message to "client"
@@ -501,7 +501,7 @@ func main() {
 
 	// just one response to save, so serialize the func's initiationization struct
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	SimpleWebCPInit.AddParam(server.Label, paramStr)
+	SimpleWebCPInit.AddParam(server.Label, server.ExecType, paramStr)
 
 	// all the functions have their initialization structs built and committed, put
 	// the SimpleWeb wrapper into the dictionary
@@ -578,7 +578,7 @@ func main() {
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
 
 	// save the clients's initialization
-	PKIWebCPInit.AddParam(client.Label, paramStr)
+	PKIWebCPInit.AddParam(client.Label, client.ExecType, paramStr)
 
 	// create the initialization block for the server
 	// state block holds threshold "cach-interval" dictating how often to forward requests
@@ -601,7 +601,7 @@ func main() {
 
 	// bundle up the initialization structure and save it for this CompPattern
 	statefulparamStr, _ := statefulparams.Serialize(CPInitOutputIsYAML)
-	PKIWebCPInit.AddParam(server.Label, statefulparamStr)
+	PKIWebCPInit.AddParam(server.Label, server.ExecType, statefulparamStr)
 
 	// now the cache
 	// every 100th request to the cache gets forwarded to the pki-server
@@ -616,7 +616,7 @@ func main() {
 	statefulparams.AddResponse(server.Label, PKIWebCacheReqMsg.MsgType, PKIWebCertReqMsg.MsgType, certSrvr.Label, 1.0)
 	statefulparams.AddResponse(certSrvr.Label, PKIWebRspMsg.MsgType, PKIWebCacheRspMsg.MsgType, server.Label, 0.0)
 	statefulparamStr, _ = statefulparams.Serialize(CPInitOutputIsYAML)
-	PKIWebCPInit.AddParam(cache.Label, statefulparamStr)
+	PKIWebCPInit.AddParam(cache.Label, cache.ExecType, statefulparamStr)
 
 	// initialization for the certSrvr
 	params = cmptn.CreateStaticParameters(PKIWeb.CPType, certSrvr.Label)
@@ -625,7 +625,7 @@ func main() {
 
 	// wrap up the certSrvr responses
 	paramStr, _ = params.Serialize(CPInitOutputIsYAML)
-	PKIWebCPInit.AddParam(certSrvr.Label, paramStr)
+	PKIWebCPInit.AddParam(certSrvr.Label, certSrvr.ExecType, paramStr)
 
 	// put the PKIWeb initialization structure into the initialization dictionary
 	CPInitPrbDict.AddCPInitList(PKIWebCPInit, false)
