@@ -1,0 +1,453 @@
+prebuilt: true
+dictname: CompPatterns-1
+initlist:
+    AESChain:
+        name: AESChain
+        cptype: AESChain
+        useyaml: true
+        params:
+            decrypt: |
+                patternname: AESChain
+                label: decrypt
+                response:
+                    - inedge:
+                        srclabel: encrypt
+                        msgtype: encrypted
+                      outedge:
+                        msgtype: decrypted
+                        dstlabel: sink
+                      period: 0
+            encrypt: |
+                patternname: AESChain
+                label: encrypt
+                response:
+                    - inedge:
+                        srclabel: src
+                        msgtype: data
+                      outedge:
+                        msgtype: encrypted
+                        dstlabel: decrypt
+                      period: 0
+            sink: |
+                patternname: AESChain
+                label: sink
+                response:
+                    - inedge:
+                        srclabel: decrypt
+                        msgtype: decrypted
+                      outedge:
+                        msgtype: ""
+                        dstlabel: ""
+                      period: 0
+            src: |
+                patternname: AESChain
+                label: src
+                response:
+                    - inedge:
+                        srclabel: src
+                        msgtype: initiate
+                      outedge:
+                        msgtype: data
+                        dstlabel: encrypt
+                      period: 1
+        msgs:
+            - msgtype: initiate
+              pcktlen: 50
+              msglen: 1500
+            - msgtype: data
+              pcktlen: 250
+              msglen: 1500
+            - msgtype: encrypted
+              pcktlen: 250
+              msglen: 1500
+            - msgtype: decrypted
+              pcktlen: 250
+              msglen: 1500
+    PKIWeb:
+        name: PKIWeb
+        cptype: PKIWeb
+        useyaml: true
+        params:
+            cache: |
+                patternname: PKIWeb
+                label: cache
+                state:
+                    FuncSelect: filter
+                    threshold: "100"
+                    visits: "0"
+                funcselect: filter
+                response:
+                    - inedge:
+                        srclabel: web-server
+                        msgtype: request
+                      outedge:
+                        msgtype: response
+                        dstlabel: web-server
+                      period: 1
+                      choice: cert-response
+                    - inedge:
+                        srclabel: web-server
+                        msgtype: request
+                      outedge:
+                        msgtype: request
+                        dstlabel: certs
+                      period: 1
+                      choice: cert-request
+                    - inedge:
+                        srclabel: certs
+                        msgtype: response
+                      outedge:
+                        msgtype: response
+                        dstlabel: web-server
+                      period: 0
+                      choice: cert-response
+            certs: |
+                patternname: PKIWeb
+                label: certs
+                response:
+                    - inedge:
+                        srclabel: cache
+                        msgtype: request
+                      outedge:
+                        msgtype: response
+                        dstlabel: cache
+                      period: 0
+            web-client: |
+                patternname: PKIWeb
+                label: web-client
+                response:
+                    - inedge:
+                        srclabel: web-client
+                        msgtype: initiate
+                      outedge:
+                        msgtype: request
+                        dstlabel: web-server
+                      period: 1.5
+                    - inedge:
+                        srclabel: web-server
+                        msgtype: response
+                      outedge:
+                        msgtype: ""
+                        dstlabel: ""
+                      period: 0
+            web-server: |
+                patternname: PKIWeb
+                label: web-server
+                state:
+                    FuncSelect: filter
+                    threshold: "1000"
+                    visits: "0"
+                funcselect: filter
+                response:
+                    - inedge:
+                        srclabel: web-client
+                        msgtype: request
+                      outedge:
+                        msgtype: response
+                        dstlabel: web-client
+                      period: 0
+                      choice: web-response
+                    - inedge:
+                        srclabel: web-client
+                        msgtype: request
+                      outedge:
+                        msgtype: request
+                        dstlabel: cache
+                      period: 0
+                      choice: cert-request
+                    - inedge:
+                        srclabel: cache
+                        msgtype: response
+                      outedge:
+                        msgtype: response
+                        dstlabel: web-client
+                      period: 0
+                      choice: web-response
+        msgs:
+            - msgtype: initiate
+              pcktlen: 100
+              msglen: 1500
+            - msgtype: request
+              pcktlen: 250
+              msglen: 1500
+            - msgtype: response
+              pcktlen: 1500
+              msglen: 1500
+            - msgtype: request
+              pcktlen: 1500
+              msglen: 1500
+            - msgtype: response
+              pcktlen: 1500
+              msglen: 1500
+            - msgtype: request
+              pcktlen: 1500
+              msglen: 1500
+            - msgtype: response
+              pcktlen: 1500
+              msglen: 1500
+    RSAChain:
+        name: RSAChain
+        cptype: RSAChain
+        useyaml: true
+        params:
+            decrypt: |
+                patternname: RSAChain
+                label: decrypt
+                response:
+                    - inedge:
+                        srclabel: encrypt
+                        msgtype: encrypted
+                      outedge:
+                        msgtype: decrypted
+                        dstlabel: sink
+                      period: 0
+            encrypt: |
+                patternname: RSAChain
+                label: encrypt
+                response:
+                    - inedge:
+                        srclabel: src
+                        msgtype: data
+                      outedge:
+                        msgtype: encrypted
+                        dstlabel: decrypt
+                      period: 0
+            sink: |
+                patternname: RSAChain
+                label: sink
+                response:
+                    - inedge:
+                        srclabel: decrypt
+                        msgtype: decrypted
+                      outedge:
+                        msgtype: ""
+                        dstlabel: ""
+                      period: 0
+            src: |
+                patternname: RSAChain
+                label: src
+                response:
+                    - inedge:
+                        srclabel: src
+                        msgtype: initiate
+                      outedge:
+                        msgtype: data
+                        dstlabel: encrypt
+                      period: 1
+        msgs:
+            - msgtype: initiate
+              pcktlen: 50
+              msglen: 1500
+            - msgtype: data
+              pcktlen: 1000
+              msglen: 1500
+            - msgtype: encrypted
+              pcktlen: 500
+              msglen: 1500
+            - msgtype: decrypted
+              pcktlen: 500
+              msglen: 1500
+    RandomBranch:
+        name: RandomBranch
+        cptype: RandomBranch
+        useyaml: true
+        params:
+            consumer1: |
+                patternname: RandomBranch
+                label: consumer1
+                response:
+                    - inedge:
+                        srclabel: select
+                        msgtype: consume
+                      outedge:
+                        msgtype: ""
+                        dstlabel: ""
+                      period: 0
+            consumer2: |
+                patternname: RandomBranch
+                label: consumer2
+                response:
+                    - inedge:
+                        srclabel: select
+                        msgtype: consume
+                      outedge:
+                        msgtype: ""
+                        dstlabel: ""
+                      period: 0
+            select: |
+                patternname: RandomBranch
+                label: select
+                response:
+                    - inedge:
+                        srclabel: src1
+                        msgtype: data
+                      msgselect:
+                        ?   msgtype: consume
+                            dstlabel: consumer1
+                        : 0.25
+                        ?   msgtype: consume
+                            dstlabel: consumer2
+                        : 0.75
+                    - inedge:
+                        srclabel: src2
+                        msgtype: data
+                      msgselect:
+                        ?   msgtype: consume
+                            dstlabel: consumer1
+                        : 0.01
+                        ?   msgtype: consume
+                            dstlabel: consumer2
+                        : 0.99
+            src1: |
+                patternname: RandomBranch
+                label: src1
+                response:
+                    - inedge:
+                        srclabel: src1
+                        msgtype: initiate
+                      outedge:
+                        msgtype: data
+                        dstlabel: select
+                      period: 1.1
+            src2: |
+                patternname: RandomBranch
+                label: src2
+                response:
+                    - inedge:
+                        srclabel: src2
+                        msgtype: initiate
+                      outedge:
+                        msgtype: data
+                        dstlabel: select
+                      period: 2.125
+        msgs:
+            - msgtype: initiate
+              pcktlen: 50
+              msglen: 1500
+            - msgtype: data
+              pcktlen: 1000
+              msglen: 1500
+            - msgtype: consume
+              pcktlen: 1000
+              msglen: 1500
+    SimpleWeb:
+        name: SimpleWeb
+        cptype: SimpleWeb
+        useyaml: true
+        params:
+            client: |
+                patternname: SimpleWeb
+                label: client
+                response:
+                    - inedge:
+                        srclabel: client
+                        msgtype: initiate
+                      outedge:
+                        msgtype: request
+                        dstlabel: server
+                      period: 3.333
+                    - inedge:
+                        srclabel: server
+                        msgtype: response
+                      outedge:
+                        msgtype: ""
+                        dstlabel: ""
+                      period: 0
+            server: |
+                patternname: SimpleWeb
+                label: server
+                response:
+                    - inedge:
+                        srclabel: client
+                        msgtype: request
+                      outedge:
+                        msgtype: response
+                        dstlabel: client
+                      period: 0
+        msgs:
+            - msgtype: initiate
+              pcktlen: 100
+              msglen: 1500
+            - msgtype: request
+              pcktlen: 250
+              msglen: 1500
+            - msgtype: response
+              pcktlen: 1500
+              msglen: 1500
+    StatefulTest:
+        name: StatefulTest
+        cptype: StatefulTest
+        useyaml: true
+        params:
+            branch: |
+                patternname: StatefulTest
+                label: branch
+                state:
+                    FuncSelect: testFlag
+                    testflag: "true"
+                funcselect: testFlag
+                response:
+                    - inedge:
+                        srclabel: src
+                        msgtype: marked
+                      outedge:
+                        msgtype: result
+                        dstlabel: consumer1
+                      period: 0
+                      choice: consumer1
+                    - inedge:
+                        srclabel: src
+                        msgtype: marked
+                      outedge:
+                        msgtype: result
+                        dstlabel: consumer2
+                      period: 0
+                      choice: consumer2
+            consumer1: |
+                patternname: StatefulTest
+                label: consumer1
+                response:
+                    - inedge:
+                        srclabel: consumer1
+                        msgtype: result
+                      outedge:
+                        msgtype: ""
+                        dstlabel: ""
+                      period: 0
+            consumer2: |
+                patternname: StatefulTest
+                label: consumer2
+                response:
+                    - inedge:
+                        srclabel: consumer2
+                        msgtype: result
+                      outedge:
+                        msgtype: ""
+                        dstlabel: ""
+                      period: 0
+            src: |
+                patternname: StatefulTest
+                label: src
+                state:
+                    FuncSelect: mark
+                    failperiod: "1000"
+                funcselect: mark
+                response:
+                    - inedge:
+                        srclabel: src
+                        msgtype: initiate
+                      outedge:
+                        msgtype: marked
+                        dstlabel: branch
+                      period: 2
+                      choice: marked
+        msgs:
+            - msgtype: initiate
+              pcktlen: 250
+              msglen: 1500
+            - msgtype: marked
+              pcktlen: 250
+              msglen: 1500
+            - msgtype: result
+              pcktlen: 250
+              msglen: 1500

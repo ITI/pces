@@ -1,0 +1,170 @@
+listname: Experiment-1
+times:
+    AES-decrypt:
+        - funcop: ""
+          processortype: x86
+          pcktlen: 250
+          exectime: 7.5e-05
+        - funcop: ""
+          processortype: pentium
+          pcktlen: 250
+          exectime: 0.000449102
+        - funcop: ""
+          processortype: M2
+          pcktlen: 250
+          exectime: 0.000224551
+    AES-encrypt:
+        - funcop: ""
+          processortype: x86
+          pcktlen: 500
+          exectime: 0.005988024
+        - funcop: ""
+          processortype: pentium
+          pcktlen: 500
+          exectime: 0.00075
+        - funcop: ""
+          processortype: M2
+          pcktlen: 500
+          exectime: 0.000375
+    RSA-decrypt:
+        - funcop: ""
+          processortype: x86
+          pcktlen: 250
+          exectime: 0.000598802
+        - funcop: ""
+          processortype: pentium
+          pcktlen: 250
+          exectime: 0.000299401
+        - funcop: ""
+          processortype: M2
+          pcktlen: 250
+          exectime: 5.98802e-05
+    RSA-encrypt:
+        - funcop: ""
+          processortype: x86
+          pcktlen: 500
+          exectime: 0.001
+        - funcop: ""
+          processortype: pentium
+          pcktlen: 500
+          exectime: 0.0005
+        - funcop: ""
+          processortype: M2
+          pcktlen: 500
+          exectime: 0.0001
+    branch:
+        - funcop: ""
+          processortype: M2
+          pcktlen: 250
+          exectime: 0
+        - funcop: ""
+          processortype: pentium
+          pcktlen: 250
+          exectime: 0
+        - funcop: ""
+          processortype: x86
+          pcktlen: 250
+          exectime: 0
+    consume:
+        - funcop: ""
+          processortype: x86
+          pcktlen: 250
+          exectime: 0.00015
+        - funcop: ""
+          processortype: pentium
+          pcktlen: 250
+          exectime: 0.00015
+        - funcop: ""
+          processortype: M2
+          pcktlen: 250
+          exectime: 0.00015
+    generate:
+        - funcop: ""
+          processortype: x86
+          pcktlen: 500
+          exectime: 0.0001
+        - funcop: ""
+          processortype: pentium
+          pcktlen: 250
+          exectime: 5e-05
+        - funcop: ""
+          processortype: M2
+          pcktlen: 250
+          exectime: 1e-05
+    mark:
+        - funcop: ""
+          processortype: x86
+          pcktlen: 1000
+          exectime: 0.0001
+        - funcop: ""
+          processortype: pentium
+          pcktlen: 1000
+          exectime: 0.0002
+        - funcop: ""
+          processortype: M1
+          pcktlen: 1000
+          exectime: 0.0002
+        - funcop: ""
+          processortype: M2
+          pcktlen: 1000
+          exectime: 0.0002
+    pki-cache:
+        - funcop: ""
+          processortype: x86
+          pcktlen: 500
+          exectime: 0.005
+        - funcop: ""
+          processortype: pentium
+          pcktlen: 250
+          exectime: 0.0025
+        - funcop: ""
+          processortype: M2
+          pcktlen: 250
+          exectime: 0.0005
+    pki-server:
+        - funcop: ""
+          processortype: x86
+          pcktlen: 500
+          exectime: 0.05
+        - funcop: ""
+          processortype: pentium
+          pcktlen: 250
+          exectime: 0.025
+        - funcop: ""
+          processortype: M2
+          pcktlen: 250
+          exectime: 0.005
+    process:
+        - funcop: ""
+          processortype: x86
+          pcktlen: 1000
+          exectime: 1e-05
+        - funcop: ""
+          processortype: pentium
+          pcktlen: 1000
+          exectime: 2e-05
+        - funcop: ""
+          processortype: M1
+          pcktlen: 1000
+          exectime: 1e-05
+        - funcop: ""
+          processortype: M2
+          pcktlen: 1000
+          exectime: 1e-05
+    testFlag:
+        - funcop: ""
+          processortype: x86
+          pcktlen: 1000
+          exectime: 1e-05
+        - funcop: ""
+          processortype: pentium
+          pcktlen: 1000
+          exectime: 2e-05
+        - funcop: ""
+          processortype: M1
+          pcktlen: 1000
+          exectime: 1e-05
+        - funcop: ""
+          processortype: M2
+          pcktlen: 1000
+          exectime: 1e-05

@@ -1,0 +1,69 @@
+prebuilt: false
+dictname: evaluate
+patterns:
+    simple-AES-chain:
+        cptype: AESChain
+        name: simple-AES-chain
+        funcs:
+            - functype: generate
+              label: src
+              exectype: static
+            - functype: AES-encrypt
+              label: encrypt
+              exectype: static
+            - functype: AES-decrypt
+              label: decrypt
+              exectype: static
+            - functype: consume
+              label: sink
+              exectype: static
+        edges:
+            - srclabel: src
+              dstlabel: src
+              msgtype: initiate
+              edgelabel: initiate
+            - srclabel: src
+              dstlabel: encrypt
+              msgtype: data
+              edgelabel: data
+            - srclabel: encrypt
+              dstlabel: decrypt
+              msgtype: encrypted
+              edgelabel: encrypted
+            - srclabel: decrypt
+              dstlabel: sink
+              msgtype: decrypted
+              edgelabel: encrypted
+    simple-bit-test:
+        cptype: StatefulTest
+        name: simple-bit-test
+        funcs:
+            - functype: mark
+              label: src
+              exectype: stateful
+            - functype: testFlag
+              label: branch
+              exectype: stateful
+            - functype: process
+              label: consumer1
+              exectype: static
+            - functype: process
+              label: consumer2
+              exectype: static
+        edges:
+            - srclabel: src
+              dstlabel: src
+              msgtype: initiate
+              edgelabel: initiate
+            - srclabel: src
+              dstlabel: branch
+              msgtype: marked
+              edgelabel: marked
+            - srclabel: branch
+              dstlabel: consumer1
+              msgtype: result
+              edgelabel: consumer1
+            - srclabel: branch
+              dstlabel: consumer2
+              msgtype: result
+              edgelabel: consumer2

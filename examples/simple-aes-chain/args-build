@@ -1,0 +1,15 @@
+-prbLib ../pre-built
+-cpPrb CompPattern/topoLib.yaml
+-cpInitPrb CompPattern/paramLib.yaml 
+-expPrb ExpCfg/expCfg1.yaml 
+-funcExecPrb ExecMap/fexec1.yaml 
+-devExecPrb ExecMap/dexec1.yaml 
+-topoPrb TopoCfg/topo1.yaml 
+-exptInputLib ../expLib/aes
+-topoOutput topo.yaml 
+-cpInitOutput cpInit.yaml 
+-funcExecOutput funcexec.yaml 
+-devExecOutput devexec.yaml 
+-cpOutput cp.yaml 
+-mapOutput map.yaml 
+-expOutput exp.yaml

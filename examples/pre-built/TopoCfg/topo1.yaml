@@ -1,0 +1,219 @@
+dictname: TopoCfg-1
+cfgs:
+    LAN-WAN-LAN:
+        name: LAN-WAN-LAN
+        networks:
+            - name: srcNet
+              nettype: LAN
+              mediatype: wired
+              brdcstdmns:
+                - srcBcd
+              routers:
+                - Rtr:(srcNet-transitNet).[1]
+            - name: dstNet
+              nettype: LAN
+              mediatype: wireless
+              brdcstdmns:
+                - dstBcd
+              routers:
+                - Rtr:(dstNet-transitNet).[1]
+                - dstBcd.Hub
+            - name: transitNet
+              nettype: WAN
+              mediatype: wired
+              brdcstdmns:
+                - srvrBcd
+              routers:
+                - Rtr:(srcNet-transitNet).[1]
+                - Rtr:(dstNet-transitNet).[1]
+        routers:
+            - name: Rtr:(srcNet-transitNet).[1]
+              model: cisco
+              brdcstdmn: ""
+              interfaces:
+                - name: intrfc@Rtr:(srcNet-transitNet).[1][.1]
+                  devtype: Switch
+                  mediatype: wired
+                  device: Rtr:(srcNet-transitNet).[1]
+                  connects: ""
+                  faces: srcNet
+                - name: intrfc@Rtr:(srcNet-transitNet).[1][.2]
+                  devtype: Switch
+                  mediatype: wired
+                  device: Rtr:(srcNet-transitNet).[1]
+                  connects: ""
+                  faces: transitNet
+                - name: intrfc@Rtr:(srcNet-transitNet).[1][.6]
+                  devtype: Switch
+                  mediatype: wired
+                  device: Rtr:(srcNet-transitNet).[1]
+                  connects: intrfc@switch(srcBcd).1[.5]
+                  faces: srcNet
+                - name: intrfc@Rtr:(srcNet-transitNet).[1][.8]
+                  devtype: Switch
+                  mediatype: wired
+                  device: Rtr:(srcNet-transitNet).[1]
+                  connects: intrfc@switch(srvrBcd).2[.7]
+                  faces: transitNet
+                - name: intrfc@Rtr:(srcNet-transitNet).[1][.11]
+                  devtype: Switch
+                  mediatype: wired
+                  device: Rtr:(srcNet-transitNet).[1]
+                  connects: intrfc@Rtr:(dstNet-transitNet).[1][.12]
+                  faces: transitNet
+            - name: dstBcd.Hub
+              model: cisco
+              brdcstdmn: dstBcd
+              interfaces:
+                - name: intrfc@dstBcd.Hub[.5]
+                  devtype: Switch
+                  mediatype: wireless
+                  device: dstBcd.Hub
+                  connects: ""
+                  faces: dstNet
+                - name: intrfc@dstBcd.Hub[.9]
+                  devtype: Switch
+                  mediatype: wired
+                  device: dstBcd.Hub
+                  connects: intrfc@Rtr:(dstNet-transitNet).[1][.10]
+                  faces: dstNet
+            - name: Rtr:(dstNet-transitNet).[1]
+              model: cisco
+              brdcstdmn: ""
+              interfaces:
+                - name: intrfc@Rtr:(dstNet-transitNet).[1][.3]
+                  devtype: Switch
+                  mediatype: wireless
+                  device: Rtr:(dstNet-transitNet).[1]
+                  connects: ""
+                  faces: dstNet
+                - name: intrfc@Rtr:(dstNet-transitNet).[1][.4]
+                  devtype: Switch
+                  mediatype: wired
+                  device: Rtr:(dstNet-transitNet).[1]
+                  connects: ""
+                  faces: transitNet
+                - name: intrfc@Rtr:(dstNet-transitNet).[1][.10]
+                  devtype: Switch
+                  mediatype: wired
+                  device: Rtr:(dstNet-transitNet).[1]
+                  connects: intrfc@dstBcd.Hub[.9]
+                  faces: dstNet
+                - name: intrfc@Rtr:(dstNet-transitNet).[1][.12]
+                  devtype: Switch
+                  mediatype: wired
+                  device: Rtr:(dstNet-transitNet).[1]
+                  connects: intrfc@Rtr:(srcNet-transitNet).[1][.11]
+                  faces: transitNet
+        hosts:
+            - name: hostNetA1
+              brdcstdmn:
+                - srcBcd
+              hosttype: Host
+              model: ""
+              network: ""
+              interfaces:
+                - name: intrfc@hostNetA1[.14]
+                  devtype: Host
+                  mediatype: wired
+                  device: hostNetA1
+                  connects: intrfc@switch(srcBcd).1[.13]
+                  faces: srcNet
+            - name: hostNetA2
+              brdcstdmn:
+                - srcBcd
+              hosttype: Host
+              model: ""
+              network: ""
+              interfaces:
+                - name: intrfc@hostNetA2[.16]
+                  devtype: Host
+                  mediatype: wired
+                  device: hostNetA2
+                  connects: intrfc@switch(srcBcd).1[.15]
+                  faces: srcNet
+            - name: hostNetB1
+              brdcstdmn:
+                - dstBcd
+              hosttype: Host
+              model: ""
+              network: ""
+              interfaces:
+                - name: intrfc@hostNetB1[.18]
+                  devtype: Host
+                  mediatype: wireless
+                  device: hostNetB1
+                  connects: ""
+                  faces: dstNet
+            - name: hostNetT1
+              brdcstdmn:
+                - srvrBcd
+              hosttype: Host
+              model: ""
+              network: ""
+              interfaces:
+                - name: intrfc@hostNetT1[.19]
+                  devtype: Host
+                  mediatype: wired
+                  device: hostNetT1
+                  connects: intrfc@switch(srvrBcd).2[.18]
+                  faces: transitNet
+        switches:
+            - name: switch(srcBcd).1
+              brdcstdmn: srcBcd
+              model: ""
+              interfaces:
+                - name: intrfc@switch(srcBcd).1[.5]
+                  devtype: Switch
+                  mediatype: wired
+                  device: switch(srcBcd).1
+                  connects: intrfc@Rtr:(srcNet-transitNet).[1][.6]
+                  faces: srcNet
+                - name: intrfc@switch(srcBcd).1[.13]
+                  devtype: Switch
+                  mediatype: wired
+                  device: switch(srcBcd).1
+                  connects: intrfc@hostNetA1[.14]
+                  faces: srcNet
+                - name: intrfc@switch(srcBcd).1[.15]
+                  devtype: Switch
+                  mediatype: wired
+                  device: switch(srcBcd).1
+                  connects: intrfc@hostNetA2[.16]
+                  faces: srcNet
+            - name: switch(srvrBcd).2
+              brdcstdmn: srvrBcd
+              model: ""
+              interfaces:
+                - name: intrfc@switch(srvrBcd).2[.7]
+                  devtype: Switch
+                  mediatype: wired
+                  device: switch(srvrBcd).2
+                  connects: intrfc@Rtr:(srcNet-transitNet).[1][.8]
+                  faces: transitNet
+                - name: intrfc@switch(srvrBcd).2[.18]
+                  devtype: Switch
+                  mediatype: wired
+                  device: switch(srvrBcd).2
+                  connects: intrfc@hostNetT1[.19]
+                  faces: transitNet
+        brdcstdmns:
+            - name: srcBcd
+              network: srcNet
+              mediatype: wired
+              hosts:
+                - hostNetA1
+                - hostNetA2
+              hub: switch(srcBcd).1
+            - name: dstBcd
+              network: dstNet
+              mediatype: wireless
+              hosts:
+                - hostNetB1
+              hub: dstBcd.Hub
+            - name: srvrBcd
+              network: transitNet
+              mediatype: wired
+              hosts:
+                - hostNetT1
+              hub: switch(srvrBcd).2

@@ -1,0 +1,11 @@
+-exptLib ../expLib
+-expt aes 
+-topoInput topo.yaml 
+-cpInitInput cpInit.yaml 
+-funcExecInput funcexec.yaml 
+-devExecInput devexec.yaml 
+-cpInput cp.yaml 
+-mapInput map.yaml 
+-expInput exp.yaml
+-stop 10000.0
+-seed 12345

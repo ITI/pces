@@ -1,0 +1,36 @@
+prebuilt: false
+dictname: evaluate
+patterns:
+    simple-AES-chain:
+        cptype: AESChain
+        name: simple-AES-chain
+        funcs:
+            - functype: generate
+              label: src
+              exectype: static
+            - functype: AES-encrypt
+              label: encrypt
+              exectype: static
+            - functype: AES-decrypt
+              label: decrypt
+              exectype: static
+            - functype: consume
+              label: sink
+              exectype: static
+        edges:
+            - srclabel: src
+              dstlabel: src
+              msgtype: initiate
+              edgelabel: initiate
+            - srclabel: src
+              dstlabel: encrypt
+              msgtype: data
+              edgelabel: data
+            - srclabel: encrypt
+              dstlabel: decrypt
+              msgtype: encrypted
+              edgelabel: encrypted
+            - srclabel: decrypt
+              dstlabel: sink
+              msgtype: decrypted
+              edgelabel: encrypted

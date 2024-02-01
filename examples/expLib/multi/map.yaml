@@ -1,0 +1,16 @@
+dictname: LAN-WAN-LAN
+map:
+    simple-AES-chain:
+        patternname: simple-AES-chain
+        funcmap:
+            decrypt: hostNetB1
+            encrypt: hostNetA2
+            sink: hostNetB1
+            src: hostNetA1
+    simple-bit-test:
+        patternname: simple-bit-test
+        funcmap:
+            branch: hostNetA2
+            consumer1: hostNetB1
+            consumer2: hostNetT1
+            src: hostNetA1

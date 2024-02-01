@@ -1,0 +1,65 @@
+prebuilt: false
+dictname: evaluate
+initlist:
+    simple-AES-chain:
+        name: simple-AES-chain
+        cptype: AESChain
+        useyaml: true
+        params:
+            decrypt: |
+                patternname: AESChain
+                label: decrypt
+                response:
+                    - inedge:
+                        srclabel: encrypt
+                        msgtype: encrypted
+                      outedge:
+                        msgtype: decrypted
+                        dstlabel: sink
+                      period: 0
+            encrypt: |
+                patternname: AESChain
+                label: encrypt
+                response:
+                    - inedge:
+                        srclabel: src
+                        msgtype: data
+                      outedge:
+                        msgtype: encrypted
+                        dstlabel: decrypt
+                      period: 0
+            sink: |
+                patternname: AESChain
+                label: sink
+                response:
+                    - inedge:
+                        srclabel: decrypt
+                        msgtype: decrypted
+                      outedge:
+                        msgtype: ""
+                        dstlabel: ""
+                      period: 0
+            src: |
+                patternname: AESChain
+                label: src
+                response:
+                    - inedge:
+                        srclabel: src
+                        msgtype: initiate
+                      outedge:
+                        msgtype: data
+                        dstlabel: encrypt
+                      period: 1
+        msgs:
+            - msgtype: initiate
+              pcktlen: 50
+              msglen: 1500
+            - msgtype: data
+              pcktlen: 250
+              msglen: 1500
+            - msgtype: encrypted
+              pcktlen: 250
+              msglen: 1500
+            - msgtype: decrypted
+              pcktlen: 250
+              msglen: 1500
