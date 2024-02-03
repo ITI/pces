@@ -4,10 +4,10 @@ package main
 
 import (
 	"fmt"
+	"github.com/iti/rngstream"
 	"github.com/iti/cmdline"
 	"github.com/iti/mrnes"
 	mrnb "github.com/iti/mrnesbits"
-	"github.com/iti/rngstream"
 	"os"
 	"path"
 	"path/filepath"
