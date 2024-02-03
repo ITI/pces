@@ -50,6 +50,11 @@ initlist:
                         msgtype: data
                         dstlabel: encrypt
                       period: 1
+        exectype:
+            decrypt: static
+            encrypt: static
+            sink: static
+            src: static
         msgs:
             - msgtype: initiate
               pcktlen: 50
@@ -163,6 +168,11 @@ initlist:
                         dstlabel: web-client
                       period: 0
                       choice: web-response
+        exectype:
+            cache: stateful
+            certs: static
+            web-client: static
+            web-server: stateful
         msgs:
             - msgtype: initiate
               pcktlen: 100
@@ -234,6 +244,11 @@ initlist:
                         msgtype: data
                         dstlabel: encrypt
                       period: 1
+        exectype:
+            decrypt: static
+            encrypt: static
+            sink: static
+            src: static
         msgs:
             - msgtype: initiate
               pcktlen: 50
@@ -320,6 +335,12 @@ initlist:
                         msgtype: data
                         dstlabel: select
                       period: 2.125
+        exectype:
+            consumer1: static
+            consumer2: static
+            select: random
+            src1: static
+            src2: static
         msgs:
             - msgtype: initiate
               pcktlen: 50
@@ -364,6 +385,9 @@ initlist:
                         msgtype: response
                         dstlabel: client
                       period: 0
+        exectype:
+            client: static
+            server: static
         msgs:
             - msgtype: initiate
               pcktlen: 100
@@ -441,6 +465,11 @@ initlist:
                         dstlabel: branch
                       period: 2
                       choice: marked
+        exectype:
+            branch: stateful
+            consumer1: static
+            consumer2: static
+            src: stateful
         msgs:
             - msgtype: initiate
               pcktlen: 250

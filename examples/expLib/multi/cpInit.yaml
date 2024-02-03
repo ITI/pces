@@ -50,6 +50,11 @@ initlist:
                         msgtype: data
                         dstlabel: encrypt
                       period: 1
+        exectype:
+            decrypt: static
+            encrypt: static
+            sink: static
+            src: static
         msgs:
             - msgtype: initiate
               pcktlen: 50
@@ -119,7 +124,7 @@ initlist:
                 label: src
                 state:
                     FuncSelect: mark
-                    failperiod: "1000"
+                    failperiod: "999"
                 funcselect: mark
                 response:
                     - inedge:
@@ -130,6 +135,11 @@ initlist:
                         dstlabel: branch
                       period: 2
                       choice: marked
+        exectype:
+            branch: stateful
+            consumer1: static
+            consumer2: static
+            src: stateful
         msgs:
             - msgtype: initiate
               pcktlen: 250

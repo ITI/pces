@@ -1,0 +1,11 @@
+dictname: evaluate
+statebycp:
+    simple-bit-test:
+        cmpptnname: simple-bit-test
+        labeltomap:
+            branch:
+                FuncSelect: testFlag
+                testflag: "true"
+            src:
+                FuncSelect: mark
+                failperiod: "2"

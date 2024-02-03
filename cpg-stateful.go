@@ -58,7 +58,7 @@ type cmpPtnStatefulFuncInst struct {
 
 // createDestFuncInst is a constructor that builds an instance of cmpPtnStatefulFunctInst from a Func description and
 // a serialized representation of a StaticParameters struct.
-func createStatefulFuncInst(cpInstName string, fnc *Func, paramStr string, useYAML bool) *cmpPtnStatefulFuncInst {
+func createStatefulFuncInst(cpInstName string, fnc *Func, paramStr string, newState map[string]string, useYAML bool) *cmpPtnStatefulFuncInst {
 	dfi := new(cmpPtnStatefulFuncInst)
 	dfi.id = nxtId()                    // get an integer id that is unique across all objects in the simulation model
 	dfi.fType = fnc.FuncType            // remember the function type of the Func which is the base for this instance
@@ -82,7 +82,17 @@ func createStatefulFuncInst(cpInstName string, fnc *Func, paramStr string, useYA
 		}
 	}
 	dfi.funcSelect = params.FuncSelect
-	dfi.state = params.State
+
+    for key, value := range params.State {
+	    dfi.state[key] = value 
+    }
+
+	// if there is new state information, use it.  Add entries not present before, overwrite entries that are present
+	if len(newState) > 0 {
+        for key, value := range newState {
+            dfi.state[key] = value
+        }
+	} 
 
 	// edges are maps of message type to func node labels. Here we copy the input list, but
 	// gather together responses that have a common InEdge  (N.B., InEdge is a structure more complex than an int or string, but can be used to index maps)

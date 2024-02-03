@@ -129,18 +129,31 @@ func createCmpPtnGraphNode(label string) *cmpPtnGraphNode {
 
 // buildCmpPtns goes through every CompPattern in the input CompPatternDict,
 // and creates a run-time cmpPtnInst representation for it.
-func buildCmpPtns(cpd *CompPatternDict, cpid *CPInitListDict) error {
+func buildCmpPtns(cpd *CompPatternDict, cpid *CPInitListDict, cpfsd *CPFuncStateDict) error {
 
 	errList := []error{}
 	// CompPatterns are arranged in a map that is index by the CompPattern name
 	for cpName, cp := range cpd.Patterns {
 
+		var cpfs CPFuncState 
+        var present bool = false
+		if cpfsd != nil {	
+			cpfs, present = cpfsd.StateByCP[cpName]
+		}
+
 		// use the CompPattern name to index to the correct member
 		// of the map of comp pattern initialization structs
-		cpi, err := createCmpPtnInst(cpName, cp, cpid.InitList[cpName])
+        var cpi *cmpPtnInst
+        var err error
+        if present {
+		    cpi, err = createCmpPtnInst(cpName, cp, cpid.InitList[cpName], &cpfs)
+        } else {
+		    cpi, err = createCmpPtnInst(cpName, cp, cpid.InitList[cpName], nil)
+        }
+
 		errList = append(errList, err)
 
-		// save the instance we we can look it up given the comp pattern name
+		// save the instance we can look it up given the comp pattern name
 		cmpPtnInstByName[cpName] = cpi
 	}
 	return ReportErrs(errList)
@@ -199,7 +212,7 @@ func BuildExperimentCP(syn map[string]string, useYAML bool) (*evtm.EventManager,
 	// call GetExperimentCPDicts to do the heavy lifting of extracting data structures
 	// (typically maps) designed for serialization/deserialization,  and assign those maps to variables
 	// we'll use to re-represent this information in structures optimized for run-time use
-	cpd, cpid, fel, cpmd := GetExperimentCPDicts(syn)
+	cpd, cpid, cpfsd, fel, cpmd := GetExperimentCPDicts(syn)
 
 	// get a pointer to a mrns NetworkPortal
 	_, use := syn["qksim"]
@@ -217,7 +230,7 @@ func BuildExperimentCP(syn map[string]string, useYAML bool) (*evtm.EventManager,
 	funcExecTimeTbl = buildFuncExecTimeTbl(fel)
 
 	// create the run-time representation of comp patterns, and initialize them
-	err := buildCmpPtns(cpd, cpid)
+	err := buildCmpPtns(cpd, cpid, cpfsd)
 
 	// build the response function table
 	buildRespTbl()
@@ -238,7 +251,7 @@ func nxtId() int {
 
 // GetExperimentDicts accepts a map that holds the names of the input files used to define an experiment,
 // creates internal representations of the information they hold, and returns those structs.
-func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListDict, *FuncExecList, *CompPatternMapDict) {
+func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListDict, *CPFuncStateDict, *FuncExecList, *CompPatternMapDict) {
 	var cpd *CompPatternDict
 	var cpid *CPInitListDict
 	var fel *FuncExecList
@@ -262,6 +275,17 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 	cpid, err = ReadCPInitListDict(syn["cpInitInput"], useYAML, empty)
 	errs = append(errs, err)
 
+    // a State input file may or may not be present, so be careful
+    _, present := syn["cpStateInput"]
+    var cpfsd *CPFuncStateDict = nil
+    if present {
+	    ext = path.Ext(syn["cpStateInput"])
+	    useYAML = (ext == ".yaml") || (ext == ".yml")
+
+        cpfsd, err = ReadCPFuncStateDict(syn["cpStateInput"], useYAML, empty)
+    	errs = append(errs, err)
+    }
+
 	ext = path.Ext(syn["funcExecInput"])
 	useYAML = (ext == ".yaml") || (ext == ".yml")
 
@@ -279,5 +303,5 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 		panic(err)
 	}
 
-	return cpd, cpid, fel, cpmd
+	return cpd, cpid, cpfsd, fel, cpmd
 }

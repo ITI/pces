@@ -32,7 +32,7 @@ type cmpPtnInst struct {
 
 // createCmpPtnInst is a constructor.  Inputs given by two structs from desc package.
 // cpd describes the CompPattern, and cpid describes this instance's initialization parameters.
-func createCmpPtnInst(ptnInstName string, cpd CompPattern, cpid CPInitList) (*cmpPtnInst, error) {
+func createCmpPtnInst(ptnInstName string, cpd CompPattern, cpid CPInitList, cpfs *CPFuncState) (*cmpPtnInst, error) {
 	cpi := new(cmpPtnInst)
 
 	// the instance gets the CompPattern Name
@@ -69,7 +69,14 @@ func createCmpPtnInst(ptnInstName string, cpd CompPattern, cpid CPInitList) (*cm
 			cpi.funcs[sf.label] = sf
 
 		case "stateful":
-			df := createStatefulFuncInst(ptnInstName, &funcDesc, cpid.Params[funcDesc.Label], cpid.UseYAML)
+			newState := make(map[string]string)
+			if cpfs != nil {
+				_, present := cpfs.LabelToMap[funcDesc.Label]
+				if present {
+					newState = cpfs.LabelToMap[funcDesc.Label]
+				} 
+			}	
+			df := createStatefulFuncInst(ptnInstName, &funcDesc, cpid.Params[funcDesc.Label], newState, cpid.UseYAML)
 			cpi.funcs[df.label] = df
 
 		case "random":

@@ -326,7 +326,7 @@ func CreateCPInitListDict(name string, preblt bool) *CPInitListDict {
 	return cpild
 }
 
-// RecoverCPInitList returns a copy of a CompPattern from the dictionary, using the Prebuilt flag to
+// RecoverCPInitList returns a copy of a CPInitList from the dictionary, using the Prebuilt flag to
 // choose index key, and applys a name
 func (cpild *CPInitListDict) RecoverCPInitList(cptype string, cpname string) (*CPInitList, bool) {
 	var key string = cptype
@@ -339,9 +339,34 @@ func (cpild *CPInitListDict) RecoverCPInitList(cptype string, cpname string) (*C
 	if !present {
 		return nil, false
 	}
-
+    
 	cpil.Name = cpname
 	return &cpil, true
+}
+
+// RecoverCPFuncState extracts a state block from the input cpInitList structure and
+// returns a pointer to CPFuncState for (potential) modification and inclusion in model
+func (cpi *CPInitList) RecoverCPFuncState(cpName string) (*CPFuncState, bool) {
+    statefulCP := false
+    cpfs := CreateCPFuncState(cpName)
+
+    // see whether this function's execution type is "stateful", because 
+    // those are the only ones of interest
+    for funcName, paramString := range cpi.Params {
+        execType := cpi.ExecType[funcName]
+        if execType != "stateful" {
+            continue
+        }
+        statefulInit, err := DecodeStatefulParameters(paramString, true) 
+        statefulCP = true
+        if err != nil {
+            panic(err)
+        }
+        cpfs.AddStateMap(funcName, statefulInit.State)
+    }
+
+    // statefulCP will have been set if any of the functions are stateful
+    return cpfs, statefulCP
 }
 
 // AddCPInitList puts a CPInitList into the dictionary, selectively warning
@@ -487,7 +512,7 @@ func (cpfs *CPFuncState) AddStateMap(label string, state map[string]string) {
 
 // CPFuncStateDict holds the function state maps for multiple computation patterns, indexed by the pattern name
 type CPFuncStateDict struct {
-	DictName struct
+	DictName string
 	StateByCP map[string]CPFuncState
 }
 
@@ -499,9 +524,9 @@ func CreateCPFuncStateDict(dictname string) *CPFuncStateDict {
 	return cpfsd
 }
 
-// AddCPState copies the offered CPStateFunc
-func (cpfsd *CPFuncStateDict) AddCPState(cpsf *CPStateFunc) {
-	cofsd.StateByCP[cpsf.CmpPtnName] = *cpsf
+// AddCPState copies the offered CPFuncState
+func (cpfsd *CPFuncStateDict) AddCPFuncState(cpsf *CPFuncState) {
+	cpfsd.StateByCP[cpsf.CmpPtnName] = *cpsf
 }
 
 // WriteToFile stores the FuncExecList struct to the file whose name is given.
@@ -514,7 +539,7 @@ func (cpfsd *CPFuncStateDict) WriteToFile(filename string) error {
 	if pathExt == ".yaml" || pathExt == ".YAML" || pathExt == ".yml" {
 		bytes, merr = yaml.Marshal(*cpfsd)
 	} else if pathExt == ".json" || pathExt == ".JSON" {
-		bytes, merr = json.MarshalIndent(*fel, "", "\t")
+		bytes, merr = json.MarshalIndent(*cpfsd, "", "\t")
 	}
 
 	if merr != nil {

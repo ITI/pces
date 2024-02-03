@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/iti/cmdline"
 	"github.com/iti/mrnes"
-	cmptn "github.com/iti/mrnesbits"
+	mrnb "github.com/iti/mrnesbits"
 	"os"
 	"path"
 	"path/filepath"
@@ -51,7 +51,7 @@ func main() {
 
 	// make sure these directories exist
 	dirs := []string{prbLibDir, exptLibDir}
-	valid, err := cmptn.CheckDirectories(dirs)
+	valid, err := mrnb.CheckDirectories(dirs)
 	if !valid {
 		panic(err)
 	}
@@ -71,6 +71,11 @@ func main() {
 	cpInitOutputFile := cp.GetVar("cpInitOutput").(string)
 	if len(cpInitOutputFile) == 0 {
 		cpInitOutputFile = "cpInit.json"
+	}
+
+	cpStateOutputFile := cp.GetVar("cpStateOutput").(string)
+	if len(cpStateOutputFile) == 0 {
+		cpStateOutputFile = "cpState.json"
 	}
 
 	funcExecOutputFile := cp.GetVar("funcExecOutput").(string)
@@ -143,15 +148,14 @@ func main() {
 		fmt.Println("cp initiation is JSON formatted")
 	}
 
-	cpStateExt = path.Ext(cpStateOutputFile)
+	cpStateExt := path.Ext(cpStateOutputFile)
 	cpStateIsYAML := (cpStateExt == ".yaml" || cpStateExt == ".YAML" || cpStateExt == ".yml")
 
 	if cpStateIsYAML {
-		fmt.Println("cp state is YAML formatted")
+		fmt.Printf("cp state is YAML formatted\n")
 	} else {
-		fmt.Println("cp state is JSON formatted")
+		fmt.Printf("cp state is JSON formatted\n")
 	}
-
 
 	funcExecOutputFile = filepath.Join(exptLibDir, funcExecOutputFile) // path to output file of completed execution maps of timings
 	devExecOutputFile = filepath.Join(exptLibDir, devExecOutputFile)   // path to output file of completed execution maps of timings
@@ -169,7 +173,7 @@ func main() {
 		}
 	}
 
-	valid, err = cmptn.CheckReadableFiles(rdFiles)
+	valid, err = mrnb.CheckReadableFiles(rdFiles)
 	if !valid {
 		panic(err)
 	}
@@ -188,38 +192,30 @@ func main() {
 		}
 	}
 
-	valid, err = cmptn.CheckOutputFiles(outputFiles)
+	valid, err = mrnb.CheckOutputFiles(outputFiles)
 
 	// read in templates that have been requested
-	var cpPrbDict *cmptn.CompPatternDict = nil
+	var cpPrbDict *mrnb.CompPatternDict = nil
 
 	if len(cpPrbFile) > 0 {
 		pathExt := path.Ext(cpPrbFile)
 		isYAML := (pathExt == ".yaml" || pathExt == ".yml" || pathExt == ".YAML")
-		cpPrbDict, err = cmptn.ReadCompPatternDict(cpPrbFile, isYAML, empty)
+		cpPrbDict, err = mrnb.ReadCompPatternDict(cpPrbFile, isYAML, empty)
 		if err != nil {
 			panic(err)
 		}
 		fmt.Printf("Read comp pattern file %s\n", cpPrbFile)
 	}
 
-	var cpInitPrbDict *cmptn.CPInitListDict = nil
+	var cpInitPrbDict *mrnb.CPInitListDict = nil
 
 	if len(cpInitPrbFile) > 0 {
 		pathExt := path.Ext(cpInitPrbFile)
 		isYAML := (pathExt == ".yaml" || pathExt == ".yml" || pathExt == ".YAML")
-		cpInitPrbDict, err = cmptn.ReadCPInitListDict(cpInitPrbFile, isYAML, empty)
+		cpInitPrbDict, err = mrnb.ReadCPInitListDict(cpInitPrbFile, isYAML, empty)
 		if err != nil {
 			panic(err)
 		}
-
-		cpfsd := CreateCPFuncStateDict("state update")
-		for cpName, cpinitlist := range cpInitPrbDict.InitList {
-			for funcName, paramString := range cpinitlist {
-
-
-
-
 		fmt.Printf("Read comp pattern init file %s\n", cpInitPrbFile)
 	}
 
@@ -235,11 +231,11 @@ func main() {
 		fmt.Printf("Read experimental parameters template file %s\n", expPrbFile)
 	}
 
-	var funcExecList *cmptn.FuncExecList = nil
+	var funcExecList *mrnb.FuncExecList = nil
 	if len(funcExecPrbFile) > 0 {
 		pathExt := path.Ext(funcExecPrbFile)
 		isYAML := (pathExt == ".yaml" || pathExt == ".yml" || pathExt == ".YAML")
-		funcExecList, err = cmptn.ReadFuncExecList(funcExecPrbFile, isYAML, empty)
+		funcExecList, err = mrnb.ReadFuncExecList(funcExecPrbFile, isYAML, empty)
 		if err != nil {
 			panic(nil)
 		}
@@ -271,8 +267,9 @@ func main() {
 
 	// pull from template files copies of dictionaries that can be modified before
 	// being written out for the experiment.
-	cmptnDict := cmptn.CreateCompPatternDict("evaluate", false)
-	cpInitDict := cmptn.CreateCPInitListDict("evaluate", false)
+	cmptnDict := mrnb.CreateCompPatternDict("evaluate", false)
+	cpInitDict := mrnb.CreateCPInitListDict("evaluate", false)
+	cpFuncStateDict := mrnb.CreateCPFuncStateDict("evaluate")
 
 	// bring in AES chain
 	AESChain, cpFound := cpPrbDict.RecoverCompPattern("AESChain", "simple-AES-chain")
@@ -295,6 +292,7 @@ func main() {
 	cmptnDict.AddCompPattern(AESChain, false, false)
 	cpInitDict.AddCPInitList(AESCPInit, false)
 
+    
 	// bring in StatefulTest 
 	StatefulTest, scpFound := cpPrbDict.RecoverCompPattern("StatefulTest", "simple-bit-test")
 	// fill in a Name, key used to reference this comp pattern when reading in the model
@@ -312,14 +310,43 @@ func main() {
 		os.Exit(1)
 	}
 
-	// put AES comp pattern and CP into output dictionaries
+    // modify initial states for StatefulTest functions
+    for funcName, paramString := range STCPInit.Params {
+        switch funcName {
+        case "src" :
+            // branch is stateful, set "failperiod" to 1000
+            param, err := mrnb.DecodeStatefulParameters(paramString, true)
+            if err != nil {
+                panic(err)
+            }
+            param.State["failperiod"] = "999"
+            paramString, err = param.Serialize(true)
+            if err != nil {
+                panic(err)
+            }
+            STCPInit.Params[funcName] = paramString
+        default :
+        }
+    }
+
+    // bring in the state block for this
+	stcpfs, scpState := STCPInit.RecoverCPFuncState("simple-bit-test")
+	if !scpState {
+		fmt.Println("could not recover comp pattern state for simple-bit-test from template file")
+	}
+
+	// put Stateful comp pattern, CP init, and CP state into output dictionaries
 	cmptnDict.AddCompPattern(StatefulTest, false, false)
 	cpInitDict.AddCPInitList(STCPInit, false)
+    if scpState {
+        cpFuncStateDict.AddCPFuncState(stcpfs)
+    }
 
 	// write the comp pattern and initialization dictionaries out
 	cmptnDict.WriteToFile(cpOutputFile)
 	cpInitDict.WriteToFile(cpInitOutputFile)
-
+    cpFuncStateDict.WriteToFile(cpStateOutputFile)
+    
 	// pull in the experiment configuration, choosing Cfg number 1
 	expCfg, xcpresent := expPrbDict.RecoverExpCfg("Topo-1")
 	if !xcpresent {
@@ -347,8 +374,8 @@ func main() {
 	outTopoCfg.WriteToFile(topoOutputFile)
 
 	// create a dictionary of mapping of Funcs to hosts
-	cmpMapDict := cmptn.CreateCompPatternMapDict("LAN-WAN-LAN")
-	cmpMap := cmptn.CreateCompPatternMap("simple-AES-chain")
+	cmpMapDict := mrnb.CreateCompPatternMapDict("LAN-WAN-LAN")
+	cmpMap := mrnb.CreateCompPatternMap("simple-AES-chain")
 
 	// AES functions are src, encrypt, decrypt, dst
 	// hosts are hostNetA1, hostNetA2, hostNetB1, hostNetT1
@@ -360,7 +387,7 @@ func main() {
 
 	// StatefulTest functions are src, branch, consumer1, consumer2
 	// same set of hosts
-	cmpMap = cmptn.CreateCompPatternMap("simple-bit-test")
+	cmpMap = mrnb.CreateCompPatternMap("simple-bit-test")
 	cmpMap.AddMapping("src", "hostNetA1", false)
 	cmpMap.AddMapping("branch", "hostNetA2", false)
 	cmpMap.AddMapping("consumer1", "hostNetB1", false)
