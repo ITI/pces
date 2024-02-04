@@ -28,6 +28,7 @@ func cmdlineParameters() *cmdline.CmdParser {
 	cp.AddFlag(cmdline.StringFlag, "mapInput", true)      // path to input file describing mapping of comp pattern functions to host
 	cp.AddFlag(cmdline.StringFlag, "topoInput", true)     // path to input file describing completed topology
 	cp.AddFlag(cmdline.StringFlag, "expInput", true)      // path to input file describing completed expCfg
+    cp.AddFlag(cmdline.StringFlag, "trace", false)        // path to output file of trace records
 	cp.AddFlag(cmdline.BoolFlag, "qnetsim", false)        // flag indicating that network sim ought to be 'quick'
 	cp.AddFlag(cmdline.FloatFlag, "stop", true)           // run the simulation until this time (in seconds)
 
@@ -92,6 +93,17 @@ func main() {
 		panic(err)
 	}
 
+    // if we're saving traces check the path
+    var traceFile string 
+    if cp.IsLoaded("trace") {
+        traceFile = cp.GetVar("trace").(string)
+        _, err := mrnb.CheckOutputFiles([]string{traceFile})
+        if err != nil {
+            panic(err)
+        }
+        syn["trace"] = traceFile
+    }
+
 	// if requested, set the rng seed
 	if cp.IsLoaded("rngseed") {
 		seed := cp.GetVar("rngseed").(int64)
@@ -99,10 +111,11 @@ func main() {
 	}
 
 	// build the experiment.  First the network stuff
-	mrnes.BuildExperimentNet(syn, useYAML)
+    // start the id counter at 1 (value passed is incremented before use)
+	mrnes.BuildExperimentNet(syn, useYAML, 0)
 
 	// now the computation patterns, where initial events were scheduled
-	evtmgr, err := mrnb.BuildExperimentCP(syn, useYAML)
+	evtmgr, err := mrnb.BuildExperimentCP(syn, useYAML, mrnes.NumIds)
 	if err != nil {
 		panic(err)
 	}
