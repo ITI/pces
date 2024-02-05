@@ -5,27 +5,37 @@ package mrnesbits
 import (
 	"fmt"
 	"github.com/iti/evt/evtm"
+	"github.com/iti/evt/vrtime"
 	"github.com/iti/mrnes"
-	"github.com/iti/vrtime"
 	"path"
 )
 
 // interface to network simulator
 type NetSimPortal interface {
-	CreateNetworkPortal(bool, TracePortal) NetSimPortal
 	HostCPU(string) string
-	EnterNetwork(*evtm.EventManager, string, string, int, float64, any, any, evtm.EventHandlerFunction) any
+	EnterNetwork(*evtm.EventManager, string, string, int, int, float64, any, any, evtm.EventHandlerFunction) any
 }
 
-type TracePortal interface {
-    CreateTracePortal(string) TracePortal
-    AddTrace(vrtime.Time, int, string, bool, bool, float64)
-    AddName(int, string)
-    SetExecId(int)
+// The TraceManager interface helps integrate use of the mrnes functionality for managing
+// traces in this (different) model
+type TraceManager interface {
+
+	// at creation a flag is set indicating whether the trace manager will be active
+	Active() bool
+
+	// add a trace event to the manager
+	AddTrace(vrtime.Time, int, int, int, string, bool, bool, float64)
+
+	// include an id -> (name, type) pair in the trace manager dictionary
+	AddName(int, string, string)
+
+	// save the trace to file (if active) and return flag indicating whether file creatation actually happened
+	WriteToFile(string) bool
 }
 
+// pointers that are global to mrnesbits to mrnes implemenations of the NetworkPortal and TraceManager interfaces
 var netportal *mrnes.NetworkPortal
-var traceportal *mrnes.TraceManager
+var traceMgr TraceManager
 
 // declare global variables that are loaded from
 // analysis of input files
@@ -144,21 +154,21 @@ func buildCmpPtns(cpd *CompPatternDict, cpid *CPInitListDict, cpfsd *CPFuncState
 	// CompPatterns are arranged in a map that is index by the CompPattern name
 	for cpName, cp := range cpd.Patterns {
 
-		var cpfs CPFuncState 
-        var present bool = false
-		if cpfsd != nil {	
+		var cpfs CPFuncState
+		var present bool = false
+		if cpfsd != nil {
 			cpfs, present = cpfsd.StateByCP[cpName]
 		}
 
 		// use the CompPattern name to index to the correct member
 		// of the map of comp pattern initialization structs
-        var cpi *cmpPtnInst
-        var err error
-        if present {
-		    cpi, err = createCmpPtnInst(cpName, cp, cpid.InitList[cpName], &cpfs)
-        } else {
-		    cpi, err = createCmpPtnInst(cpName, cp, cpid.InitList[cpName], nil)
-        }
+		var cpi *cmpPtnInst
+		var err error
+		if present {
+			cpi, err = createCmpPtnInst(cpName, cp, cpid.InitList[cpName], &cpfs)
+		} else {
+			cpi, err = createCmpPtnInst(cpName, cp, cpid.InitList[cpName], nil)
+		}
 
 		errList = append(errList, err)
 
@@ -208,7 +218,7 @@ func buildFuncExecTimeTbl(fel *FuncExecList) map[string]map[string]map[int]float
 // uses to assemble and initialize the model (and experiment) data structures.
 // It returns a pointer to an EventManager data structure used to coordinate the
 // execution of events in the simulation.
-func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int) (*evtm.EventManager, error) {
+func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm TraceManager) (*evtm.EventManager, error) {
 	// syn is a map that binds pre-defined keys referring to input file types with file names
 	// The keys are
 	//	"cpInput"		- file describing comp patterns and functions
@@ -224,23 +234,17 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int) (*evt
 	cpd, cpid, cpfsd, fel, cpmd := GetExperimentCPDicts(syn)
 
 	// get a pointer to a mrns NetworkPortal
+
 	_, use := syn["qksim"]
 	netportal = mrnes.CreateNetworkPortal(use)
-
-    traceportal = nil 
-    _, tracePresent := syn["trace"]
-
-    // N.B. want to revisit this w.r. experiment name
-    if tracePresent {
-        traceportal = mrnes.CreateTraceManager("experiment")
-    }
 
 	// panic if any one of these dictionaries could not be built
 	if (cpd == nil) || (cpid == nil) || (fel == nil) || (cpmd == nil) {
 		panic("empty dictionary")
 	}
 
-    NumIds = idCounter
+	NumIds = idCounter
+	traceMgr = tm
 
 	// remember the mapping of functions to host
 	cmpPtnMapDict = cpmd
@@ -294,16 +298,16 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 	cpid, err = ReadCPInitListDict(syn["cpInitInput"], useYAML, empty)
 	errs = append(errs, err)
 
-    // a State input file may or may not be present, so be careful
-    _, present := syn["cpStateInput"]
-    var cpfsd *CPFuncStateDict = nil
-    if present {
-	    ext = path.Ext(syn["cpStateInput"])
-	    useYAML = (ext == ".yaml") || (ext == ".yml")
+	// a State input file may or may not be present, so be careful
+	_, present := syn["cpStateInput"]
+	var cpfsd *CPFuncStateDict = nil
+	if present {
+		ext = path.Ext(syn["cpStateInput"])
+		useYAML = (ext == ".yaml") || (ext == ".yml")
 
-        cpfsd, err = ReadCPFuncStateDict(syn["cpStateInput"], useYAML, empty)
-    	errs = append(errs, err)
-    }
+		cpfsd, err = ReadCPFuncStateDict(syn["cpStateInput"], useYAML, empty)
+		errs = append(errs, err)
+	}
 
 	ext = path.Ext(syn["funcExecInput"])
 	useYAML = (ext == ".yaml") || (ext == ".yml")

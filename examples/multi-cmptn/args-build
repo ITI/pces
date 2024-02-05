@@ -8,6 +8,7 @@
 -exptInputLib ../expLib/multi 
 -topoOutput topo.yaml 
 -cpInitOutput cpInit.yaml 
+-cpStateOutput cpState.yaml
 -funcExecOutput funcexec.yaml 
 -devExecOutput devexec.yaml 
 -cpOutput cp.yaml 

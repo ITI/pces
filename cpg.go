@@ -74,8 +74,8 @@ func createCmpPtnInst(ptnInstName string, cpd CompPattern, cpid CPInitList, cpfs
 				_, present := cpfs.LabelToMap[funcDesc.Label]
 				if present {
 					newState = cpfs.LabelToMap[funcDesc.Label]
-				} 
-			}	
+				}
+			}
 			df := createStatefulFuncInst(ptnInstName, &funcDesc, cpid.Params[funcDesc.Label], newState, cpid.UseYAML)
 			cpi.funcs[df.label] = df
 
@@ -164,7 +164,7 @@ func funcExecTime(cpf cmpPtnFunc, msg *cmpPtnMsg) float64 {
 	fType := cpf.funcType() // type of function measured, pattern independent
 	hostLabel := cmpPtnMapDict.Map[cpf.funcCmpPtn()].FuncMap[cpf.funcLabel()]
 	cpuType := netportal.HostCPU(hostLabel)
-	
+
 	// if we don't have an entry for this function type, complain
 	_, present := funcExecTimeTbl[fType]
 	if !present {
@@ -286,7 +286,8 @@ func exitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 		// If the edge assocated with the msg has an empty dstLabel it means that
 		// a branch is taken that ends the chain
 		if msg.edge.dstLabel == "" {
-			fmt.Printf("at time %f hit the end of the function chain at %s\n", evtMgr.CurrentSeconds(), cpf.funcLabel())
+			fmt.Printf("at time %f execId %d hit the end of the function chain at %s\n",
+				evtMgr.CurrentSeconds(), cpm.execId, cpf.funcLabel())
 
 			continue
 		}
@@ -307,7 +308,8 @@ func exitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 				evtMgr.Schedule(nxtf, msg, enterFunc, vrtime.SecondsToTime(0.0))
 			} else {
 				// to get to the dstHost we need to go through the network
-				netportal.EnterNetwork(evtMgr, hostName, dstHost, msg.msgLen, 0.0, msg, nil, reEnter)
+				fmt.Printf("enter network with execId %d\n", cpm.execId)
+				netportal.EnterNetwork(evtMgr, hostName, dstHost, msg.msgLen, cpm.execId, 0.0, msg, nil, reEnter)
 			}
 		} else {
 			panic("missing dstLabel in cmpPtnInst description")

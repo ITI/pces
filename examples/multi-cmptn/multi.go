@@ -4,10 +4,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/iti/rngstream"
 	"github.com/iti/cmdline"
 	"github.com/iti/mrnes"
 	mrnb "github.com/iti/mrnesbits"
+	"github.com/iti/rngstream"
 	"os"
 	"path"
 	"path/filepath"
@@ -28,7 +28,7 @@ func cmdlineParameters() *cmdline.CmdParser {
 	cp.AddFlag(cmdline.StringFlag, "mapInput", true)      // path to input file describing mapping of comp pattern functions to host
 	cp.AddFlag(cmdline.StringFlag, "topoInput", true)     // path to input file describing completed topology
 	cp.AddFlag(cmdline.StringFlag, "expInput", true)      // path to input file describing completed expCfg
-    cp.AddFlag(cmdline.StringFlag, "trace", false)        // path to output file of trace records
+	cp.AddFlag(cmdline.StringFlag, "trace", false)        // path to output file of trace records
 	cp.AddFlag(cmdline.BoolFlag, "qnetsim", false)        // flag indicating that network sim ought to be 'quick'
 	cp.AddFlag(cmdline.FloatFlag, "stop", true)           // run the simulation until this time (in seconds)
 
@@ -93,16 +93,19 @@ func main() {
 		panic(err)
 	}
 
-    // if we're saving traces check the path
-    var traceFile string 
-    if cp.IsLoaded("trace") {
-        traceFile = cp.GetVar("trace").(string)
-        _, err := mrnb.CheckOutputFiles([]string{traceFile})
-        if err != nil {
-            panic(err)
-        }
-        syn["trace"] = traceFile
-    }
+	// if we're saving traces check the path
+	var traceFile string
+	var useTrace bool = false
+	if cp.IsLoaded("trace") {
+		traceFile = cp.GetVar("trace").(string)
+		_, err := mrnb.CheckOutputFiles([]string{traceFile})
+		if err != nil {
+			panic(err)
+		}
+		useTrace = true
+	}
+
+	traceMgr := mrnes.CreateTraceManager("experiment", useTrace)
 
 	// if requested, set the rng seed
 	if cp.IsLoaded("rngseed") {
@@ -111,16 +114,20 @@ func main() {
 	}
 
 	// build the experiment.  First the network stuff
-    // start the id counter at 1 (value passed is incremented before use)
-	mrnes.BuildExperimentNet(syn, useYAML, 0)
+	// start the id counter at 1 (value passed is incremented before use)
+	mrnes.BuildExperimentNet(syn, useYAML, 0, traceMgr)
 
 	// now the computation patterns, where initial events were scheduled
-	evtmgr, err := mrnb.BuildExperimentCP(syn, useYAML, mrnes.NumIds)
+	evtMgr, err := mrnb.BuildExperimentCP(syn, useYAML, mrnes.NumIds, traceMgr)
 	if err != nil {
 		panic(err)
 	}
 
 	termination := cp.GetVar("stop").(float64)
-	evtmgr.Run(termination)
+	evtMgr.Run(termination)
+
+	if useTrace {
+		traceMgr.WriteToFile(traceFile)
+	}
 	fmt.Println("Done")
 }

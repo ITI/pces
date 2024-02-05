@@ -315,7 +315,7 @@ func main() {
 	cmpMap.AddMapping("decrypt", "hostNetB1", false)
 	cmpMap.AddMapping("sink", "hostNetB1", false)
 	cmpMapDict.AddCompPatternMap(cmpMap, false)
-	
+
 	// write the mapping dictionary out
 	cmpMapDict.WriteToFile(mapOutputFile)
 

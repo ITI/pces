@@ -135,8 +135,8 @@ func main() {
 		topoPrbFile = filepath.Join(prbLibDir, topoPrbFile) // path to file holding template files of experiment parameters
 	}
 
-	cpOutputFile = filepath.Join(exptLibDir, cpOutputFile)         // path to output file of comp patterns
-	cpInitOutputFile = filepath.Join(exptLibDir, cpInitOutputFile) // path to output file of comp patterns
+	cpOutputFile = filepath.Join(exptLibDir, cpOutputFile)           // path to output file of comp patterns
+	cpInitOutputFile = filepath.Join(exptLibDir, cpInitOutputFile)   // path to output file of comp patterns
 	cpStateOutputFile = filepath.Join(exptLibDir, cpStateOutputFile) // path to output file of comp patterns
 
 	cpInitExt = path.Ext(cpInitOutputFile)
@@ -178,7 +178,7 @@ func main() {
 		panic(err)
 	}
 
-	outputFiles := []string{cpOutputFile, cpInitOutputFile, cpStateOutputFile, funcExecOutputFile, devExecOutputFile, 
+	outputFiles := []string{cpOutputFile, cpInitOutputFile, cpStateOutputFile, funcExecOutputFile, devExecOutputFile,
 		mapOutputFile, topoOutputFile, expOutputFile}
 
 	// check for the uniqueness of each name
@@ -292,8 +292,7 @@ func main() {
 	cmptnDict.AddCompPattern(AESChain, false, false)
 	cpInitDict.AddCPInitList(AESCPInit, false)
 
-    
-	// bring in StatefulTest 
+	// bring in StatefulTest
 	StatefulTest, scpFound := cpPrbDict.RecoverCompPattern("StatefulTest", "simple-bit-test")
 	// fill in a Name, key used to reference this comp pattern when reading in the model
 	StatefulTest.Name = "simple-bit-test"
@@ -310,26 +309,26 @@ func main() {
 		os.Exit(1)
 	}
 
-    // modify initial states for StatefulTest functions
-    for funcName, paramString := range STCPInit.Params {
-        switch funcName {
-        case "src" :
-            // branch is stateful, set "failperiod" to 1000
-            param, err := mrnb.DecodeStatefulParameters(paramString, true)
-            if err != nil {
-                panic(err)
-            }
-            param.State["failperiod"] = "999"
-            paramString, err = param.Serialize(true)
-            if err != nil {
-                panic(err)
-            }
-            STCPInit.Params[funcName] = paramString
-        default :
-        }
-    }
+	// modify initial states for StatefulTest functions
+	for funcName, paramString := range STCPInit.Params {
+		switch funcName {
+		case "src":
+			// branch is stateful, set "failperiod" to 1000
+			param, err := mrnb.DecodeStatefulParameters(paramString, true)
+			if err != nil {
+				panic(err)
+			}
+			param.State["failperiod"] = "999"
+			paramString, err = param.Serialize(true)
+			if err != nil {
+				panic(err)
+			}
+			STCPInit.Params[funcName] = paramString
+		default:
+		}
+	}
 
-    // bring in the state block for this
+	// bring in the state block for this
 	stcpfs, scpState := STCPInit.RecoverCPFuncState("simple-bit-test")
 	if !scpState {
 		fmt.Println("could not recover comp pattern state for simple-bit-test from template file")
@@ -338,21 +337,31 @@ func main() {
 	// put Stateful comp pattern, CP init, and CP state into output dictionaries
 	cmptnDict.AddCompPattern(StatefulTest, false, false)
 	cpInitDict.AddCPInitList(STCPInit, false)
-    if scpState {
-        cpFuncStateDict.AddCPFuncState(stcpfs)
-    }
+	if scpState {
+		cpFuncStateDict.AddCPFuncState(stcpfs)
+	}
 
 	// write the comp pattern and initialization dictionaries out
 	cmptnDict.WriteToFile(cpOutputFile)
 	cpInitDict.WriteToFile(cpInitOutputFile)
-    cpFuncStateDict.WriteToFile(cpStateOutputFile)
-    
+	cpFuncStateDict.WriteToFile(cpStateOutputFile)
+
 	// pull in the experiment configuration, choosing Cfg number 1
 	expCfg, xcpresent := expPrbDict.RecoverExpCfg("Topo-1")
 	if !xcpresent {
 		err := fmt.Errorf("Library ExpCfg dictionary Topo-1 not found")
 		panic(err)
 	}
+
+	// Set the trace flag on everything
+	param1 := mrnes.CreateExpParameter("Interface", "*", "trace", "true")
+	param2 := mrnes.CreateExpParameter("Switch", "*", "trace", "true")
+	param3 := mrnes.CreateExpParameter("Router", "*", "trace", "true")
+	param4 := mrnes.CreateExpParameter("Host", "*", "trace", "true")
+	expCfg.AddExpParameter(param1)
+	expCfg.AddExpParameter(param2)
+	expCfg.AddExpParameter(param3)
+	expCfg.AddExpParameter(param4)
 
 	// write it out as is
 	expCfg.WriteToFile(expOutputFile)
@@ -393,7 +402,7 @@ func main() {
 	cmpMap.AddMapping("consumer1", "hostNetB1", false)
 	cmpMap.AddMapping("consumer2", "hostNetT1", false)
 	cmpMapDict.AddCompPatternMap(cmpMap, false)
-	
+
 	// write the mapping dictionary out
 	cmpMapDict.WriteToFile(mapOutputFile)
 

@@ -33,7 +33,7 @@ type CompPattern struct {
 func CreateCompPattern(cmptnType string) *CompPattern {
 	var cp *CompPattern = &CompPattern{CPType: cmptnType, Funcs: make([]Func, 0), Edges: make([]PatternEdge, 0)}
 	cmptnByName[cmptnType] = cp
-	
+
 	return cp
 }
 
@@ -339,7 +339,7 @@ func (cpild *CPInitListDict) RecoverCPInitList(cptype string, cpname string) (*C
 	if !present {
 		return nil, false
 	}
-    
+
 	cpil.Name = cpname
 	return &cpil, true
 }
@@ -347,26 +347,26 @@ func (cpild *CPInitListDict) RecoverCPInitList(cptype string, cpname string) (*C
 // RecoverCPFuncState extracts a state block from the input cpInitList structure and
 // returns a pointer to CPFuncState for (potential) modification and inclusion in model
 func (cpi *CPInitList) RecoverCPFuncState(cpName string) (*CPFuncState, bool) {
-    statefulCP := false
-    cpfs := CreateCPFuncState(cpName)
+	statefulCP := false
+	cpfs := CreateCPFuncState(cpName)
 
-    // see whether this function's execution type is "stateful", because 
-    // those are the only ones of interest
-    for funcName, paramString := range cpi.Params {
-        execType := cpi.ExecType[funcName]
-        if execType != "stateful" {
-            continue
-        }
-        statefulInit, err := DecodeStatefulParameters(paramString, true) 
-        statefulCP = true
-        if err != nil {
-            panic(err)
-        }
-        cpfs.AddStateMap(funcName, statefulInit.State)
-    }
+	// see whether this function's execution type is "stateful", because
+	// those are the only ones of interest
+	for funcName, paramString := range cpi.Params {
+		execType := cpi.ExecType[funcName]
+		if execType != "stateful" {
+			continue
+		}
+		statefulInit, err := DecodeStatefulParameters(paramString, true)
+		statefulCP = true
+		if err != nil {
+			panic(err)
+		}
+		cpfs.AddStateMap(funcName, statefulInit.State)
+	}
 
-    // statefulCP will have been set if any of the functions are stateful
-    return cpfs, statefulCP
+	// statefulCP will have been set if any of the functions are stateful
+	return cpfs, statefulCP
 }
 
 // AddCPInitList puts a CPInitList into the dictionary, selectively warning
@@ -487,7 +487,7 @@ func DecodeRndParameters(paramStr string) (*RndParameters, error) {
 
 // A CPFuncState structure holds state updates for functions in the named computation pattern
 type CPFuncState struct {
-	CmpPtnName string	
+	CmpPtnName string
 	LabelToMap map[string]map[string]string
 }
 
@@ -512,7 +512,7 @@ func (cpfs *CPFuncState) AddStateMap(label string, state map[string]string) {
 
 // CPFuncStateDict holds the function state maps for multiple computation patterns, indexed by the pattern name
 type CPFuncStateDict struct {
-	DictName string
+	DictName  string
 	StateByCP map[string]CPFuncState
 }
 
@@ -588,7 +588,6 @@ func ReadCPFuncStateDict(filename string, useYAML bool, dict []byte) (*CPFuncSta
 
 	return &example, nil
 }
-
 
 // CompPatternMsg defines the structure of identification of messages that pass between Funcs in a CompPattern.
 // Structures of this sort are transformed by a simulation run into a form that include experiment-defined payloads,

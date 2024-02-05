@@ -83,16 +83,16 @@ func createStatefulFuncInst(cpInstName string, fnc *Func, paramStr string, newSt
 	}
 	dfi.funcSelect = params.FuncSelect
 
-    for key, value := range params.State {
-	    dfi.state[key] = value 
-    }
+	for key, value := range params.State {
+		dfi.state[key] = value
+	}
 
 	// if there is new state information, use it.  Add entries not present before, overwrite entries that are present
 	if len(newState) > 0 {
-        for key, value := range newState {
-            dfi.state[key] = value
-        }
-	} 
+		for key, value := range newState {
+			dfi.state[key] = value
+		}
+	}
 
 	// edges are maps of message type to func node labels. Here we copy the input list, but
 	// gather together responses that have a common InEdge  (N.B., InEdge is a structure more complex than an int or string, but can be used to index maps)
@@ -198,7 +198,7 @@ func generateFlag(cpsfi *cmpPtnStatefulFuncInst, msg *cmpPtnMsg) []*cmpPtnMsg {
 
 	visits, _ := strconv.Atoi(cpsfi.state["visits"])
 	visits += 1
-	cpsfi.state["visits"]  = strconv.Itoa(visits)
+	cpsfi.state["visits"] = strconv.Itoa(visits)
 
 	fperiod, _ := strconv.Atoi(cpsfi.state["failperiod"])
 
@@ -240,7 +240,6 @@ func validCert(cpsfi *cmpPtnStatefulFuncInst, msg *cmpPtnMsg) []*cmpPtnMsg {
 		}
 	}
 
-	
 	for _, resp := range respList {
 		if responseChoice == resp.choice {
 			output := resp
@@ -275,7 +274,7 @@ func filter(cpsfi *cmpPtnStatefulFuncInst, msg *cmpPtnMsg) []*cmpPtnMsg {
 	if strings.Contains(msg.edge.edgeLabel, "request") {
 		visits, _ := strconv.Atoi(cpsfi.state["visits"])
 		visits += 1
-		cpsfi.state["visits"]  = strconv.Itoa(visits)
+		cpsfi.state["visits"] = strconv.Itoa(visits)
 		threshold, _ := strconv.Atoi(cpsfi.state["threshold"])
 		if visits%threshold != 0 {
 			// find the response whose srcLabel and dstLabels are the same

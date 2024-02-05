@@ -2,9 +2,11 @@
 -expt multi
 -topoInput topo.yaml 
 -cpInitInput cpInit.yaml 
+-cpStateInput cpState.yaml
 -funcExecInput funcexec.yaml 
 -devExecInput devexec.yaml 
 -cpInput cp.yaml 
 -mapInput map.yaml 
 -expInput exp.yaml
--stop 100000.0
+-trace ./trace.yaml
+-stop 100.0
