@@ -8,6 +8,7 @@ import (
 	"github.com/iti/evt/vrtime"
 	"github.com/iti/mrnes"
 	"path"
+	"strings"
 )
 
 // interface to network simulator
@@ -59,6 +60,11 @@ type cmpPtnGraphEdge struct {
 	edgeLabel string
 }
 
+func createCmpPtnGraphEdge(srcLabel, msgType, dstLabel, edgeLabel string) cmpPtnGraphEdge {
+	edge := cmpPtnGraphEdge{srcLabel: srcLabel, msgType: msgType, dstLabel: dstLabel, edgeLabel: edgeLabel}
+	return edge
+}
+
 // A cmpPtnGraphNode names a function with its label, and describes
 // the edges for which it is a destination (inEdges) and edges
 // for which it is a source (outEdges)
@@ -69,56 +75,46 @@ type cmpPtnGraphNode struct {
 }
 
 // addEdge takes the description of a CPG edge and attempts
-// to add that edge to the CPG node corresponding to the edge's source
+// to add that edge to the CPG node corresponding to the edge's source and destination
 func (cpg *cmpPtnGraph) addEdge(srcLabel, msgType, dstLabel, edgeLabel string) error {
-
-	// ensure that cpg map of nodes includes the edge's source lable
-	pgn, present := cpg.nodes[srcLabel]
-	if !present {
-		pgn = createCmpPtnGraphNode(srcLabel)
-		cpg.nodes[srcLabel] = pgn
-	}
-
-	// add the edge to node with label srcLabel, return any err generated
-	err := pgn.addEdge(srcLabel, msgType, dstLabel, edgeLabel)
-	return err
-}
-
-// addEdge takes the description of a CPG edge, builds a representation of it,
-// and includes the CPG node's list of input edges. An error is returned if
-// an attempt is made to add an edge that is already present
-func (pgn *cmpPtnGraphNode) addEdge(srcLabel, msgType, dstLabel, edgeLabel string) error {
 	edge := &cmpPtnGraphEdge{srcLabel: srcLabel, msgType: msgType, dstLabel: dstLabel, edgeLabel: edgeLabel}
 
-	// source and destination labels are special case, indicating initiation.
-	// plunk it into the list of inEdges and be done with it.
-	if srcLabel == dstLabel {
-		for _, inedge := range pgn.inEdges {
-			if *edge == *inedge {
-				return fmt.Errorf("attempt to add in-edge already present\n")
-			}
-		}
-		pgn.inEdges = append(pgn.inEdges, edge)
-		return nil
+	srcNode, present1 := cpg.nodes[srcLabel]
+	if !present1 {
+		return fmt.Errorf("srcLabel offered to addEdge not recognized")
 	}
 
-	// otherwise determine whether this is an 'in' edge or an 'out' edge
-	if pgn.label == srcLabel {
-		// see whether edge is in this list already
-		for _, outedge := range pgn.outEdges {
-			if *outedge == *edge {
-				return fmt.Errorf("attempt to add out-edge already present\n")
-			}
-		}
-		pgn.outEdges = append(pgn.outEdges, edge)
-	} else if pgn.label == dstLabel {
-		for _, inedge := range pgn.inEdges {
-			if *inedge == *edge {
-				return fmt.Errorf("attempt to add in-edge already present\n")
-			}
-		}
-		pgn.inEdges = append(pgn.inEdges, edge)
+	dstNode, present2 := cpg.nodes[dstLabel]
+	if !present2 {
+		return fmt.Errorf("dstLabel offered to addEdge not recognized")
 	}
+
+	// add to srcNode outEdges, if needed, and if not initiation
+	var duplicated bool = false
+	for _, outEdge := range srcNode.outEdges {
+		if *outEdge == *edge {
+			duplicated = true
+			break
+		}
+	}
+
+	if !duplicated && srcLabel != dstLabel {
+		srcNode.outEdges = append(srcNode.outEdges, edge)
+	}
+
+	// add to dstNode inEdges, if needed
+	duplicated = false
+	for _, inEdge := range dstNode.inEdges {
+		if *inEdge == *edge {
+			duplicated = true
+			break
+		}
+	}
+
+	if !duplicated {
+		dstNode.inEdges = append(dstNode.inEdges, edge)
+	}
+
 	return nil
 }
 
@@ -127,6 +123,12 @@ func createCmpPtnGraph(cp *CompPattern) (*cmpPtnGraph, error) {
 	var errList []error
 	cpg := new(cmpPtnGraph)
 	cpg.nodes = make(map[string]*cmpPtnGraphNode)
+
+	// create a node for every func in the comp pattern
+	for _, funcName := range cp.Funcs {
+		label := funcName.Label
+		cpg.nodes[label] = createCmpPtnGraphNode(label)
+	}
 
 	// note that nodes are inferred from edges, not pulled out explicitly first
 	// Edge is (SrcLabel, DstLabel, MsgType) where the labels are for funcs
@@ -285,6 +287,16 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 	var errs []error
 	var err error
 
+	// we allow some variation in input names, so apply fixup if needed
+	checkFields := []string{"cpInput", "cpInitInput", "cpStateInput", "funcExecInput", "mapInput"}
+	for _, filename := range checkFields {
+		trimmed := strings.Replace(filename, "Input", "", -1)
+		_, present := syn[trimmed]
+		if present {
+			syn[filename] = syn[trimmed]
+		}
+	}
+
 	var useYAML bool
 	ext := path.Ext(syn["cpInput"])
 	useYAML = (ext == ".yaml") || (ext == ".yml")
@@ -327,4 +339,10 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 	}
 
 	return cpd, cpid, cpfsd, fel, cpmd
+}
+
+func ReportStatistics() {
+	for _, cpi := range cmpPtnInstByName {
+		cpi.ExecReport()
+	}
 }

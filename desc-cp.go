@@ -637,7 +637,7 @@ func CreatePatternEdge(srcLabel, dstLabel, msgType, edgeLabel string) *PatternEd
 //		ProcessorType - the CPU,
 //	 PcktLen - number of bytes in data packet being operated on
 type FuncExecDesc struct {
-	FuncOp        string  `json:"funcop" yaml:"funcop"`
+	FuncType      string  `json:"functype" yaml:"functype"`
 	ProcessorType string  `json:"processortype" yaml:"processortype"`
 	PcktLen       int     `json:"pcktlen" yaml:"pcktlen"`
 	ExecTime      float64 `json:"exectime" yaml:"exectime"`
@@ -730,7 +730,7 @@ func (fel *FuncExecList) AddTiming(funcType, procType string, pcktLen int, execT
 	if !present {
 		fel.Times[funcType] = make([]FuncExecDesc, 0)
 	}
-	fel.Times[funcType] = append(fel.Times[funcType], FuncExecDesc{ProcessorType: procType, PcktLen: pcktLen, ExecTime: execTime})
+	fel.Times[funcType] = append(fel.Times[funcType], FuncExecDesc{ProcessorType: procType, PcktLen: pcktLen, ExecTime: execTime, FuncType: funcType})
 }
 
 // A Func represents a function used within a [CompPattern].  Its 'ExecType' attribute identifies the semantics
@@ -758,28 +758,35 @@ type Func struct {
 //			types and potentially random execution time, as a function of input message type
 var FuncExcTypes []string = []string{"static", "stateful", "random"}
 
-// An InEdgeStruct describes the source Func of an incoming edge, and the type of message it carries.
-type InEdgeStruct struct {
+// An InEdge describes the source Func of an incoming edge, and the type of message it carries.
+type InEdge struct {
 	SrcLabel string `json:"srclabel" yaml:"srclabel"`
 	MsgType  string `json:"msgtype" yaml:"msgtype"`
 }
 
-// An OutEdgeStruct describes the destination Func of an outbound edge, and the type of message it carries.
-type OutEdgeStruct struct {
+var EmptyInEdge InEdge
+
+// An OutEdge describes the destination Func of an outbound edge, and the type of message it carries.
+type OutEdge struct {
 	MsgType  string `json:"msgtype" yaml:"msgtype"`
 	DstLabel string `json:"dstlabel" yaml:"dstlabel"`
 }
 
-// A Static Response maps an InEdgeStruct to an outEdgeStruct, which for a Func with static execution type
+var EmptyOutEdge OutEdge
+
+// A Static Response maps an InEdge to an outEdgeStruct, which for a Func with static execution type
 // means an input received on the InEdge generates in response a message on the OutEdge.  If the SrcLabel of the InEdge
 // is identical to the DstLabel of the OutEdge, the response is for self-initiation by the Func.  In this case the
 // value of the 'Period' attribute gives the length of time (in seconds) between successive initiations.
 type StaticResp struct {
-	InEdge  InEdgeStruct  `json:"inedge" yaml:"inedge"`
-	OutEdge OutEdgeStruct `json:"outedge" yaml:"outedge"`
+	InEdge  InEdge  `json:"inedge" yaml:"inedge"`
+	OutEdge OutEdge `json:"outedge" yaml:"outedge"`
 
 	// if > 0, the time between successive self-initiations
 	Period float64 `json:"period" yaml:"period"`
+
+	// placed for potential future use as Static becomes more like Stateful
+	Choice string `json:"choice" yaml:"choice"`
 }
 
 // A StaticParameters struct holds configuration information about the behaviour
@@ -809,10 +816,8 @@ func CreateStaticParameters(ptn, label string) *StaticParameters {
 }
 
 // AddResponse takes the parameter of a StaticResponse, creates one, and adds it to the StaticParameter's list of responses
-func (sp *StaticParameters) AddResponse(srcLabel, inMsgType, outMsgType, dstLabel string, period float64) {
-	inEdge := InEdgeStruct{SrcLabel: srcLabel, MsgType: inMsgType}
-	outEdge := OutEdgeStruct{MsgType: outMsgType, DstLabel: dstLabel}
-	sr := StaticResp{InEdge: inEdge, OutEdge: outEdge, Period: period}
+func (sp *StaticParameters) AddResponse(inEdge InEdge, outEdge OutEdge, choice string, period float64) {
+	sr := StaticResp{InEdge: inEdge, OutEdge: outEdge, Period: period, Choice: choice}
 	sp.Response = append(sp.Response, sr)
 }
 
@@ -837,17 +842,17 @@ func (sp *StaticParameters) Serialize(useYAML bool) (string, error) {
 	return string(bytes[:]), nil
 }
 
-// A Stateful Response maps an InEdgeStruct to an outEdgeStruct, which for a Func with static execution type
+// A Stateful Response maps an InEdge to an outEdgeStruct, which for a Func with static execution type
 // means an input received on the InEdge _may_ generate in response a message on the OutEdge.  If the SrcLabel of the InEdge
 // is identical to the DstLabel of the OutEdge, the response is for self-initiation by the Func.  In this case the
 // value of the 'Period' attribute gives the length of time (in seconds) between successive initiations.
 // 'Choice is an identifier used by the Func's logic for selecting an output edge.
 type StatefulResp struct {
 	// input edge
-	InEdge InEdgeStruct `json:"inedge" yaml:"inedge"`
+	InEdge InEdge `json:"inedge" yaml:"inedge"`
 
 	// potential output edge
-	OutEdge OutEdgeStruct `json:"outedge" yaml:"outedge"`
+	OutEdge OutEdge `json:"outedge" yaml:"outedge"`
 
 	// if Period > 0, the time between successive self-initiations, in seconds.
 	Period float64 `json:"period" yaml:"period"`
@@ -873,23 +878,45 @@ type StatefulParameters struct {
 	// State variables and their initial values (string-encoded)
 	State map[string]string `json:"state" yaml:"state"`
 
-	// FuncSelect value selects from among different blocks of program code that implement a response to input
-	// Allows this struct definition to be used for wide variety of simulator-developed responses
-	FuncSelect string `json:"funcselect" yaml:"funcselect"`
+	// Actions holds a list of action descriptors
+	Actions []ActionResp
 
 	// Response holds a list of all responses the Func may make
 	Response []StatefulResp `json:"response" yaml:"response"`
 }
 
+type ActionResp struct {
+	Prompt InEdge
+	Action ActionDesc
+	Limit  int // if >0 a limit and the number of responses carried through
+	Choice string
+}
+
+type ActionDesc struct {
+	Select   string
+	CostType string
+}
+
+func CreateActionDesc(actionSelect, actionCostType string) ActionDesc {
+	return ActionDesc{Select: actionSelect, CostType: actionCostType}
+}
+
+func CreateActionResp(prompt InEdge, action ActionDesc, limit int) ActionResp {
+	ae := new(ActionResp)
+	ae.Prompt = prompt
+	ae.Action = action
+	ae.Limit = limit
+	return *ae
+}
+
 // CreateStatefulParameters is a constructor. Its arguments initialize all the struct attributes except
 // for the slice of responses, which it just initializes.
-func CreateStatefulParameters(ptn, label, funcSelect string, state map[string]string) *StatefulParameters {
+func CreateStatefulParameters(ptn, label string, actions []ActionResp, state map[string]string) *StatefulParameters {
 	sp := new(StatefulParameters)
 	sp.PatternName = ptn
 	sp.Label = label
-	sp.FuncSelect = funcSelect
+	sp.Actions = actions
 	sp.State = make(map[string]string)
-	sp.State["FuncSelect"] = funcSelect
 
 	if len(state) > 0 {
 		for key, value := range state {
@@ -903,14 +930,8 @@ func CreateStatefulParameters(ptn, label, funcSelect string, state map[string]st
 
 // AddResponse takes the parameters of a Stateful response, creates a StatefulResp struct,
 // and includes it in the struct's list of responses
-func (sp *StatefulParameters) AddResponse(srcLabel, inMsgType, outMsgType, dstLabel string, period float64) {
-	inEdge := InEdgeStruct{SrcLabel: srcLabel, MsgType: inMsgType}
-	outEdge := OutEdgeStruct{MsgType: outMsgType, DstLabel: dstLabel}
-
+func (sp *StatefulParameters) AddResponse(inEdge InEdge, outEdge OutEdge, choice string, period float64) {
 	// find the label of the output edge named in this response and record it as the choice
-	cmptn := cmptnByName[sp.PatternName]
-	choice := cmptn.EdgeLabel(sp.Label, dstLabel, outMsgType)
-
 	sr := StatefulResp{InEdge: inEdge, OutEdge: outEdge, Period: period, Choice: choice}
 	sp.Response = append(sp.Response, sr)
 }
@@ -963,13 +984,13 @@ func CreateRndParameters(ptn, label string) *RndParameters {
 // It identifies the input edge, and associates with that a map which
 // represents a probability distribution to use when selecting an edge to push a response message through.
 type RndResp struct {
-	InEdge    InEdgeStruct              `json:"inedge" yaml:"inedge"`
-	MsgSelect map[OutEdgeStruct]float64 `json:"msgselect" yaml:"msgselect"`
+	InEdge    InEdge              `json:"inedge" yaml:"inedge"`
+	MsgSelect map[OutEdge]float64 `json:"msgselect" yaml:"msgselect"`
 }
 
 // AddResponse takes the parameters of a [RndResp], creates one, and includes it into the RndParameter's list
-func (rp *RndParameters) AddResponse(srcLabel, inMsgType string, msgSelect map[OutEdgeStruct]float64) {
-	inEdge := InEdgeStruct{SrcLabel: srcLabel, MsgType: inMsgType}
+func (rp *RndParameters) AddResponse(srcLabel, inMsgType string, msgSelect map[OutEdge]float64) {
+	inEdge := InEdge{SrcLabel: srcLabel, MsgType: inMsgType}
 	rr := RndResp{InEdge: inEdge, MsgSelect: msgSelect}
 	rp.Response = append(rp.Response, rr)
 }

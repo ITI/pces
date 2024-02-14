@@ -1,8 +1,9 @@
 package mrnesbits
 
 import (
+	"fmt"
+	"github.com/iti/evt/evtm"
 	"strconv"
-	"strings"
 )
 
 // file cpg-stateful.go instantiates the cmpPtnFunc interface for the 'stateful' execution model
@@ -15,26 +16,6 @@ type statefulFuncOut struct {
 	choice   string
 }
 
-type RespFunc func(*cmpPtnStatefulFuncInst, *cmpPtnMsg) []*cmpPtnMsg
-
-var respTbl map[string]RespFunc = make(map[string]RespFunc)
-
-func IsRespFunc(name string) bool {
-	_, present := respTbl[name]
-
-	return present
-}
-
-var RespFuncCodes = []string{"mark", "testFlag", "filter"}
-
-func buildRespTbl() {
-	if len(respTbl) == 0 {
-		respTbl["mark"] = generateFlag
-		respTbl["testFlag"] = validCert
-		respTbl["filter"] = filter
-	}
-}
-
 // The cmpPtnStatefulFuncInst struct represents an instantiated instance of a function
 //
 //	constrained to the 'statefulerminisitc' execution model.
@@ -42,18 +23,26 @@ type cmpPtnStatefulFuncInst struct {
 	period float64 // for a self-initiating func 'period' is non-zero, and gives the time between successive self-initiations
 	label  string  // an identifier for this func, unique within the instance of CompPattern holding it.
 	// May be reused in different CompPattern definitions.
-	host    string // identity of the host to which this func is mapped for execution
-	fType   string // 'function type', copied from the 'FuncType' attribute of the desc function upon which this instance is based
-	ptnName string // name of the instantiated CompPattern holding this function
-	id      int    // integer identity which is unique among all objects in the MrNesbits model
-
-	state      map[string]string // holds string-coded state for string-code state variable names
-	funcSelect string            // initialization defines this with a code the selects response behaviour on message input
+	host    string            // identity of the host to which this func is mapped for execution
+	ptnName string            // name of the instantiated CompPattern holding this function
+	id      int               // integer identity which is unique among all objects in the MrNesbits model
+	active  bool              // flag whether function is actively processing inputs
+	state   map[string]string // holds string-coded state for string-code state variable names
+	actions map[InEdge]actionStruct
 
 	// at run-time start-up this function is initialized with all its responses.   For the stateful execution model,
 	// the set of potential output edges may be constrained, but not statefulermined solely by the input edge as with the static model.
 	// Here, for a given input edge, 'resp' holds a slice of possible responses.
-	resp map[InEdgeStruct][]statefulFuncOut
+	resp map[InEdge][]statefulFuncOut
+
+	// buffer the output messages created by executing the function body, indexed by the execId of the
+	// initiating message
+	msgResp map[int][]*cmpPtnMsg
+}
+
+type actionStruct struct {
+	costType, actionSelect string
+	calls, limit           int
 }
 
 // createDestFuncInst is a constructor that builds an instance of cmpPtnStatefulFunctInst from a Func description and
@@ -61,16 +50,26 @@ type cmpPtnStatefulFuncInst struct {
 func createStatefulFuncInst(cpInstName string, fnc *Func, paramStr string, newState map[string]string, useYAML bool) *cmpPtnStatefulFuncInst {
 	dfi := new(cmpPtnStatefulFuncInst)
 	dfi.id = nxtId()                    // get an integer id that is unique across all objects in the simulation model
-	dfi.fType = fnc.FuncType            // remember the function type of the Func which is the base for this instance
 	dfi.label = fnc.Label               // remember a label given to this function instance as part of building a CompPattern graph
 	dfi.state = make(map[string]string) // initialize map for state variables
 	dfi.ptnName = cpInstName            // remember the name of the instance of the comp pattern in which this func resides
 	dfi.period = 0.0
-	dfi.resp = make(map[InEdgeStruct][]statefulFuncOut)
+	dfi.active = true
+
+	dfi.resp = make(map[InEdge][]statefulFuncOut)
+	dfi.msgResp = make(map[int][]*cmpPtnMsg)
+	dfi.actions = make(map[InEdge]actionStruct)
+
 	// look up the func-to-host assignment, established earlier in the initialization sequence
 	dfi.host = cmpPtnFuncHost(dfi)
+
 	// deserialize the encoded StatefulParameters struct
 	params, _ := DecodeStatefulParameters(paramStr, useYAML)
+
+	for _, respAction := range params.Actions {
+		dfi.actions[respAction.Prompt] = actionStruct{costType: respAction.Action.CostType, actionSelect: respAction.Action.Select,
+			calls: 0, limit: respAction.Limit}
+	}
 
 	// look for a response that flags a non-default (empty) self initiation
 	for _, res := range params.Response {
@@ -81,8 +80,8 @@ func createStatefulFuncInst(cpInstName string, fnc *Func, paramStr string, newSt
 			break
 		}
 	}
-	dfi.funcSelect = params.FuncSelect
 
+	// copy over the state map
 	for key, value := range params.State {
 		dfi.state[key] = value
 	}
@@ -93,7 +92,6 @@ func createStatefulFuncInst(cpInstName string, fnc *Func, paramStr string, newSt
 			dfi.state[key] = value
 		}
 	}
-
 	// edges are maps of message type to func node labels. Here we copy the input list, but
 	// gather together responses that have a common InEdge  (N.B., InEdge is a structure more complex than an int or string, but can be used to index maps)
 	for _, res := range params.Response {
@@ -108,28 +106,35 @@ func createStatefulFuncInst(cpInstName string, fnc *Func, paramStr string, newSt
 		df := statefulFuncOut{dstLabel: res.OutEdge.DstLabel, msgType: res.OutEdge.MsgType, choice: res.Choice}
 		dfi.resp[res.InEdge] = append(dfi.resp[res.InEdge], df)
 	}
-
 	return dfi
 }
 
-// A cert struct is a simple device for the 'valid cert' example
-type cert struct {
-	name  string // name for the cert to distinguish it from others
-	valid bool   // whether valid or not
+// AddResponse stores the selected out message response from executing the function,
+// to be released later.  Saving through cpfsi.resp map to account for concurrent overlapping executions
+func (cpfsi *cmpPtnStatefulFuncInst) AddResponse(execId int, resp []*cmpPtnMsg) {
+	cpfsi.msgResp[execId] = resp
 }
 
-// createCert is a constructor that uses its input arguments to create a cert, which is then returned.
-func createCert(name string, value bool) *cert {
-	cs := new(cert)
-	cs.name = name
-	cs.valid = value
+// funcResp returns the saved list of function response messages associated
+// the the response to the input msg, and removes it from the msgResp map
+func (cpfsi *cmpPtnStatefulFuncInst) funcResp(execId int) []*cmpPtnMsg {
+	rtn, present := cpfsi.msgResp[execId]
+	if !present {
+		panic(fmt.Errorf("unsuccessful resp recovery\n"))
+	}
+	delete(cpfsi.msgResp, execId)
 
-	return cs
+	return rtn
+}
+
+// funcActive indicates whether the function is processing messages
+func (cpsfi *cmpPtnStatefulFuncInst) funcActive() bool {
+	return cpsfi.active
 }
 
 // funcType gives the FuncType declares on the Fun upon which this instance is based
 func (cpsfi *cmpPtnStatefulFuncInst) funcType() string {
-	return cpsfi.fType
+	return ""
 }
 
 // funcLabel gives the unique-within-cmpPtnInst label identifier for the function
@@ -160,158 +165,91 @@ func (cpsfi *cmpPtnStatefulFuncInst) funcHost() string {
 // func funcPeriod gives the delay (in seconds) between self-initiations, for cmpPtnFuncs that self-initiate.
 // Otherwise returns the default value, 0.0
 func (cpsfi *cmpPtnStatefulFuncInst) funcPeriod() float64 {
-	return cpsfi.period
-}
+	period := cpsfi.period
 
-// func funcDelay returns the delay (in seconds) associated with one execution of the cmpPtnFunc
-func (cpsfi *cmpPtnStatefulFuncInst) funcDelay(msg *cmpPtnMsg) float64 {
-	return funcExecTime(cpsfi, msg)
-}
+	// look for period over-write
+	periodStr, present := cpsfi.state["period"]
+	if present {
+		period, _ = strconv.ParseFloat(periodStr, 64)
+	}
 
-// funcExec uses the funcSelect attribute of the func instance to look up
-// and call the function associated with the function's response to the input
-func (cpsfi *cmpPtnStatefulFuncInst) funcExec(msg *cmpPtnMsg) []*cmpPtnMsg {
-	return respTbl[cpsfi.funcSelect](cpsfi, msg)
-}
-
-// response functions...associated with "StatefulTest" CompPattern
-
-// generateFlag is called to respond to a self-initiated message from the source
-// function in the StatefulTest CompPattern, and generates a cmpPtnMsg in response.
-// Every 'failperiod' visits it sets a 'valid' bit in the message payload to be false,
-// it is otherwise true
-func generateFlag(cpsfi *cmpPtnStatefulFuncInst, msg *cmpPtnMsg) []*cmpPtnMsg {
-	// build a struct that characterizes the InEdge
-	srcLabel := msg.edge.srcLabel
-	msgType := msg.edge.msgType
-	ies := InEdgeStruct{SrcLabel: srcLabel, MsgType: msgType}
-
-	// respList gets list of statefulFuncOut responses possible given input edge ies.
-	// should be only one
-	respList := cpsfi.resp[ies]
-
-	// increment the number of times this function has been called
-	_, present := cpsfi.state["visits"]
+	// if state["visitLimit"] is not set we're done
+	_, present = cpsfi.state["visitLimit"]
 	if !present {
-		cpsfi.state["visits"] = "0"
+		return period
 	}
-
+	limit, _ := strconv.Atoi(cpsfi.state["visitLimit"])
 	visits, _ := strconv.Atoi(cpsfi.state["visits"])
-	visits += 1
-	cpsfi.state["visits"] = strconv.Itoa(visits)
-
-	fperiod, _ := strconv.Atoi(cpsfi.state["failperiod"])
-
-	// create a cert payload.  Valid is true if not a multiple of fperiod
-	newcert := createCert(cpsfi.label, visits%fperiod != 0)
-	msg.payload = newcert
-
-	nxtMsgType := respList[0].msgType
-	nxtDstLabel := respList[0].dstLabel
-	msg.edge = cmpPtnGraphEdge{srcLabel: msg.edge.srcLabel, msgType: nxtMsgType, dstLabel: nxtDstLabel}
-	outputMsgs := []*cmpPtnMsg{msg}
-
-	return outputMsgs
+	if visits < limit {
+		return period
+	}
+	return 0.0
 }
 
-// validCert determines the response of the stateful function, based on the
-// triggering message (which is passed as an input) and state in the 'state' variable map.  The response is described
-// by a slice of cmpPtnMsgs.
-func validCert(cpsfi *cmpPtnStatefulFuncInst, msg *cmpPtnMsg) []*cmpPtnMsg {
+// func funcDelay returns the delay (in seconds) associated with one execution of the cmpPtnFunc.
+// It calls funcMsg to get this delay and the messages that are generated by the execution,
+// saves the messages and returns the delay
+func (cpsfi *cmpPtnStatefulFuncInst) funcDelay(evtMgr *evtm.EventManager, msg *cmpPtnMsg) float64 {
+
+	// perform whatever execution the instantiation supports, returning
+	// a delay until the output messages are released, and the messages themselves.
+	// the messages are buffered until the event of exiting the function is performed
+	delay, resp := cpsfi.funcExec(evtMgr, msg)
+
+	// save the response messages, indexed by msg.execId
+	cpsfi.AddResponse(msg.execId, resp)
+
+	return delay
+}
+
+// respOK increments the number of visits from the (embedded)
+// input edge, and return false if that exceeds a limit
+func (cpsfi *cmpPtnStatefulFuncInst) respOK(msg *cmpPtnMsg, incr bool) bool {
+
 	// build a struct that characterizes the InEdge
-	srcLabel := msg.edge.srcLabel
-	msgType := msg.edge.msgType
-	ies := InEdgeStruct{SrcLabel: srcLabel, MsgType: msgType}
+	ies := inEdge(msg)
+	exec := cpsfi.actions[ies]
 
-	// Initialize the slice that will hold the set of all cmpPtnMsgs that are released in response.
-	// This construct allows multiple messages to be offered in response.
-	outputMsgs := []*cmpPtnMsg{}
-
-	// respList gets list of statefulFuncOut responses possible given input edge ies
-	respList := cpsfi.resp[ies]
-
-	responseChoice := "consumer1" // default outEdge selection label
-	if cpsfi.state["testflag"] == "true" {
-		valid := (msg.payload).(*cert).valid // get the 'cert is valid' flag
-
-		if !valid {
-			// func testCert flag is true but cert is not valid, means choose the "false" choice label
-			responseChoice = "consumer2"
-		}
+	if incr {
+		exec.calls += 1
 	}
 
-	for _, resp := range respList {
-		if responseChoice == resp.choice {
-			output := resp
-			newMsg := msg
-			newMsg.edge.srcLabel = cpsfi.funcLabel()
-			newMsg.edge.msgType = output.msgType
-			newMsg.edge.dstLabel = output.dstLabel
-			outputMsgs = append(outputMsgs, newMsg)
+	limit := exec.limit
 
-			break
-		}
+	allowed := true
+	if limit > 0 && exec.calls > limit {
+		allowed = false
+
+		// turn processing off here
+		cpsfi.active = false
 	}
 
-	return outputMsgs
+	cpsfi.actions[ies] = exec
+	return allowed
 }
 
-// filter is called when a message comes into, and the decision is to send
-// a response or forward it on.  The filtering is applied only when the message
-// is a request, which we will test for the word "request" in the edge label
-func filter(cpsfi *cmpPtnStatefulFuncInst, msg *cmpPtnMsg) []*cmpPtnMsg {
-	srcLabel := msg.edge.srcLabel
-	msgType := msg.edge.msgType
-	ies := InEdgeStruct{SrcLabel: srcLabel, MsgType: msgType}
+// funcExec uses the actionSelect attribute of the func instance to look up
+// and call the function associated with the function's response to the input
+func (cpsfi *cmpPtnStatefulFuncInst) funcExec(evtMgr *evtm.EventManager, msg *cmpPtnMsg) (float64, []*cmpPtnMsg) {
+	ies := inEdge(msg)
 
-	// Initialize the slice that will hold the set of all cmpPtnMsgs that are released in response.
-	// This construct allows multiple messages to be offered in response.
-	outputMsgs := []*cmpPtnMsg{}
-
-	// respList gets list of statefulFuncOut responses possible given input edge ies
-	respList := cpsfi.resp[ies]
-	var resp statefulFuncOut
-	if strings.Contains(msg.edge.edgeLabel, "request") {
-		visits, _ := strconv.Atoi(cpsfi.state["visits"])
-		visits += 1
-		cpsfi.state["visits"] = strconv.Itoa(visits)
-		threshold, _ := strconv.Atoi(cpsfi.state["threshold"])
-		if visits%threshold != 0 {
-			// find the response whose srcLabel and dstLabels are the same
-			for _, resp = range respList {
-				// is the response heading right back to where it came from?
-				if srcLabel == resp.dstLabel {
-					// make a copy of the message, say it is coming from here, going to the
-					// label indicated in the resp
-					newMsg := msg
-					newMsg.edge.srcLabel = cpsfi.label
-					newMsg.edge.msgType = resp.msgType
-					newMsg.edge.dstLabel = resp.dstLabel
-					outputMsgs = append(outputMsgs, newMsg)
-
-					// we're done
-					return outputMsgs
-				}
-			}
-		} else {
-			// find the resp where the srcLabel is different from the dstLabel
-			for _, resp = range respList {
-				if srcLabel != resp.dstLabel {
-					// the key here is that resp got set to what we need
-					break
-				}
-			}
-		}
-	} else {
-		// if the msg edge is not a request it is a response, and there is one element in respList
-		resp = respList[0]
+	excpair, present := cpsfi.actions[ies]
+	if !present {
+		panic(fmt.Errorf("cmpPtnInst lists no function record for %v\n", ies))
 	}
-	// resp now has the response to use. Copy the message, change the edge, send it along
-	newMsg := msg
-	newMsg.edge.srcLabel = cpsfi.label
-	newMsg.edge.msgType = resp.msgType
-	newMsg.edge.dstLabel = resp.dstLabel
-	outputMsgs = append(outputMsgs, newMsg)
+	actionCode := excpair.actionSelect
+	_, present = respTbl[actionCode]
+	if !present {
+		panic(fmt.Errorf("cmpPtnInst lists no function response for %s\n", actionCode))
+	}
 
-	return outputMsgs
+	// is it OK to respond?
+	if cpsfi.respOK(msg, true) {
+		// yes
+		delay, resp := respTbl[actionCode](evtMgr, cpsfi, msg)
+		return delay, resp
+	}
+
+	// wrap it up, we're done
+	return 0.0, []*cmpPtnMsg{}
 }

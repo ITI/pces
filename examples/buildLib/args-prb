@@ -1,8 +1,0 @@
--prbLib ../pre-built 
--cpPrb CompPattern/topoLib.yaml 
--expPrb ExpCfg/expCfg1.yaml 
--funcExecPrb ExecMap/fexec1.yaml
--devExecPrb ExecMap/dexec1.yaml
--prbCSV ExecMap/exec1.csv
--topoPrb TopoCfg/topo1.yaml 
--CPInitPrb CompPattern/paramLib.yaml 
