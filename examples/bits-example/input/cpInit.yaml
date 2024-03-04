@@ -1,0 +1,219 @@
+prebuilt: true
+dictname: BITS-1
+initlist:
+    encryptPerf:
+        name: encryptPerf
+        cptype: encryptPerf
+        useyaml: true
+        params:
+            crypto: |
+                patternname: encryptPerf
+                label: crypto
+                state: {}
+                actions:
+                    - prompt:
+                        srclabel: host-0
+                        msgtype: data
+                      action:
+                        select: encrypt-rsa
+                        costtype: encrypt-rsa
+                      limit: 0
+                      choice: ""
+                    - prompt:
+                        srclabel: host-1
+                        msgtype: data
+                      action:
+                        select: encrypt-rsa
+                        costtype: encrypt-rsa
+                      limit: 0
+                      choice: ""
+                    - prompt:
+                        srclabel: host-2
+                        msgtype: data
+                      action:
+                        select: encrypt-rsa
+                        costtype: encrypt-rsa
+                      limit: 0
+                      choice: ""
+                    - prompt:
+                        srclabel: host-3
+                        msgtype: data
+                      action:
+                        select: encrypt-rsa
+                        costtype: encrypt-rsa
+                      limit: 0
+                      choice: ""
+                    - prompt:
+                        srclabel: src
+                        msgtype: data
+                      action:
+                        select: decrypt-rsa
+                        costtype: decrypt-rsa
+                      limit: 0
+                      choice: ""
+                response:
+                    - inedge:
+                        srclabel: src
+                        msgtype: data
+                      outedge:
+                        msgtype: data
+                        dstlabel: host-0
+                      period: 0
+                      choice: host-0
+                    - inedge:
+                        srclabel: host-0
+                        msgtype: data
+                      outedge:
+                        msgtype: data
+                        dstlabel: src
+                      period: 0
+                      choice: src
+                    - inedge:
+                        srclabel: src
+                        msgtype: data
+                      outedge:
+                        msgtype: data
+                        dstlabel: host-1
+                      period: 0
+                      choice: host-1
+                    - inedge:
+                        srclabel: host-1
+                        msgtype: data
+                      outedge:
+                        msgtype: data
+                        dstlabel: src
+                      period: 0
+                      choice: src
+                    - inedge:
+                        srclabel: src
+                        msgtype: data
+                      outedge:
+                        msgtype: data
+                        dstlabel: host-2
+                      period: 0
+                      choice: host-2
+                    - inedge:
+                        srclabel: host-2
+                        msgtype: data
+                      outedge:
+                        msgtype: data
+                        dstlabel: src
+                      period: 0
+                      choice: src
+                    - inedge:
+                        srclabel: src
+                        msgtype: data
+                      outedge:
+                        msgtype: data
+                        dstlabel: host-3
+                      period: 0
+                      choice: host-3
+                    - inedge:
+                        srclabel: host-3
+                        msgtype: data
+                      outedge:
+                        msgtype: data
+                        dstlabel: src
+                      period: 0
+                      choice: src
+            host-0: |
+                patternname: encryptPerf
+                label: host-0
+                response:
+                    - inedge:
+                        srclabel: crypto
+                        msgtype: data
+                      outedge:
+                        msgtype: data
+                        dstlabel: crypto
+                      period: 0
+                      choice: data
+            host-1: |
+                patternname: encryptPerf
+                label: host-1
+                response:
+                    - inedge:
+                        srclabel: crypto
+                        msgtype: data
+                      outedge:
+                        msgtype: data
+                        dstlabel: crypto
+                      period: 0
+                      choice: data
+            host-2: |
+                patternname: encryptPerf
+                label: host-2
+                response:
+                    - inedge:
+                        srclabel: crypto
+                        msgtype: data
+                      outedge:
+                        msgtype: data
+                        dstlabel: crypto
+                      period: 0
+                      choice: data
+            host-3: |
+                patternname: encryptPerf
+                label: host-3
+                response:
+                    - inedge:
+                        srclabel: crypto
+                        msgtype: data
+                      outedge:
+                        msgtype: data
+                        dstlabel: crypto
+                      period: 0
+                      choice: data
+            src: |
+                patternname: encryptPerf
+                label: src
+                state:
+                    hosts: host-0,host-1,host-2,host-3
+                actions:
+                    - prompt:
+                        srclabel: src
+                        msgtype: initiate
+                      action:
+                        select: cycle
+                        costtype: generate
+                      limit: 4
+                      choice: ""
+                    - prompt:
+                        srclabel: crypto
+                        msgtype: data
+                      action:
+                        select: rrt
+                        costtype: rrt
+                      limit: 0
+                      choice: ""
+                response:
+                    - inedge:
+                        srclabel: src
+                        msgtype: initiate
+                      outedge:
+                        msgtype: data
+                        dstlabel: crypto
+                      period: 5
+                      choice: crypto
+                    - inedge:
+                        srclabel: crypto
+                        msgtype: data
+                      outedge:
+                        msgtype: ""
+                        dstlabel: ""
+                      period: 0
+                      choice: src
+        exectype:
+            crypto: stateful
+            host-0: static
+            host-1: static
+            host-2: static
+            host-3: static
+            src: stateful
+        msgs:
+            - msgtype: initiate
+              pcktlen: 1000
+              msglen: 1500
+            - msgtype: data
+              pcktlen: 1000
+              msglen: 1500

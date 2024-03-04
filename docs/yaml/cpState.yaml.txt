@@ -1,0 +1,9 @@
+dictname: evaluate
+statebycp:
+    simple-bit-test:
+        cmpptnname: simple-bit-test
+        labeltomap:
+            branch:
+                test: "true"
+            src:
+                failperiod: "99"

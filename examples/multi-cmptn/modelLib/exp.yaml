@@ -1,0 +1,53 @@
+dictname: Topo
+cfgs:
+    Topo:
+        expname: Topo
+        parameters:
+            - paramObj: Interface
+              attributes:
+                - attrbname: media
+                  attrbvalue: wired
+              param: latency
+              value: "10e-4"
+            - paramObj: Interface
+              attributes:
+                - attrbname: media
+                  attrbvalue: wireless
+              param: latency
+              value: "10e-3"
+            - paramObj: Interface
+              attributes:
+                - attrbname: media
+                  attrbvalue: wired
+              param: bandwidth
+              value: "1000"
+            - paramObj: Interface
+              attributes:
+                - attrbname: '*'
+                  attrbvalue: ""
+              param: delay
+              value: "1e-6"
+            - paramObj: Interface
+              attributes:
+                - attrbname: media
+                  attrbvalue: wireless
+              param: bandwidth
+              value: "500"
+            - paramObj: Host
+              attributes:
+                - attrbname: '*'
+                  attrbvalue: ""
+              param: CPU
+              value: x86
+            - paramObj: Network
+              attributes:
+                - attrbname: media
+                  attrbvalue: wired
+              param: latency
+              value: "10e-3"
+            - paramObj: Network
+              attributes:
+                - attrbname: media
+                  attrbvalue: wireless
+              param: latency
+              value: "100e-3"

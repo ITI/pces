@@ -1,0 +1,13 @@
+-inputLib ./input
+-exptLib ./exptLib
+-expt trial
+-cp cp.yaml
+-cpInit cpInit.yaml
+-cpState cpState.yaml
+-funcExec funcExec.yaml
+-devExec devExec.yaml
+-map map.yaml
+-exp exp.yaml
+-topo topo.yaml
+-trace trace.yaml
+-stop 1000.0

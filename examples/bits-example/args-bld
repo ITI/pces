@@ -1,0 +1,10 @@
+-outputLib ./input
+-cp cp.yaml
+-cpInit cpInit.yaml
+-cpState cpState.yaml
+-funcExec funcExec.yaml
+-devExec devExec.yaml
+-map map.yaml
+-exp exp.yaml
+-hosts 4
+-topo topo.yaml

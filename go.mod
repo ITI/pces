@@ -1,6 +1,6 @@
 module github.com/iti/mrnesbits
 
-go 1.19
+go 1.20
 
 require (
 	github.com/iti/evt v0.1.0

@@ -1,0 +1,118 @@
+listname: BITS-1
+times:
+    decrypt-aes:
+        - functype: decrypt-aes
+          processortype: x86
+          pcktlen: 1000
+          exectime: 0.0001
+        - functype: decrypt-aes
+          processortype: accel-x86
+          pcktlen: 1000
+          exectime: 1e-05
+        - functype: decrypt-aes
+          processortype: M1
+          pcktlen: 1000
+          exectime: 5e-05
+        - functype: decrypt-aes
+          processortype: M2
+          pcktlen: 1000
+          exectime: 1e-05
+    decrypt-rsa:
+        - functype: decrypt-rsa
+          processortype: x86
+          pcktlen: 1000
+          exectime: 0.001
+        - functype: decrypt-rsa
+          processortype: M1
+          pcktlen: 1000
+          exectime: 0.0005
+        - functype: decrypt-rsa
+          processortype: M2
+          pcktlen: 1000
+          exectime: 0.0001
+        - functype: decrypt-rsa
+          processortype: accel-x86
+          pcktlen: 1000
+          exectime: 1e-06
+    encrypt-aes:
+        - functype: encrypt-aes
+          processortype: x86
+          pcktlen: 1000
+          exectime: 0.001
+        - functype: encrypt-aes
+          processortype: accel-x86
+          pcktlen: 1000
+          exectime: 0.001
+        - functype: encrypt-aes
+          processortype: M1
+          pcktlen: 1000
+          exectime: 0.0005
+        - functype: encrypt-aes
+          processortype: M2
+          pcktlen: 1000
+          exectime: 1e-05
+    encrypt-rsa:
+        - functype: encrypt-rsa
+          processortype: x86
+          pcktlen: 1000
+          exectime: 0.01
+        - functype: encrypt-rsa
+          processortype: M1
+          pcktlen: 1000
+          exectime: 0.005
+        - functype: encrypt-rsa
+          processortype: M2
+          pcktlen: 1000
+          exectime: 0.001
+    generate:
+        - functype: generate
+          processortype: x86
+          pcktlen: 1000
+          exectime: 0.0001
+        - functype: generate
+          processortype: M1
+          pcktlen: 1000
+          exectime: 5e-05
+        - functype: generate
+          processortype: M2
+          pcktlen: 1000
+          exectime: 1e-05
+    passThru:
+        - functype: passThru
+          processortype: x86
+          pcktlen: 1000
+          exectime: 1e-05
+        - functype: passThru
+          processortype: M1
+          pcktlen: 1000
+          exectime: 5e-06
+        - functype: passThru
+          processortype: M2
+          pcktlen: 1000
+          exectime: 1e-06
+    process:
+        - functype: process
+          processortype: x86
+          pcktlen: 1000
+          exectime: 0.05
+        - functype: process
+          processortype: M1
+          pcktlen: 1000
+          exectime: 0.02
+        - functype: process
+          processortype: M2
+          pcktlen: 1000
+          exectime: 0.005
+    rtt:
+        - functype: rtt
+          processortype: x86
+          pcktlen: 1000
+          exectime: 0
+        - functype: rtt
+          processortype: M1
+          pcktlen: 1000
+          exectime: 0
+        - functype: rtt
+          processortype: M2
+          pcktlen: 1000
+          exectime: 0

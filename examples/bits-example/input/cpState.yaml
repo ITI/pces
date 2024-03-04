@@ -1,0 +1,8 @@
+dictname: BITS-1
+statebycp:
+    encryptPerf:
+        cmpptnname: encryptPerf
+        labeltomap:
+            crypto: {}
+            src:
+                hosts: host-0,host-1,host-2,host-3

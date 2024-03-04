@@ -1,0 +1,28 @@
+listname: Experiment-1
+times:
+    route:
+        - devop: route
+          model: ISR 1000
+          exectime: 0.0001
+        - devop: route
+          model: Catalyst 8200
+          exectime: 0.0001
+        - devop: route
+          model: Catalyst 8300
+          exectime: 0.0001
+    switch:
+        - devop: switch
+          model: Meraki MS390
+          exectime: 1e-05
+        - devop: switch
+          model: Catalyst 9300
+          exectime: 1e-05
+        - devop: switch
+          model: Catalyst 9200
+          exectime: 1e-05
+        - devop: switch
+          model: Catalyst 9400
+          exectime: 1e-05
+        - devop: switch
+          model: Meraki MS120
+          exectime: 1e-05

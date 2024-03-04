@@ -1,0 +1,16 @@
+listname: BITS-1
+times:
+    route:
+        - devop: route
+          model: Slow
+          exectime: 0.005
+        - devop: route
+          model: Fast
+          exectime: 0.001
+    switch:
+        - devop: switch
+          model: Slow
+          exectime: 0.0001
+        - devop: switch
+          model: Fast
+          exectime: 1e-05

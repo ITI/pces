@@ -36,6 +36,8 @@ func buildRespTbl() {
 		respTbl["cycle"] = cycleFunc
 		respTbl["select"] = selectFunc
 		respTbl["passThru"] = passThruFunc
+		respTbl["rrt"] = rttFunc
+		respTbl["filter"] = filterFunc	
 		respTbl["encrypt-aes"] = passThruFunc
 		respTbl["encrypt-rsa"] = passThruFunc
 		respTbl["decrypt-aes"] = passThruFunc
@@ -44,8 +46,8 @@ func buildRespTbl() {
 		// generateFlag sets a certificate flag, periodically setting it to false. Is execution thread entry point
 		respTbl["mark"] = generateFlag
 
-		// validCert checks whether
-		respTbl["testCert"] = validCert
+		// validFlag checks whether flag in message is set
+		respTbl["testFlag"] = validCert
 	}
 }
 
@@ -106,6 +108,44 @@ func cycleFunc(evtMgr *evtm.EventManager, cpsfi *cmpPtnStatefulFuncInst, msg *cm
 	return delay, outputMsgs
 }
 
+// filterFunc looks up the "threshold" and "visits" states to determine
+// whether to forward the msg on as a request or send it back as a response
+func filterFunc(evtMgr *evtm.EventManager, cpsfi *cmpPtnStatefulFuncInst, msg *cmpPtnMsg) (float64, []*cmpPtnMsg) {
+	ies := inEdge(msg)
+	delay := respActionExecTime(cpsfi, ies, msg)
+
+	// get the state variables used to make the filtering decision
+	filterThrs, _ := strconv.Atoi(cpsfi.state["threshold"])
+	visits    , _ := strconv.Atoi(cpsfi.state["visits"])
+	visits += 1
+	// update number of visits from requester
+	cpsfi.state["visits"] = fmt.Sprintf("%s",visits)
+
+	// identify requestOutput and responseOutput
+	var rspIdx int = -1
+	var reqIdx  int = -1
+
+	respList := cpsfi.resp[ies]
+	for idx := 0; idx< len(respList); idx += 1 {
+		if respList[idx].choice == "reqIdx" {
+			reqIdx = idx
+		} else if respList[idx].choice == "rspIdx" {
+			rspIdx = idx
+		}
+	}
+	if rspIdx == -1 || reqIdx == -1 {
+		panic(fmt.Errorf("missing choice"))
+	}
+	
+	if visits%filterThrs == 0 {
+		updateMsgEdge(msg, cpsfi, respList[reqIdx], "request")	
+	} else {
+		updateMsgEdge(msg, cpsfi, respList[rspIdx], "response")	
+	}
+	outputMsgs := []*cmpPtnMsg{msg}
+	return delay, outputMsgs
+}
+
 // selectFunc picks out the destination header from the message, and looks for
 // an output edge whose 'choice' field is the same, and pushes the message down that edge.
 // This is more general than looking for a match with the dstLabel on the edge, because
@@ -145,6 +185,11 @@ func passThruFunc(evtMgr *evtm.EventManager, cpsfi *cmpPtnStatefulFuncInst, msg 
 	}
 
 	return delay, []*cmpPtnMsg{}
+}
+
+// rttFunc is used to absorb a returned message.  Here just to distinguish from cycle
+func rttFunc(evtMgr *evtm.EventManager, cpsfi *cmpPtnStatefulFuncInst, msg *cmpPtnMsg) (float64, []*cmpPtnMsg) {
+	return float64(0.0), []*cmpPtnMsg{}
 }
 
 //------- functions associated with "StatefulTest" CompPattern

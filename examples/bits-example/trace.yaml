@@ -1,0 +1,1040 @@
+inuse: true
+expname: experiment
+namebyid:
+    1:
+        name: pvtRtr
+        type: router
+    2:
+        name: pvtHub
+        type: router
+    3:
+        name: src
+        type: host
+    4:
+        name: host-0
+        type: host
+    5:
+        name: host-1
+        type: host
+    6:
+        name: host-2
+        type: host
+    7:
+        name: host-3
+        type: host
+    8:
+        name: CA
+        type: host
+    9:
+        name: ssl
+        type: filter
+    10:
+        name: public
+        type: network
+    11:
+        name: private
+        type: network
+    12:
+        name: intrfc@pvtRtr[.3]
+        type: interface
+    13:
+        name: intrfc@pvtRtr[.5]
+        type: interface
+    14:
+        name: intrfc@pvtRtr[.12]
+        type: interface
+    15:
+        name: intrfc@pvtHub[.4]
+        type: interface
+    16:
+        name: intrfc@pvtHub[.7]
+        type: interface
+    17:
+        name: intrfc@ssl[.1]
+        type: interface
+    18:
+        name: intrfc@ssl[.2]
+        type: interface
+    19:
+        name: intrfc@src[.0]
+        type: interface
+    20:
+        name: intrfc@host-0[.6]
+        type: interface
+    21:
+        name: intrfc@host-1[.8]
+        type: interface
+    22:
+        name: intrfc@host-2[.9]
+        type: interface
+    23:
+        name: intrfc@host-3[.10]
+        type: interface
+    24:
+        name: intrfc@CA[.11]
+        type: interface
+traces:
+    1:
+        - time: 5.00022
+          ticks: 5000220
+          priority: 0
+          execid: 1
+          flowid: 1
+          objid: 3
+          objtype: host
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 5.01048
+          ticks: 5010480
+          priority: 0
+          execid: 1
+          flowid: 1
+          objid: 9
+          objtype: filter
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 5.01048
+          ticks: 5010480
+          priority: 0
+          execid: 1
+          flowid: 1
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: false
+          rate: 100
+        - time: 5.0116
+          ticks: 5011600
+          priority: 0
+          execid: 1
+          flowid: 2
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 5.02186
+          ticks: 5021860
+          priority: 0
+          execid: 1
+          flowid: 2
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 5.02186
+          ticks: 5021860
+          priority: 0
+          execid: 1
+          flowid: 2
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 5.02196
+          ticks: 5021960
+          priority: 0
+          execid: 1
+          flowid: 2
+          objid: 1
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 5.03222
+          ticks: 5032220
+          priority: 0
+          execid: 1
+          flowid: 2
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 5.03222
+          ticks: 5032220
+          priority: 0
+          execid: 1
+          flowid: 2
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 5.03232
+          ticks: 5032320
+          priority: 0
+          execid: 1
+          flowid: 2
+          objid: 2
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 5.04258
+          ticks: 5042580
+          priority: 0
+          execid: 1
+          flowid: 2
+          objid: 4
+          objtype: host
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 5.04258
+          ticks: 5042580
+          priority: 0
+          execid: 1
+          flowid: 2
+          objid: 4
+          objtype: host
+          objentry: false
+          msgentry: false
+          rate: 100
+        - time: 5.0927
+          ticks: 5092700
+          priority: 0
+          execid: 1
+          flowid: 3
+          objid: 4
+          objtype: host
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 5.10296
+          ticks: 5102960
+          priority: 0
+          execid: 1
+          flowid: 3
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 5.10296
+          ticks: 5102960
+          priority: 0
+          execid: 1
+          flowid: 3
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 5.10306
+          ticks: 5103060
+          priority: 0
+          execid: 1
+          flowid: 3
+          objid: 2
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 5.11332
+          ticks: 5113320
+          priority: 0
+          execid: 1
+          flowid: 3
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 5.11332
+          ticks: 5113320
+          priority: 0
+          execid: 1
+          flowid: 3
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 5.11342
+          ticks: 5113420
+          priority: 0
+          execid: 1
+          flowid: 3
+          objid: 1
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 5.12368
+          ticks: 5123680
+          priority: 0
+          execid: 1
+          flowid: 3
+          objid: 9
+          objtype: filter
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 5.12368
+          ticks: 5123680
+          priority: 0
+          execid: 1
+          flowid: 3
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: false
+          rate: 100
+        - time: 5.1338
+          ticks: 5133800
+          priority: 0
+          execid: 1
+          flowid: 4
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 5.14406
+          ticks: 5144060
+          priority: 0
+          execid: 1
+          flowid: 4
+          objid: 3
+          objtype: host
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 5.14406
+          ticks: 5144060
+          priority: 0
+          execid: 1
+          flowid: 4
+          objid: 3
+          objtype: host
+          objentry: false
+          msgentry: false
+          rate: 100
+    2:
+        - time: 10.00022
+          ticks: 10000220
+          priority: 0
+          execid: 2
+          flowid: 5
+          objid: 3
+          objtype: host
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 10.01048
+          ticks: 10010480
+          priority: 0
+          execid: 2
+          flowid: 5
+          objid: 9
+          objtype: filter
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 10.01048
+          ticks: 10010480
+          priority: 0
+          execid: 2
+          flowid: 5
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: false
+          rate: 100
+        - time: 10.0116
+          ticks: 10011600
+          priority: 0
+          execid: 2
+          flowid: 6
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 10.02186
+          ticks: 10021860
+          priority: 0
+          execid: 2
+          flowid: 6
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 10.02186
+          ticks: 10021860
+          priority: 0
+          execid: 2
+          flowid: 6
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 10.02196
+          ticks: 10021960
+          priority: 0
+          execid: 2
+          flowid: 6
+          objid: 1
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 10.03222
+          ticks: 10032220
+          priority: 0
+          execid: 2
+          flowid: 6
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 10.03222
+          ticks: 10032220
+          priority: 0
+          execid: 2
+          flowid: 6
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 10.03232
+          ticks: 10032320
+          priority: 0
+          execid: 2
+          flowid: 6
+          objid: 2
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 10.04258
+          ticks: 10042580
+          priority: 0
+          execid: 2
+          flowid: 6
+          objid: 4
+          objtype: host
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 10.04258
+          ticks: 10042580
+          priority: 0
+          execid: 2
+          flowid: 6
+          objid: 4
+          objtype: host
+          objentry: false
+          msgentry: false
+          rate: 100
+        - time: 10.0927
+          ticks: 10092700
+          priority: 0
+          execid: 2
+          flowid: 7
+          objid: 4
+          objtype: host
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 10.10296
+          ticks: 10102960
+          priority: 0
+          execid: 2
+          flowid: 7
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 10.10296
+          ticks: 10102960
+          priority: 0
+          execid: 2
+          flowid: 7
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 10.10306
+          ticks: 10103060
+          priority: 0
+          execid: 2
+          flowid: 7
+          objid: 2
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 10.11332
+          ticks: 10113320
+          priority: 0
+          execid: 2
+          flowid: 7
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 10.11332
+          ticks: 10113320
+          priority: 0
+          execid: 2
+          flowid: 7
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 10.11342
+          ticks: 10113420
+          priority: 0
+          execid: 2
+          flowid: 7
+          objid: 1
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 10.12368
+          ticks: 10123680
+          priority: 0
+          execid: 2
+          flowid: 7
+          objid: 9
+          objtype: filter
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 10.12368
+          ticks: 10123680
+          priority: 0
+          execid: 2
+          flowid: 7
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: false
+          rate: 100
+        - time: 10.1338
+          ticks: 10133800
+          priority: 0
+          execid: 2
+          flowid: 8
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 10.14406
+          ticks: 10144060
+          priority: 0
+          execid: 2
+          flowid: 8
+          objid: 3
+          objtype: host
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 10.14406
+          ticks: 10144060
+          priority: 0
+          execid: 2
+          flowid: 8
+          objid: 3
+          objtype: host
+          objentry: false
+          msgentry: false
+          rate: 100
+    3:
+        - time: 15.00022
+          ticks: 15000220
+          priority: 0
+          execid: 3
+          flowid: 9
+          objid: 3
+          objtype: host
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 15.01048
+          ticks: 15010480
+          priority: 0
+          execid: 3
+          flowid: 9
+          objid: 9
+          objtype: filter
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 15.01048
+          ticks: 15010480
+          priority: 0
+          execid: 3
+          flowid: 9
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: false
+          rate: 100
+        - time: 15.0116
+          ticks: 15011600
+          priority: 0
+          execid: 3
+          flowid: 10
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 15.02186
+          ticks: 15021860
+          priority: 0
+          execid: 3
+          flowid: 10
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 15.02186
+          ticks: 15021860
+          priority: 0
+          execid: 3
+          flowid: 10
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 15.02196
+          ticks: 15021960
+          priority: 0
+          execid: 3
+          flowid: 10
+          objid: 1
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 15.03222
+          ticks: 15032220
+          priority: 0
+          execid: 3
+          flowid: 10
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 15.03222
+          ticks: 15032220
+          priority: 0
+          execid: 3
+          flowid: 10
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 15.03232
+          ticks: 15032320
+          priority: 0
+          execid: 3
+          flowid: 10
+          objid: 2
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 15.04258
+          ticks: 15042580
+          priority: 0
+          execid: 3
+          flowid: 10
+          objid: 4
+          objtype: host
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 15.04258
+          ticks: 15042580
+          priority: 0
+          execid: 3
+          flowid: 10
+          objid: 4
+          objtype: host
+          objentry: false
+          msgentry: false
+          rate: 100
+        - time: 15.0927
+          ticks: 15092700
+          priority: 0
+          execid: 3
+          flowid: 11
+          objid: 4
+          objtype: host
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 15.10296
+          ticks: 15102960
+          priority: 0
+          execid: 3
+          flowid: 11
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 15.10296
+          ticks: 15102960
+          priority: 0
+          execid: 3
+          flowid: 11
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 15.10306
+          ticks: 15103060
+          priority: 0
+          execid: 3
+          flowid: 11
+          objid: 2
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 15.11332
+          ticks: 15113320
+          priority: 0
+          execid: 3
+          flowid: 11
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 15.11332
+          ticks: 15113320
+          priority: 0
+          execid: 3
+          flowid: 11
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 15.11342
+          ticks: 15113420
+          priority: 0
+          execid: 3
+          flowid: 11
+          objid: 1
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 15.12368
+          ticks: 15123680
+          priority: 0
+          execid: 3
+          flowid: 11
+          objid: 9
+          objtype: filter
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 15.12368
+          ticks: 15123680
+          priority: 0
+          execid: 3
+          flowid: 11
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: false
+          rate: 100
+        - time: 15.1338
+          ticks: 15133800
+          priority: 0
+          execid: 3
+          flowid: 12
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 15.14406
+          ticks: 15144060
+          priority: 0
+          execid: 3
+          flowid: 12
+          objid: 3
+          objtype: host
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 15.14406
+          ticks: 15144060
+          priority: 0
+          execid: 3
+          flowid: 12
+          objid: 3
+          objtype: host
+          objentry: false
+          msgentry: false
+          rate: 100
+    4:
+        - time: 20.00022
+          ticks: 20000220
+          priority: 0
+          execid: 4
+          flowid: 13
+          objid: 3
+          objtype: host
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 20.01048
+          ticks: 20010480
+          priority: 0
+          execid: 4
+          flowid: 13
+          objid: 9
+          objtype: filter
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 20.01048
+          ticks: 20010480
+          priority: 0
+          execid: 4
+          flowid: 13
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: false
+          rate: 100
+        - time: 20.0116
+          ticks: 20011600
+          priority: 0
+          execid: 4
+          flowid: 14
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 20.02186
+          ticks: 20021860
+          priority: 0
+          execid: 4
+          flowid: 14
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 20.02186
+          ticks: 20021860
+          priority: 0
+          execid: 4
+          flowid: 14
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 20.02196
+          ticks: 20021960
+          priority: 0
+          execid: 4
+          flowid: 14
+          objid: 1
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 20.03222
+          ticks: 20032220
+          priority: 0
+          execid: 4
+          flowid: 14
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 20.03222
+          ticks: 20032220
+          priority: 0
+          execid: 4
+          flowid: 14
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 20.03232
+          ticks: 20032320
+          priority: 0
+          execid: 4
+          flowid: 14
+          objid: 2
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 20.04258
+          ticks: 20042580
+          priority: 0
+          execid: 4
+          flowid: 14
+          objid: 4
+          objtype: host
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 20.04258
+          ticks: 20042580
+          priority: 0
+          execid: 4
+          flowid: 14
+          objid: 4
+          objtype: host
+          objentry: false
+          msgentry: false
+          rate: 100
+        - time: 20.0927
+          ticks: 20092700
+          priority: 0
+          execid: 4
+          flowid: 15
+          objid: 4
+          objtype: host
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 20.10296
+          ticks: 20102960
+          priority: 0
+          execid: 4
+          flowid: 15
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 20.10296
+          ticks: 20102960
+          priority: 0
+          execid: 4
+          flowid: 15
+          objid: 2
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 20.10306
+          ticks: 20103060
+          priority: 0
+          execid: 4
+          flowid: 15
+          objid: 2
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 20.11332
+          ticks: 20113320
+          priority: 0
+          execid: 4
+          flowid: 15
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 20.11332
+          ticks: 20113320
+          priority: 0
+          execid: 4
+          flowid: 15
+          objid: 1
+          objtype: router
+          objentry: true
+          msgentry: false
+          rate: 100
+        - time: 20.11342
+          ticks: 20113420
+          priority: 0
+          execid: 4
+          flowid: 15
+          objid: 1
+          objtype: router
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 20.12368
+          ticks: 20123680
+          priority: 0
+          execid: 4
+          flowid: 15
+          objid: 9
+          objtype: filter
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 20.12368
+          ticks: 20123680
+          priority: 0
+          execid: 4
+          flowid: 15
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: false
+          rate: 100
+        - time: 20.1338
+          ticks: 20133800
+          priority: 0
+          execid: 4
+          flowid: 16
+          objid: 9
+          objtype: filter
+          objentry: false
+          msgentry: true
+          rate: 100
+        - time: 20.14406
+          ticks: 20144060
+          priority: 0
+          execid: 4
+          flowid: 16
+          objid: 3
+          objtype: host
+          objentry: true
+          msgentry: true
+          rate: 100
+        - time: 20.14406
+          ticks: 20144060
+          priority: 0
+          execid: 4
+          flowid: 16
+          objid: 3
+          objtype: host
+          objentry: false
+          msgentry: false
+          rate: 100

@@ -1,0 +1,122 @@
+expname: BITS-1
+parameters:
+    - paramObj: Interface
+      attributes:
+        - attrbname: media
+          attrbvalue: wired
+      param: delay
+      value: "10e-6"
+    - paramObj: Network
+      attributes:
+        - attrbname: media
+          attrbvalue: wired
+      param: latency
+      value: "10e-3"
+    - paramObj: Network
+      attributes:
+        - attrbname: media
+          attrbvalue: wired
+      param: bandwidth
+      value: "1000"
+    - paramObj: Interface
+      attributes:
+        - attrbname: media
+          attrbvalue: wireless
+      param: latency
+      value: "10e-4"
+    - paramObj: Interface
+      attributes:
+        - attrbname: media
+          attrbvalue: wireless
+      param: delay
+      value: "10e-6"
+    - paramObj: Network
+      attributes:
+        - attrbname: media
+          attrbvalue: wireless
+      param: capacity
+      value: "1000"
+    - paramObj: Network
+      attributes:
+        - attrbname: media
+          attrbvalue: wireless
+      param: bandwidth
+      value: "1000"
+    - paramObj: Interface
+      attributes:
+        - attrbname: '*'
+          attrbvalue: ""
+      param: bandwidth
+      value: "100"
+    - paramObj: Interface
+      attributes:
+        - attrbname: '*'
+          attrbvalue: ""
+      param: MTU
+      value: "1500"
+    - paramObj: Host
+      attributes:
+        - attrbname: '*'
+          attrbvalue: ""
+      param: CPU
+      value: x86
+    - paramObj: Filter
+      attributes:
+        - attrbname: name
+          attrbvalue: crypto
+      param: CPU
+      value: accel-x86
+    - paramObj: Filter
+      attributes:
+        - attrbname: name
+          attrbvalue: crypto
+      param: accelerator
+      value: "true"
+    - paramObj: Host
+      attributes:
+        - attrbname: '*'
+          attrbvalue: ""
+      param: trace
+      value: "true"
+    - paramObj: Switch
+      attributes:
+        - attrbname: '*'
+          attrbvalue: ""
+      param: model
+      value: Slow
+    - paramObj: Switch
+      attributes:
+        - attrbname: '*'
+          attrbvalue: ""
+      param: trace
+      value: "true"
+    - paramObj: Router
+      attributes:
+        - attrbname: '*'
+          attrbvalue: ""
+      param: trace
+      value: "true"
+    - paramObj: Filter
+      attributes:
+        - attrbname: '*'
+          attrbvalue: ""
+      param: trace
+      value: "true"
+    - paramObj: Switch
+      attributes:
+        - attrbname: '*'
+          attrbvalue: ""
+      param: buffer
+      value: "100"
+    - paramObj: Router
+      attributes:
+        - attrbname: '*'
+          attrbvalue: ""
+      param: buffer
+      value: "256"
+    - paramObj: Router
+      attributes:
+        - attrbname: '*'
+          attrbvalue: ""
+      param: model
+      value: Slow

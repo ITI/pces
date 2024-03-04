@@ -235,9 +235,16 @@ func (cpil *CPInitList) AddParam(label, execType string, param string) {
 	cpil.ExecType[label] = execType
 }
 
-// AddMsg appends description of a ComPatternMsg to the CPInitList's slice of messages used by the CompPattern
-func (cpil *CPInitList) AddMsg(msg *CompPatternMsg) {
+// AddMsg appends description of a ComPatternMsg to the CPInitList's slice of messages used by the CompPattern.
+// An error is returned if the msg's type already exists in the Msgs list
+func (cpil *CPInitList) AddMsg(msg *CompPatternMsg) error {
+	for _, xmsg := range cpil.Msgs {
+		if xmsg.MsgType == msg.MsgType {
+			return fmt.Errorf("message type %s for CP label %s has duplicate definition", msg.MsgType, cpil.Name)
+		}
+	}
 	cpil.Msgs = append(cpil.Msgs, *msg)
+	return nil
 }
 
 // ReadCPInitList returns a deserialized slice of bytes into a CPInitList.  Bytes are either provided, or are

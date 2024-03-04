@@ -182,7 +182,6 @@ type endPts struct {
 // It carries ancillary information about the message that is included for referencing.
 type cmpPtnMsg struct {
 	execId     int     // initialize when with an initating comp pattern message.  Carried by every resulting message.
-	initTime   float64 // time when the chain of messages started
 	cmpPtnName string  // name of comp pattern instance within which this message flows
 	edge       cmpPtnGraphEdge
 	cmpHdr     endPts
@@ -195,13 +194,13 @@ type cmpPtnMsg struct {
 // createCmpPtnMsg is a constructor whose arguments are all the attributes needed to make a cmpPtnMsg.
 // One is created and returnedl
 func createCmpPtnMsg(edge cmpPtnGraphEdge, srt, end string, msgLen int, pcktLen int, cmpPtnName string,
-	payload any, execId int, initTime float64) *cmpPtnMsg {
+	payload any, execId int ) *cmpPtnMsg {
 
 	// record that the srt point is the srcLabel on the message, but at this construction no destination is chosen
 	cmphdr := endPts{srtLabel: srt, endLabel: end}
 
 	return &cmpPtnMsg{cmpPtnName: cmpPtnName, edge: edge, cmpHdr: cmphdr,
-		msgLen: msgLen, pcktLen: pcktLen, payload: payload, execId: execId, initTime: initTime}
+		msgLen: msgLen, pcktLen: pcktLen, payload: payload, execId: execId }
 }
 
 func inEdge(cmp *cmpPtnMsg) InEdge {
@@ -360,9 +359,8 @@ func enterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 		newInitMsg := new(cmpPtnMsg)
 		*newInitMsg = cpi.initMsgs[cpf.funcLabel()]
 
-		// write in the initTime, and record the starting of the execution thread
-		newInitMsg.initTime = evtMgr.CurrentSeconds()
-		cpi.startExec(cpm.execId, cpf.funcLabel(), newInitMsg.initTime)
+		// record the starting of the execution thread
+		cpi.startExec(cpm.execId, cpf.funcLabel(), evtMgr.CurrentSeconds())
 
 		// new message chain needs a unique execId code
 		newInitMsg.execId = numExecThreads
@@ -393,7 +391,7 @@ func exitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 	msgs := cpf.funcResp(cpm.execId)
 
 	// see if we're done
-	if len(msgs) == 0 {
+	if len(msgs) == 0 || len(cpm.edge.dstLabel) == 0 {
 		cpi := cmpPtnInstByName[cpf.funcCmpPtn()]
 		delay := cpi.endExec(cpm.execId, evtMgr.CurrentSeconds())
 
@@ -488,7 +486,7 @@ func schedInitEvts(evtMgr *evtm.EventManager) {
 								// found it, so create a message structure with empty payload
 								// and trace (for now), and unique execution thread code
 								cpMsg = createCmpPtnMsg(edge, edge.srcLabel, "", msg.MsgLen, msg.PcktLen, cpi.name,
-									nil, numExecThreads, funcp)
+									nil, numExecThreads)
 								numExecThreads += 1
 								cpi.initMsgs[funcLabel] = *cpMsg
 							}

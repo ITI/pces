@@ -80,6 +80,8 @@ func (cpfsi *cmpPtnStaticFuncInst) AddResponse(execId int, resp []*cmpPtnMsg) {
 // the the response to the input msg, and removes it from the msgResp map
 func (cpfsi *cmpPtnStaticFuncInst) funcResp(execId int) []*cmpPtnMsg {
 	rtn, present := cpfsi.msgResp[execId]
+
+	// make a copy of the slice returned
 	if !present {
 		panic(fmt.Errorf("unsuccessful resp recovery\n"))
 	}
