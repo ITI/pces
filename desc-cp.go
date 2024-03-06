@@ -1,4 +1,3 @@
-// functions here can also write created ones to file
 package mrnesbits
 
 import (
@@ -901,11 +900,12 @@ type ActionResp struct {
 
 type ActionDesc struct {
 	Select   string
+	Complete string
 	CostType string
 }
 
-func CreateActionDesc(actionSelect, actionCostType string) ActionDesc {
-	return ActionDesc{Select: actionSelect, CostType: actionCostType}
+func CreateActionDesc(actionSelect, actionComplete, actionCostType string) ActionDesc {
+	return ActionDesc{Select: actionSelect, Complete: actionComplete, CostType: actionCostType}
 }
 
 func CreateActionResp(prompt InEdge, action ActionDesc, limit int) ActionResp {

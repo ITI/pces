@@ -41,7 +41,7 @@ type cmpPtnStatefulFuncInst struct {
 }
 
 type actionStruct struct {
-	costType, actionSelect string
+	costType, actionSelect, completeSelect string
 	calls, limit           int
 }
 
@@ -67,7 +67,8 @@ func createStatefulFuncInst(cpInstName string, fnc *Func, paramStr string, newSt
 	params, _ := DecodeStatefulParameters(paramStr, useYAML)
 
 	for _, respAction := range params.Actions {
-		dfi.actions[respAction.Prompt] = actionStruct{costType: respAction.Action.CostType, actionSelect: respAction.Action.Select,
+		dfi.actions[respAction.Prompt] = actionStruct{costType: respAction.Action.CostType, 
+			actionSelect: respAction.Action.Select, completeSelect: respAction.Action.Complete,
 			calls: 0, limit: respAction.Limit}
 	}
 
@@ -118,6 +119,22 @@ func (cpfsi *cmpPtnStatefulFuncInst) AddResponse(execId int, resp []*cmpPtnMsg) 
 // funcResp returns the saved list of function response messages associated
 // the the response to the input msg, and removes it from the msgResp map
 func (cpfsi *cmpPtnStatefulFuncInst) funcResp(execId int) []*cmpPtnMsg {
+
+	/*
+	ies := inEdge(msg)
+	excAction, present := cpsfi.actions[ies]
+	if !present {
+		panic(fmt.Errorf("cmpPtnInst lists no function record for %v\n", ies))
+	}
+
+	actionCode := excAction.actionSelect
+	_, present = respTbl[actionCode]
+	if !present {
+		panic(fmt.Errorf("cmpPtnInst lists no function response for %s\n", actionCode))
+	}
+	*/
+
+
 	rtn, present := cpfsi.msgResp[execId]
 	if !present {
 		panic(fmt.Errorf("unsuccessful resp recovery\n"))
@@ -233,11 +250,12 @@ func (cpsfi *cmpPtnStatefulFuncInst) respOK(msg *cmpPtnMsg, incr bool) bool {
 func (cpsfi *cmpPtnStatefulFuncInst) funcExec(evtMgr *evtm.EventManager, msg *cmpPtnMsg) (float64, []*cmpPtnMsg) {
 	ies := inEdge(msg)
 
-	excpair, present := cpsfi.actions[ies]
+	excAction, present := cpsfi.actions[ies]
 	if !present {
 		panic(fmt.Errorf("cmpPtnInst lists no function record for %v\n", ies))
 	}
-	actionCode := excpair.actionSelect
+
+	actionCode := excAction.actionSelect
 	_, present = respTbl[actionCode]
 	if !present {
 		panic(fmt.Errorf("cmpPtnInst lists no function response for %s\n", actionCode))
