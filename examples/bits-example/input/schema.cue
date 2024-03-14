@@ -1,5 +1,7 @@
-// to validate your yaml or json file against this schema, use the following commands:
+// first step: use the following command to download cue: 
+// 'go install cuelang.org/go/cmd/cue@v0.7.1'
 
+// second step: to validate your yaml or json file against this schema, use the following commands:
 // validate cp file: 'cue vet -c --schema "#cp" schema.cue cp.yaml' (or cp.json)
 // validate cpinit file: 'cue vet -c --schema "#cpinit" schema.cue cpinit.yaml' (or cpinit.json)
 // validate map: 'cue vet -c --schema "#map" schema.cue map.yaml' (or map.json)
@@ -243,19 +245,33 @@
 
 
 
-#paramObject: "Interface" | "Router" | "Network" | "Host" | "Switch" | "Filter"
-#Attrbname: "media" | "*" | "name"
-#Attrbvalue: "wired" | "wireless" | "" | "crypto"
-#paramOptions: "latency" | "bandwidth" | "delay" | "CPU" | "trace" | "" | "MTU" | "capacity" | "model" | "buffer" | "accelerator"
+
+#paramObject: "Switch" | "Router" | "Host" | "Filter" | "Interface" | "Network"
+#Attrbname: "media" | "*" | "name" | "group" | "CPU" | "model" | "scale"
+//#Attrbvalue: "wired" | "wireless" | "" | "crypto"
+#paramOptions: "CPU" | "model" | "accelerator" | "bandwidth" | "buffer" | "capacity" | "latency" | "delay" | "MTU" | "trace"
+
+#value: {
+    "CPU": string
+    "model": string
+    "accelerator": bool
+    "bandwidth": float
+    "buffer": float
+    "capacity": float
+    "latency": float
+    "delay": float
+    "MTU": int
+    "trace": bool
+}
 
 #Parameter: {
     paramObj: #paramObject
     attributes: [...#Attribute & {
         attrbname: #Attrbname
-        attrbvalue: #Attrbvalue
+        attrbvalue: string
     }]
     param: #paramOptions
-    value: string
+    value: #value[param]
 }
 
 #Attribute: {
