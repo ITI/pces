@@ -1,54 +1,29 @@
+package main
+
 // first step: use the following command to download cue: 
 // 'go install cuelang.org/go/cmd/cue@v0.7.1'
 
-// second step: to validate your yaml or json file against this schema, use the following commands:
-// validate cp file: 'cue vet -c --schema "#cp" schema.cue cp.yaml' (or cp.json)
-// validate cpinit file: 'cue vet -c --schema "#cpinit" schema.cue cpinit.yaml' (or cpinit.json)
-// validate map: 'cue vet -c --schema "#map" schema.cue map.yaml' (or map.json)
-// validate exec: 'cue vet -c --schema "#exec" schema.cue funcExec.yaml' (or funcExec.json). todo: devExec
-// validate exp: 'cue vet -c --schema "#exp" schema.cue exp.yaml' (or exp.json)
-// todo : topo in progress
+// second step: to validate your yaml or json file against this schema, navigate to /input in the terminal and execute the following commands:
+
+// to validate cp file: 'cue vet -c --schema "#cp" data_contraint.cue schema.cue cp.yaml' (or cp.json) - prints nothing if successful, else prints out the error messages
+// or 'cue eval --schema "#cp" data_constraint.cue schema.cue cp.yaml' - this prints out the config if successful, else prints out the error messages
+
+// only the --schema and yaml arguments change for each file you want to validate. --schema has the same name as the yaml file except for FuncExec(it is just #exec)
+// to validate cpinit file: 'cue vet -c --schema "#cpinit" data_constraint.cue schema.cue cpinit.yaml' (or cpinit.json)
+// to validate map: 'cue vet -c --schema "#map" data_constraint.cue schema.cue map.yaml' (or map.json)
+// to validate exec: 'cue vet -c --schema "#exec" data_constraint.cue schema.cue funcExec.yaml' (or funcExec.json). todo: devExec
+// or cue eval --schema "#exec" data_constraint.cue schema.cue funcExec.yaml (or funcExec.json)
+// to validate exp: 'cue vet -c --schema "#exp" data_constraint.cue schema.cue exp.yaml' (or exp.json)
+// to validate topo: 'cue vet -c --schema "#topo" data_constraint.cue schema.cue topo.yaml' (or topo.json)
 
 // -c ensure concrete values. see: https://cuelang.org/docs/references/spec/#:~:text=A%20value%20is%20concrete%20if,in%20the%20lattice%20is%20important.
 
-// if running the command returns nothing, that means it succeeded, otherwise there would be error messages.
-// to note, ex: 'cue eval -c --schema "#cp" schema.cue cp.yaml' also evaluate, validate, and prints out the config
-
+// documentation for cue: https://cuetorials.com
 
 
 //---------------------------data file---------------------------------------
-#ExecType: "static" | "deterministic" | "random" |"stateful"
-#apicpname: "client-server" | "simple-AES-chain" | "simple-det-test" | "simple-random-branch" | "simple-RSA-chain" | "simple-bit-test" | "encryptPerf"
-#apicptypes: "RSAChain" | "SimpleWeb" | "AESChain" | "DeterministicTest" | "RandomBranch" | "StatefulTest" | "encryptPerf"
-#apihostnames: "hostNetA1" | "hostNetB1" | "hostNetA2" | "hostNetT1" | "host-0" |"host-1" | "host-2" | "host-3" | "src" | "ssl"
 
-#apifunctypes: {
-    "client-server": "generate" | "serve"
-    "simple-AES-chain": "generate" | "AES-encrypt" | "AES-decrypt" | "consume"
-    "simple-det-test": "mark" | "testFlag" | "process"
-    "simple-random-branch": "generate" | "branch" | "consume"
-    "encryptPerf": "process" | "select" | "generate"
-}
-
-#apifunclabels: {
-    "client-server": "client" | "server" | ""
-    "simple-AES-chain": "src" | "encrypt" | "decrypt" | "consumer" | ""
-    "simple-det-test": "src" | "select" | "consumer1" | "consumer2" | ""
-    "simple-random-branch": "src1" | "src2" | "select" | "consumer1" | "consumer2" | ""
-    "simple-RSA-chain": "src" | "decrypt" | "encrypt" | "sink" | "branch" | ""
-    "simple-bit-test": "branch" | "consumer1" | "consumer2" | "src" | ""
-    "encryptPerf": "host-0" | "host-1" | "host-2" | "host-3" | "crypto" | "src" | "data" | "initiate"
-}
-
-#apimsgtypes: {
-    "client-server": "initiate" | "request" | "response"  | ""
-    "simple-AES-chain": "initiate" | "data" | "encrypted" | "decrypted"  | "" | "consume"
-    "simple-det-test": "initiate" | "marked" | "result"  | ""
-    "simple-random-branch": "initiate" | "data" | "selected"  | ""
-	"simple-RSA-chain": "encrypted" | "decrypted" | "data" | "initiate" | ""
-	"simple-bit-test": "result" | "marked" | "" | "initiate"
-    "encryptPerf": "data" | "initiate"
-}
+// moved to data_contraint.cue
 
 //---------------------------------entry point-----------------------------------------
 // work in progress 
@@ -60,31 +35,31 @@
 #cp: {
     prebuilt?: bool
     dictname: string
-    patterns: {
+    patterns!: {
         [string]: #Pattern
     }
 }
 
 #map: {
     dictname: string
-    map: [string]: #Map
+    map!: [string]: #Map
 }
 
 #cpinit: {
    prebuilt?: bool
    dictname: string
-   initlist: #InitList
+   initlist!: #InitList
 }
 
 #exec: {
 	listname: string
-	times: [#apifunctypesFullList]: [...#Times &{functype: #apifunctypesFullList}]
+	times!: [#apifunctypesFullList]: [...#Times &{functype: #apifunctypesFullList}]
     }
 
 
 #exp: {
     expname: string
-    parameters: [...#Parameter]
+    parameters!: [...#Parameter]
 }
 
 //----------------------------cp--------------------------------------------
@@ -119,7 +94,7 @@
 
 
 // -----------------------------cpInit------------------------------------
-
+// issues: yaml files with | (string) is causing issues. Need to confirm whether we can remove this requirement.
 
 #InitList: {
     [string]: #CpInitPattern &{
@@ -143,7 +118,7 @@
                         msgtype: #apimsgtypes[name]
                 }]
             }]
-        } 
+        }
          msgs: [...#Msg &{
             msgtype: #apimsgtypes[name]
         }] 
@@ -153,7 +128,7 @@
 
 #CpInitPattern: {
     name: string
-    cptype?: string
+    cptype: string
     useyaml: bool
     params: [string]: #Param
     exectype?: #Exectype
@@ -243,14 +218,6 @@
 
 // -------------------------exp----------------------------------------
 
-
-
-
-#paramObject: "Switch" | "Router" | "Host" | "Filter" | "Interface" | "Network"
-#Attrbname: "media" | "*" | "name" | "group" | "CPU" | "model" | "scale"
-//#Attrbvalue: "wired" | "wireless" | "" | "crypto"
-#paramOptions: "CPU" | "model" | "accelerator" | "bandwidth" | "buffer" | "capacity" | "latency" | "delay" | "MTU" | "trace"
-
 #value: {
     "CPU": string
     "model": string
@@ -280,10 +247,6 @@
 }
 
 // --------------------------exec---------------------------------------
-#apicpu: "x86" | "pentium" | "M2" | "M1" | "accel-x86"
-#apifunctypesFullList: "generate" | "serve" | "AES-encrypt" | "AES-decrypt" | "consume" | "mark" | "testFlag" | "process" | "branch" | "RSA-decrypt" | "RSA-encrypt" | "pki-cache" | "pki-server" | "decrypt-aes" | "encrypt-aes" | "passThru" | "encrypt-rsa" | "decrypt-rsa" | "rtt"
-
-
 #Times: {
         functype: string
         processortype: #apicpu
@@ -292,4 +255,69 @@
     }
 
 // --------------------------topo---------------------------------------
-// todo
+
+#topo: {
+    name: string
+    networks: [...#Network]
+    routers: [...#Router] 
+    hosts: [...#Host]
+    switches:[...#Switch] 
+    filters: [...#Filter]
+}
+
+#Router: {
+    rname: #apirouternames // could we change name to rname for namespace sake? makes validation easier. this would apply for the other definitions as well
+    groups: [...]
+    model: #apimodelnames
+    interfaces: [...#Interface & {
+        name: =~ "intrfc@\(rname)\\[\\d*\\.?\\d+\\](\\[\\d*\\.?\\d+\\])?" // do we need to do something like this?
+        device: rname
+    }]
+}
+
+#Filter: {
+    name: #apifilternames
+    groups: [...]
+    cpu: #apicpu 
+    model: #apimodelnames
+    filtertype: #apifiltertype
+    network: ""
+    interfaces: [...#Interface]
+}
+
+#Host: {
+    name: #apihostnames
+	groups: [...]
+	model: #apimodelnames
+	cpu: #apicpunames
+    interfaces: [...#Interface]
+}
+
+#Network: {
+    name: #apinetnames
+    groups: [...]
+    netscale: string
+    mediatype: #apimediatypes
+    hosts: [...#apihostnames]
+    routers: [...#apirouternames]
+    filters: [...#apifilternames]
+    switches: [...#apiswitchnames]
+}
+
+#Switch: {
+    name: #apiswitchnames
+    brdcstdmn: #apibrdnames
+    model: #apimodelnames
+}
+
+#Interface: {
+    name: #apiintrfcnames
+    groups: [...]
+    devtype:   #devtypes
+    mediatype: #apimediatypes
+    device:    #apidevnames
+    cable:     string
+    carry:     string
+    wireless: [...]
+    faces: #apinetnames
+}
