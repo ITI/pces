@@ -37,23 +37,14 @@ func CreateCompPattern(cmptnType string) *CompPattern {
 }
 
 var cmptnByName map[string]*CompPattern = make(map[string]*CompPattern)
+var Algorithms []string = []string{"rsa", "aes", "rsa-3072","rsa-2048","rsa-1024"}
 
 // AddFunc includes a function specification to a CompPattern
 func (cpt *CompPattern) AddFunc(fs *Func) {
 	cpt.Funcs = append(cpt.Funcs, *fs)
 }
 
-func (cpt *CompPattern) EdgeLabel(srcLabel, dstLabel, msgType string) string {
-	for _, edge := range cpt.Edges {
-		if edge.SrcLabel == srcLabel && edge.DstLabel == dstLabel && edge.MsgType == msgType {
-			return edge.EdgeLabel
-		}
-	}
-
-	return ""
-}
-
-// AddEdge creates an edge that describes message flow from one Func to another
+// AddEdge creates an edge that describes message flow from one Func to another in the same comp pattern
 // and adds it to the CompPattern's list of edges
 func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType string, edgeLabel string) {
 	pe := PatternEdge{SrcLabel: srcFuncLabel, DstLabel: dstFuncLabel, MsgType: msgType, EdgeLabel: edgeLabel}
@@ -64,9 +55,42 @@ func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType strin
 			return
 		}
 	}
+
+	// look for duplicated message type for edges with the same destination
+	for _, edge := range cpt.Edges {
+		if edge.DstLabel == dstFuncLabel && msgType == edge.MsgType {
+			panic(fmt.Errorf("%s declares identical message type %s directed to destination %s\n", 
+				cpt.Name, msgType, dstFuncLabel))
+			}
+	}
+
 	// include the edge
 	cpt.Edges = append(cpt.Edges, pe)
 }
+
+// GetInEdge returns a list of InEdges that match the specified source and destination
+func (cpt *CompPattern) GetInEdges(srcLabel, dstLabel string) []InEdge {
+	rtn  := []InEdge{}
+	for _, edge := range cpt.Edges {
+		if edge.SrcLabel == srcLabel && edge.DstLabel == dstLabel {
+			rtn = append(rtn, InEdge{SrcLabel: srcLabel, MsgType: edge.MsgType})
+		}
+	}
+	return rtn
+}
+
+// GetInEdge returns a list of OutEdges that match the specified source and destination
+func (cpt *CompPattern) GetOutEdges(srcLabel, dstLabel string) []OutEdge {
+	rtn  := []OutEdge{}
+	for _, edge := range cpt.Edges {
+		if edge.SrcLabel == srcLabel && edge.DstLabel == dstLabel {
+			rtn = append(rtn, OutEdge{DstLabel: dstLabel, MsgType: edge.MsgType})
+		}
+	}
+	return rtn
+}
+
+
 
 // CompPatterDict holds pattern descriptions, is serializable
 type CompPatternDict struct {
@@ -208,8 +232,8 @@ type CPInitList struct {
 	// Params is indexed by Func label, mapping to a serialized representation of a struct
 	Params map[string]string `json:"params" yaml:"params"`
 
-	// ExecType saves the execution type of the function whose parameter is being saved
-	ExecType map[string]string
+	// Params is indexed by Func label, mapping to a serialized representation of a struct
+	State map[string]string `json:"state" yaml:"state"`
 
 	// Msgs holds a list of CompPatternMsgs used between Funcs in a CompPattern
 	Msgs []CompPatternMsg `json:"msgs" yaml:"msgs"`
@@ -222,16 +246,20 @@ func CreateCPInitList(name string, cptype string, useYAML bool) *CPInitList {
 	cpil.CPType = cptype
 	cpil.UseYAML = useYAML
 	cpil.Params = make(map[string]string)
-	cpil.ExecType = make(map[string]string)
+	cpil.State = make(map[string]string)
 
 	cpil.Msgs = make([]CompPatternMsg, 0)
 	return cpil
 }
 
 // AddParam puts a serialized initialization struct in the dictionary indexed by Func label
-func (cpil *CPInitList) AddParam(label, execType string, param string) {
+func (cpil *CPInitList) AddParam(label, param string) {
 	cpil.Params[label] = param
-	cpil.ExecType[label] = execType
+}
+
+// AddState puts a serialized initialization struct in the dictionary indexed by Func label
+func (cpil *CPInitList) AddState(label, state string) {
+	cpil.State[label] = state
 }
 
 // AddMsg appends description of a ComPatternMsg to the CPInitList's slice of messages used by the CompPattern.
@@ -350,31 +378,6 @@ func (cpild *CPInitListDict) RecoverCPInitList(cptype string, cpname string) (*C
 	return &cpil, true
 }
 
-// RecoverCPFuncState extracts a state block from the input cpInitList structure and
-// returns a pointer to CPFuncState for (potential) modification and inclusion in model
-func (cpi *CPInitList) RecoverCPFuncState(cpName string) (*CPFuncState, bool) {
-	statefulCP := false
-	cpfs := CreateCPFuncState(cpName)
-
-	// see whether this function's execution type is "stateful", because
-	// those are the only ones of interest
-	for funcName, paramString := range cpi.Params {
-		execType := cpi.ExecType[funcName]
-		if execType != "stateful" {
-			continue
-		}
-		statefulInit, err := DecodeStatefulParameters(paramString, true)
-		statefulCP = true
-		if err != nil {
-			panic(err)
-		}
-		cpfs.AddStateMap(funcName, statefulInit.State)
-	}
-
-	// statefulCP will have been set if any of the functions are stateful
-	return cpfs, statefulCP
-}
-
 // AddCPInitList puts a CPInitList into the dictionary, selectively warning
 // if this would overwrite
 func (cpild *CPInitListDict) AddCPInitList(cpil *CPInitList, overwrite bool) error {
@@ -457,143 +460,26 @@ func ReadCPInitListDict(filename string, useYAML bool, dict []byte) (*CPInitList
 	return &example, nil
 }
 
-// DecodeStaticParameters deserializes and returns a "StaticParameters" structure from
+// DecodeFuncParameters deserializes and returns a "FuncParameters" structure from
 // a string that encodes its serialization
-func DecodeStaticParameters(paramStr string, useYAML bool) (*StaticParameters, error) {
-	staticResp := StaticParameters{}
+func DecodeFuncParameters(paramStr string, useYAML bool) (*FuncParameters, error) {
+	funcResp := FuncParameters{}
 	var err error
 	if useYAML {
-		err = yaml.Unmarshal([]byte(paramStr), &staticResp)
+		err = yaml.Unmarshal([]byte(paramStr), &funcResp)
 	} else {
-		err = json.Unmarshal([]byte(paramStr), &staticResp)
+		err = json.Unmarshal([]byte(paramStr), &funcResp)
 	}
-	return &staticResp, err
+	return &funcResp, err
 }
 
-// DecodeStatefulParameters deserializes and returns a "StatefulParameters" structure from
-// a string that encodes its serialization
-func DecodeStatefulParameters(paramStr string, useYAML bool) (*StatefulParameters, error) {
-	statefulResp := StatefulParameters{}
-	var err error
-	if useYAML {
-		err = yaml.Unmarshal([]byte(paramStr), &statefulResp)
-	} else {
-		err = json.Unmarshal([]byte(paramStr), &statefulResp)
-	}
-	return &statefulResp, err
-}
+// Tables that hold class names and methods for those classes, can be tested against
+// both when model is built and when model is run
 
-// DecodeRndParameters deserializes and returns a "RndParameters" structure from
-// a string that encodes its serialization
-func DecodeRndParameters(paramStr string) (*RndParameters, error) {
-	rndResp := RndParameters{}
-	err := yaml.Unmarshal([]byte(paramStr), &rndResp)
-	return &rndResp, err
-}
+var FuncClassNames map[string][]string = map[string][]string{"SelectDst":{"return-op", "initiate-op"}, "CryptoSrvr":{"encrypt-op", "decrypt-op"}, 
+		"PassThru":{"process-op"}, "FlowEndpt": {"initiate-op", "genflow-op", "sink-op"},
+		"GenPckt":{"initiate-op", "return-op"}, "PcktProcess":{"process-op"}}
 
-// A CPFuncState structure holds state updates for functions in the named computation pattern
-type CPFuncState struct {
-	CmpPtnName string
-	LabelToMap map[string]map[string]string
-}
-
-// CreateCPFuncState is a constructor that remembers the name of the computation pattern
-// being represented, and initializes the map from function label names to state maps
-func CreateCPFuncState(name string) *CPFuncState {
-	cpfs := new(CPFuncState)
-	cpfs.CmpPtnName = name
-	cpfs.LabelToMap = make(map[string]map[string]string)
-	return cpfs
-}
-
-// AddStateMap copies the offered statemap and notes its association with the identified function
-func (cpfs *CPFuncState) AddStateMap(label string, state map[string]string) {
-	cpfs.LabelToMap[label] = make(map[string]string)
-
-	// copy the state to avoid pointer problems
-	for key, value := range state {
-		cpfs.LabelToMap[label][key] = value
-	}
-}
-
-// CPFuncStateDict holds the function state maps for multiple computation patterns, indexed by the pattern name
-type CPFuncStateDict struct {
-	DictName  string
-	StateByCP map[string]CPFuncState
-}
-
-// CreateCPFuncStateDict is a constructor that saves the dictionary name and initialize the StateByCP map
-func CreateCPFuncStateDict(dictname string) *CPFuncStateDict {
-	cpfsd := new(CPFuncStateDict)
-	cpfsd.DictName = dictname
-	cpfsd.StateByCP = make(map[string]CPFuncState)
-	return cpfsd
-}
-
-// AddCPState copies the offered CPFuncState
-func (cpfsd *CPFuncStateDict) AddCPFuncState(cpsf *CPFuncState) {
-	cpfsd.StateByCP[cpsf.CmpPtnName] = *cpsf
-}
-
-// WriteToFile stores the FuncExecList struct to the file whose name is given.
-// Serialization to json or to yaml is selected based on the extension of this name.
-func (cpfsd *CPFuncStateDict) WriteToFile(filename string) error {
-	pathExt := path.Ext(filename)
-	var bytes []byte
-	var merr error = nil
-
-	if pathExt == ".yaml" || pathExt == ".YAML" || pathExt == ".yml" {
-		bytes, merr = yaml.Marshal(*cpfsd)
-	} else if pathExt == ".json" || pathExt == ".JSON" {
-		bytes, merr = json.MarshalIndent(*cpfsd, "", "\t")
-	}
-
-	if merr != nil {
-		panic(merr)
-	}
-
-	f, cerr := os.Create(filename)
-	if cerr != nil {
-		panic(cerr)
-	}
-	_, werr := f.WriteString(string(bytes[:]))
-	if werr != nil {
-		panic(werr)
-	}
-	f.Close()
-
-	return werr
-}
-
-// ReadFuncExecList deserializes a byte slice holding a representation of an FuncExecList struct.
-// If the input argument of dict (those bytes) is empty, the file whose name is given is read
-// to acquire them.  A deserialized representation is returned, or an error if one is generated
-// from a file read or the deserialization.
-func ReadCPFuncStateDict(filename string, useYAML bool, dict []byte) (*CPFuncStateDict, error) {
-	var err error
-
-	// if the dict slice of bytes is empty we get them from the file whose name is an argument
-	if len(dict) == 0 {
-		dict, err = os.ReadFile(filename)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	example := CPFuncStateDict{}
-
-	if useYAML {
-		err = yaml.Unmarshal(dict, &example)
-	} else {
-		err = json.Unmarshal(dict, &example)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &example, nil
-}
 
 // CompPatternMsg defines the structure of identification of messages that pass between Funcs in a CompPattern.
 // Structures of this sort are transformed by a simulation run into a form that include experiment-defined payloads,
@@ -602,6 +488,9 @@ type CompPatternMsg struct {
 	// edges in the CompPattern graph are labeled with MsgType, which means that a message across the edge must match in this attribute
 	MsgType string `json:"msgtype" yaml:"msgtype"`
 
+	// a message may be a packet or a flow
+	IsPckt bool `json:"ispckt" yaml:"ispckt"`
+	
 	// PcktLen is a parameter used by some functions to select their execution time.  Not the same as the length of the message carrying the packet
 	PcktLen int `json:"pcktlen" yaml:"pcktlen"`
 
@@ -615,6 +504,9 @@ func CreateCompPatternMsg(msgType string, pcktLen int, msgLen int) *CompPatternM
 	cpm.MsgType = msgType
 	cpm.PcktLen = pcktLen
 	cpm.MsgLen = msgLen
+
+	// zero args for pcktlen or msgLen mean this is a flow, not a packet 
+	cpm.IsPckt = (pcktLen>0 && msgLen>0)
 	return cpm
 }
 
@@ -640,23 +532,23 @@ func CreatePatternEdge(srcLabel, dstLabel, msgType, edgeLabel string) *PatternEd
 // A FuncExecDesc struct holds a description of a function timing.
 // ExecTime is the time (in seconds), attributes it depends on are
 //
-//		ProcessorType - the CPU,
+//		Hardware - the CPU,
 //	 PcktLen - number of bytes in data packet being operated on
 type FuncExecDesc struct {
-	FuncType      string  `json:"functype" yaml:"functype"`
-	ProcessorType string  `json:"processortype" yaml:"processortype"`
+	Class string  `json:"class" yaml:"class"`
+	Hardware string  `json:"processortype" yaml:"processortype"`
 	PcktLen       int     `json:"pcktlen" yaml:"pcktlen"`
 	ExecTime      float64 `json:"exectime" yaml:"exectime"`
 }
 
-// A FuncExecList holds a map (Times) whose key is the FuncType
+// A FuncExecList holds a map (Times) whose key is the class
 // of a Func, and whose value is a list of FuncExecDescs
-// associated with all Funcs of that FuncType
+// associated with all Funcs of that class
 type FuncExecList struct {
 	// ListName is an identifier for this collection of timings
 	ListName string `json:"listname" yaml:"listname"`
 
-	// Times key is FuncType of CompPattern function.
+	// Times key is class of CompPattern function.
 	// Value is list of function times for that type of function
 	Times map[string][]FuncExecDesc `json:"times" yaml:"times"`
 }
@@ -731,38 +623,29 @@ func ReadFuncExecList(filename string, useYAML bool, dict []byte) (*FuncExecList
 }
 
 // AddTiming takes the parameters of a FuncExecDesc, creates one, and adds it to the FuncExecList
-func (fel *FuncExecList) AddTiming(funcType, procType string, pcktLen int, execTime float64) {
-	_, present := fel.Times[funcType]
+func (fel *FuncExecList) AddTiming(class, hardware string, pcktLen int, execTime float64) {
+	_, present := fel.Times[class]
 	if !present {
-		fel.Times[funcType] = make([]FuncExecDesc, 0)
+		fel.Times[class] = make([]FuncExecDesc, 0)
 	}
-	fel.Times[funcType] = append(fel.Times[funcType], FuncExecDesc{ProcessorType: procType, PcktLen: pcktLen, ExecTime: execTime, FuncType: funcType})
+	fel.Times[class] = append(fel.Times[class], FuncExecDesc{Hardware: hardware, PcktLen: pcktLen, ExecTime: execTime, Class: class})
 }
 
-// A Func represents a function used within a [CompPattern].  Its 'ExecType' attribute identifies the semantics
-// of its execution, its 'Label' attribute is an identifier for an instance of the Func that is unique among all Funcs
-// that make up a CompPattern which uses it, and the FuncType attribute is an identifier used when Func describes are
-// stored in a dictionary before being copied and assembled as part of CompPattern construction. FuncType typically describes
+// A Func represents a function used within a [CompPattern].  
+// Its 'Label' attribute is an identifier for an instance of the Func that is unique among all Funcs
+// that make up a CompPattern which uses it, and the Class attribute is an identifier used when Func describes are
+// stored in a dictionary before being copied and assembled as part of CompPattern construction. Class typically describes
 // the computation the Func represents.
 type Func struct {
 	// identifies function, e.g., encryptRSA, used to look up execution time
-	FuncType string `json:"functype" yaml:"functype"`
+	Class string `json:"class" yaml:"class"`
 
 	// particular name given to function instance within a CompPattern
 	Label string `json:"label" yaml:"label"`
 
-	// "static", "stateful", "random" e.g., guiding interpretation of Parameter string
-	ExecType string `json:"exectype" yaml:"exectype"`
+	// name that is globally unique within a model, used for addressing
+	GblName string `json:"gblname" yaml:"gblname"`
 }
-
-// FuncExcTypes enumerates classes of Funcs, each with a separate set of semantics
-//
-//		"static" implements static input-to-output mapping of message types, with fixed execution time.
-//	 "stateful" allows the function to choose an output edge and message contents as a function
-//	    of the input message type and contents, and state that is saved associated with the Func.
-//		"random" implements a mapping of variable input message type to randomly selected output message
-//			types and potentially random execution time, as a function of input message type
-var FuncExcTypes []string = []string{"static", "stateful", "random"}
 
 // An InEdge describes the source Func of an incoming edge, and the type of message it carries.
 type InEdge struct {
@@ -780,242 +663,97 @@ type OutEdge struct {
 
 var EmptyOutEdge OutEdge
 
-// A Static Response maps an InEdge to an outEdgeStruct, which for a Func with static execution type
-// means an input received on the InEdge generates in response a message on the OutEdge.  If the SrcLabel of the InEdge
-// is identical to the DstLabel of the OutEdge, the response is for self-initiation by the Func.  In this case the
-// value of the 'Period' attribute gives the length of time (in seconds) between successive initiations.
-type StaticResp struct {
-	InEdge  InEdge  `json:"inedge" yaml:"inedge"`
-	OutEdge OutEdge `json:"outedge" yaml:"outedge"`
-
-	// if > 0, the time between successive self-initiations
-	Period float64 `json:"period" yaml:"period"`
-
-	// placed for potential future use as Static becomes more like Stateful
-	Choice string `json:"choice" yaml:"choice"`
-}
-
-// A StaticParameters struct holds configuration information about the behaviour
-// of a Func in an instantiated CompPattern.  The name of that CompPattern is
-// saved in the struct, as is the Label for the Func to be initialized in the CompPattern.
-// The 'Response' list gathers all of the input-output responses this instantiation
-// executes.
-type StaticParameters struct {
-	// name of pattern holding labeled func
-	PatternName string `json:"patternname" yaml:"patternname"`
-
-	// label of function the parameters apply to
-	Label string `json:"label" yaml:"label"`
-
-	Response []StaticResp `json:"response" yaml:"response"`
-}
-
-// CreateStaticParameters is a constructor that saves the label of a Func, saves  the
-// identity of the CompPattern which contains it, and initializes a slice of input-output response descriptions
-func CreateStaticParameters(ptn, label string) *StaticParameters {
-	sp := new(StaticParameters)
-	sp.PatternName = ptn
-	sp.Label = label
-	sp.Response = make([]StaticResp, 0)
-
-	return sp
-}
-
-// AddResponse takes the parameter of a StaticResponse, creates one, and adds it to the StaticParameter's list of responses
-func (sp *StaticParameters) AddResponse(inEdge InEdge, outEdge OutEdge, choice string, period float64) {
-	sr := StaticResp{InEdge: inEdge, OutEdge: outEdge, Period: period, Choice: choice}
-	sp.Response = append(sp.Response, sr)
-}
-
-// Serialize returns a serialized representation of the StaticParameters struct, in either json or yaml
-// form, depending on the input parameter 'useYAML'.  If the serialization generates an error it is returned
-//
-//	with an empty string as the serialization result.
-func (sp *StaticParameters) Serialize(useYAML bool) (string, error) {
-	var bytes []byte
-	var merr error
-
-	if useYAML {
-		bytes, merr = yaml.Marshal(*sp)
-	} else {
-		bytes, merr = json.Marshal(*sp)
-	}
-
-	if merr != nil {
-		return "", merr
-	}
-
-	return string(bytes[:]), nil
-}
-
-// A Stateful Response maps an InEdge to an outEdgeStruct, which for a Func with static execution type
-// means an input received on the InEdge _may_ generate in response a message on the OutEdge.  If the SrcLabel of the InEdge
-// is identical to the DstLabel of the OutEdge, the response is for self-initiation by the Func.  In this case the
-// value of the 'Period' attribute gives the length of time (in seconds) between successive initiations.
+// A FuncResp maps an InEdge to an outEdgeStruct, which for a Func with static execution type
+// means an input received on the InEdge _may_ generate in response a message on the OutEdge.  
 // 'Choice is an identifier used by the Func's logic for selecting an output edge.
-type StatefulResp struct {
+type FuncResp struct {
 	// input edge
 	InEdge InEdge `json:"inedge" yaml:"inedge"`
 
 	// potential output edge
 	OutEdge OutEdge `json:"outedge" yaml:"outedge"`
 
-	// if Period > 0, the time between successive self-initiations, in seconds.
-	Period float64 `json:"period" yaml:"period"`
+	// operation performed on input
+	MethodCode string
 
 	// an identifier used by the logic which chooses an output edge.
 	Choice string `json:"choice" yaml:"choice"`
 }
 
-// A StatefulParameters struct holds information for initializing a Func with Stateful execution type.
+// A FuncParameters struct holds information for initializing a Func.
 // It names the label of the Func within an instantiated CompPattern, and the name of that CompPattern.
 // It holds a string-to-string map which when filled out carries to the Func representation a general
 // vehicle for defining state variables and initializing them.   The 'FuncSelect' attribute contains
 // a code that the Func uses to select from among different (user pre-defined) behaviors in response to a message.
 // 'Response' is a list of input-output edge responses associated with a Func. N.B. that a given input edge
 // may be specified in multiple responses.
-type StatefulParameters struct {
+type FuncParameters struct {
 	// Pattern is name of the CompPattern holding labeled node these parameters modify
 	PatternName string `json:"patternname" yaml:"patternname"`
 
-	// Label of function being initialized
+	// Label of function whose parameters are specified
 	Label string `json:"label" yaml:"label"`
 
-	// State variables and their initial values (string-encoded)
-	State map[string]string `json:"state" yaml:"state"`
+	// Global name of function whose parameters are specified
+	GblName string `json:"gblname" yaml:"gblname"`
 
-	// Actions holds a list of action descriptors
-	Actions []ActionResp
+	// State variables and their initial values (string-encoded)
+	State string `json:"state" yaml:"state"`
 
 	// Response holds a list of all responses the Func may make
-	Response []StatefulResp `json:"response" yaml:"response"`
+	Response []FuncResp `json:"response" yaml:"response"`
 }
 
-type ActionResp struct {
-	Prompt InEdge
-	Action ActionDesc
-	Limit  int // if >0 a limit and the number of responses carried through
-	Choice string
-}
-
-type ActionDesc struct {
-	Select   string
-	Complete string
-	CostType string
-}
-
-func CreateActionDesc(actionSelect, actionComplete, actionCostType string) ActionDesc {
-	return ActionDesc{Select: actionSelect, Complete: actionComplete, CostType: actionCostType}
-}
-
-func CreateActionResp(prompt InEdge, action ActionDesc, limit int) ActionResp {
-	ae := new(ActionResp)
-	ae.Prompt = prompt
-	ae.Action = action
-	ae.Limit = limit
-	return *ae
-}
-
-// CreateStatefulParameters is a constructor. Its arguments initialize all the struct attributes except
+// CreateFuncParameters is a constructor. Its arguments initialize all the struct attributes except
 // for the slice of responses, which it just initializes.
-func CreateStatefulParameters(ptn, label string, actions []ActionResp, state map[string]string) *StatefulParameters {
-	sp := new(StatefulParameters)
-	sp.PatternName = ptn
-	sp.Label = label
-	sp.Actions = actions
-	sp.State = make(map[string]string)
+func CreateFuncParameters(ptn, label, gblname string) *FuncParameters {
+	fp := new(FuncParameters)
+	fp.PatternName = ptn
+	fp.Label = label
+	fp.GblName = gblname
+	fp.Response = make([]FuncResp, 0)
 
-	if len(state) > 0 {
-		for key, value := range state {
-			sp.State[key] = value
+	return fp
+}
+
+// AddState includes a string that encodes a state initialization block for the function
+// and includes it in the struct's list of responses
+func (fp *FuncParameters) AddState(state string) {
+	fp.State = state
+}
+
+// AddResponse takes the parameters of a response, creates a FuncResp struct,
+// and includes it in the struct's list of responses
+func (fp *FuncParameters) AddResponse(inEdge InEdge, outEdge OutEdge, methodCode string) {
+	// find the label of the output edge named in this response and record it as the choice
+	fr := FuncResp{InEdge: inEdge, OutEdge: outEdge, MethodCode: methodCode, Choice: "" }
+	fp.Response = append(fp.Response, fr)
+}
+
+// AddResponseChoice finds the response associated with the InEdge/OutEdge and sets its choice
+func (fp *FuncParameters) AddResponseChoice(inEdge InEdge, outEdge OutEdge, choice string) {
+	// find the label of the output edge named in this response and record it as the choice
+	for idx := 0; idx<len(fp.Response); idx++ {
+		if fp.Response[idx].InEdge == inEdge && fp.Response[idx].OutEdge == outEdge {
+			fp.Response[idx].Choice = choice
+			break
 		}
 	}
-	sp.Response = make([]StatefulResp, 0)
+}	
 
-	return sp
-}
-
-// AddResponse takes the parameters of a Stateful response, creates a StatefulResp struct,
-// and includes it in the struct's list of responses
-func (sp *StatefulParameters) AddResponse(inEdge InEdge, outEdge OutEdge, choice string, period float64) {
-	// find the label of the output edge named in this response and record it as the choice
-	sr := StatefulResp{InEdge: inEdge, OutEdge: outEdge, Period: period, Choice: choice}
-	sp.Response = append(sp.Response, sr)
-}
-
-// Serialize returns a serialized representation of the StatefulParameters struct, in either json or yaml
+// Serialize returns a serialized representation of the FuncParameters struct, in either json or yaml
 // form, depending on the input parameter 'useYAML'.  If the serialization generates an error it is returned
 //
 //	with an empty string as the serialization result.
-func (sp *StatefulParameters) Serialize(useYAML bool) (string, error) {
+func (fp *FuncParameters) Serialize(useYAML bool) (string, error) {
 	var bytes []byte
 	var merr error
 
 	if useYAML {
-		bytes, merr = yaml.Marshal(*sp)
+		bytes, merr = yaml.Marshal(*fp)
 	} else {
-		bytes, merr = json.Marshal(*sp)
+		bytes, merr = json.Marshal(*fp)
 	}
-
-	if merr != nil {
-		return "", merr
-	}
-
-	return string(bytes[:]), nil
-}
-
-// A RndParameters struct is used to initialize a Func that has the "random" execution type.
-type RndParameters struct {
-	// Pattern is the name identifier of the [CompPattern] holding the Func being initialized
-	PatternName string `json:"patternname" yaml:"patternname"`
-
-	// Label is the label identifier of the [Func] being initialized
-	Label string `json:"label" yaml:"label"`
-
-	// Response holds all the possible responses the Func may make
-	Response []RndResp `json:"response" yaml:"response"`
-}
-
-// CreateRndParameters is an initialization constructor.
-// Its output struct has methods for integrating data.
-func CreateRndParameters(ptn, label string) *RndParameters {
-	rp := new(RndParameters)
-	rp.PatternName = ptn
-	rp.Label = label
-	rp.Response = make([]RndResp, 0)
-
-	return rp
-}
-
-// A RndResp struct describes a possible response to an incoming message.
-// It identifies the input edge, and associates with that a map which
-// represents a probability distribution to use when selecting an edge to push a response message through.
-type RndResp struct {
-	InEdge    InEdge              `json:"inedge" yaml:"inedge"`
-	MsgSelect map[OutEdge]float64 `json:"msgselect" yaml:"msgselect"`
-}
-
-// AddResponse takes the parameters of a [RndResp], creates one, and includes it into the RndParameter's list
-func (rp *RndParameters) AddResponse(srcLabel, inMsgType string, msgSelect map[OutEdge]float64) {
-	inEdge := InEdge{SrcLabel: srcLabel, MsgType: inMsgType}
-	rr := RndResp{InEdge: inEdge, MsgSelect: msgSelect}
-	rp.Response = append(rp.Response, rr)
-}
-
-// Serialize creates a serialized form of the RndParameter. Always yaml
-func (rp *RndParameters) Serialize(useYAML bool) (string, error) {
-	var bytes []byte
-	var merr error
-
-	// turns out that the structure of RndParameters limits its serialization to yaml
-	/*
-			if useYAML {
-				bytes, merr = yaml.Marshal(*rp)
-			} else {
-		 		bytes, merr = json.MarshalIndex(*rp)
-			}
-	*/
-	bytes, merr = yaml.Marshal(*rp)
 
 	if merr != nil {
 		return "", merr
@@ -1025,34 +763,26 @@ func (rp *RndParameters) Serialize(useYAML bool) (string, error) {
 }
 
 // CreateFunc is a constructor for a [Func].  All parameters are given:
-//   - FuncType, a string identifying what instances of this Func do.  Like a variable type.
+//   - Class, a string identifying what instances of this Func do.  Like a variable type.
 //   - FuncLabel, a unique identifier (within an instance of a [CompPattern]) of an instance of this Func
-//   - ExecType, identifies semantics of responding to an input message
-func CreateFunc(funcType, funcLabel, execType string) *Func {
-	fd := &Func{FuncType: funcType, ExecType: execType, Label: funcLabel}
+func CreateFunc(class, funcLabel string) *Func {
+
+	// see whether class is recognized
+	_, present := FuncClassNames[class]
+	if !present {
+		panic(fmt.Errorf("function class %s not recognized\n", class))
+	}
+	fd := &Func{Class: class, Label: funcLabel}
 
 	return fd
 }
 
 // SerialParameters returns a serialization of the input parameter struct given as an argument.
-// It choose serialization function depending on the Func's ExecType, and creates json or yaml
-// representation, depending on the 'useYAML ' input argument.
 func (fd *Func) SerializeParameters(params any, useYAML bool) (string, error) {
 	var err error = nil
 
-	switch fd.ExecType {
-	case "static":
-		sp := params.(*StaticParameters)
-		return sp.Serialize(useYAML)
-
-	case "stateful":
-		dp := params.(*StatefulParameters)
-		return dp.Serialize(useYAML)
-
-	case "random":
-		rp := params.(*RndParameters)
-		return rp.Serialize(useYAML)
-	}
+	fp := params.(*FuncParameters)
+	return fp.Serialize(useYAML)
 
 	return "", err
 }
@@ -1625,9 +1355,6 @@ func CheckFiles(names []string, checkExistence bool) (bool, error) {
 
 	return true, nil
 }
-
-// FuncExecTypes is a list of all the Func execution types
-var FuncExecTypes = []string{"static", "stateful", "random"}
 
 // ExpParamObjs, ExpAttributes, and ExpParams hold descriptions of the types of objects
 // that are initialized by an exp file, for each the attributes of the object that can be tested for to determine

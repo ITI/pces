@@ -14,7 +14,8 @@ import (
 // interface to network simulator
 type NetSimPortal interface {
 	HostCPU(string) string
-	EnterNetwork(*evtm.EventManager, string, string, int, int, float64, any, any, evtm.EventHandlerFunction) any
+	EnterNetwork(*evtm.EventManager, string, string, int, int, float64, any, 
+		any, evtm.EventHandlerFunction, any, evtm.EventHandlerFunction) any
 }
 
 // The TraceManager interface helps integrate use of the mrnes functionality for managing
@@ -25,7 +26,7 @@ type TraceManager interface {
 	Active() bool
 
 	// add a trace event to the manager
-	AddTrace(vrtime.Time, int, int, int, string, bool, bool, float64)
+	AddTrace(vrtime.Time, int, int, int, string, bool, float64)
 
 	// include an id -> (name, type) pair in the trace manager dictionary
 	AddName(int, string, string)
@@ -40,58 +41,58 @@ var traceMgr TraceManager
 
 // declare global variables that are loaded from
 // analysis of input files
-var cmpPtnMapDict *CompPatternMapDict
+var CmpPtnMapDict *CompPatternMapDict
 var funcExecTimeTbl map[string]map[string]map[int]float64
 
-// A cmpPtnGraph is the run-time description of a CompPattern
-type cmpPtnGraph struct {
+// A CmpPtnGraph is the run-time description of a CompPattern
+type CmpPtnGraph struct {
 
 	// every instance a function has a string 'label', used here to index to
 	// data structure that describes it and the connections it has with other funcs
-	nodes map[string]*cmpPtnGraphNode
+	Nodes map[string]*CmpPtnGraphNode
 }
 
-// A cmpPtnGraph edge declares the possibility that a function with label srcLabel
+// A CmpPtnGraph edge declares the possibility that a function with label srcLabel
 // might send a message of type msgType to the function (in the same CPG) with label dstLabel
-type cmpPtnGraphEdge struct {
-	srcLabel  string
-	msgType   string
-	dstLabel  string
-	edgeLabel string
+type CmpPtnGraphEdge struct {
+	SrcLabel  string
+	MsgType   string
+	DstLabel  string
+	EdgeLabel string
 }
 
-func createCmpPtnGraphEdge(srcLabel, msgType, dstLabel, edgeLabel string) cmpPtnGraphEdge {
-	edge := cmpPtnGraphEdge{srcLabel: srcLabel, msgType: msgType, dstLabel: dstLabel, edgeLabel: edgeLabel}
+func CreateCmpPtnGraphEdge(srcLabel, msgType, dstLabel, edgeLabel string) CmpPtnGraphEdge {
+	edge := CmpPtnGraphEdge{SrcLabel: srcLabel, MsgType: msgType, DstLabel: dstLabel, EdgeLabel: edgeLabel}
 	return edge
 }
 
-// A cmpPtnGraphNode names a function with its label, and describes
+// A CmpPtnGraphNode names a function with its label, and describes
 // the edges for which it is a destination (inEdges) and edges
 // for which it is a source (outEdges)
-type cmpPtnGraphNode struct {
-	label    string
-	inEdges  []*cmpPtnGraphEdge
-	outEdges []*cmpPtnGraphEdge
+type CmpPtnGraphNode struct {
+	Label    string
+	InEdges  []*CmpPtnGraphEdge
+	OutEdges []*CmpPtnGraphEdge
 }
 
 // addEdge takes the description of a CPG edge and attempts
 // to add that edge to the CPG node corresponding to the edge's source and destination
-func (cpg *cmpPtnGraph) addEdge(srcLabel, msgType, dstLabel, edgeLabel string) error {
-	edge := &cmpPtnGraphEdge{srcLabel: srcLabel, msgType: msgType, dstLabel: dstLabel, edgeLabel: edgeLabel}
+func (cpg *CmpPtnGraph) addEdge(srcLabel, msgType, dstLabel, edgeLabel string) error {
+	edge := &CmpPtnGraphEdge{SrcLabel: srcLabel, MsgType: msgType, DstLabel: dstLabel, EdgeLabel: edgeLabel}
 
-	srcNode, present1 := cpg.nodes[srcLabel]
+	srcNode, present1 := cpg.Nodes[srcLabel]
 	if !present1 {
 		return fmt.Errorf("srcLabel offered to addEdge not recognized")
 	}
 
-	dstNode, present2 := cpg.nodes[dstLabel]
+	dstNode, present2 := cpg.Nodes[dstLabel]
 	if !present2 {
 		return fmt.Errorf("dstLabel offered to addEdge not recognized")
 	}
 
 	// add to srcNode outEdges, if needed, and if not initiation
 	var duplicated bool = false
-	for _, outEdge := range srcNode.outEdges {
+	for _, outEdge := range srcNode.OutEdges {
 		if *outEdge == *edge {
 			duplicated = true
 			break
@@ -99,12 +100,12 @@ func (cpg *cmpPtnGraph) addEdge(srcLabel, msgType, dstLabel, edgeLabel string) e
 	}
 
 	if !duplicated && srcLabel != dstLabel {
-		srcNode.outEdges = append(srcNode.outEdges, edge)
+		srcNode.OutEdges = append(srcNode.OutEdges, edge)
 	}
 
 	// add to dstNode inEdges, if needed
 	duplicated = false
-	for _, inEdge := range dstNode.inEdges {
+	for _, inEdge := range dstNode.InEdges {
 		if *inEdge == *edge {
 			duplicated = true
 			break
@@ -112,22 +113,22 @@ func (cpg *cmpPtnGraph) addEdge(srcLabel, msgType, dstLabel, edgeLabel string) e
 	}
 
 	if !duplicated {
-		dstNode.inEdges = append(dstNode.inEdges, edge)
+		dstNode.InEdges = append(dstNode.InEdges, edge)
 	}
 
 	return nil
 }
 
 // createCmpPtnGraph builds a graph representation for an input CompPattern Type
-func createCmpPtnGraph(cp *CompPattern) (*cmpPtnGraph, error) {
+func createCmpPtnGraph(cp *CompPattern) (*CmpPtnGraph, error) {
 	var errList []error
-	cpg := new(cmpPtnGraph)
-	cpg.nodes = make(map[string]*cmpPtnGraphNode)
+	cpg := new(CmpPtnGraph)
+	cpg.Nodes = make(map[string]*CmpPtnGraphNode)
 
 	// create a node for every func in the comp pattern
 	for _, funcName := range cp.Funcs {
 		label := funcName.Label
-		cpg.nodes[label] = createCmpPtnGraphNode(label)
+		cpg.Nodes[label] = createCmpPtnGraphNode(label)
 	}
 
 	// note that nodes are inferred from edges, not pulled out explicitly first
@@ -140,42 +141,32 @@ func createCmpPtnGraph(cp *CompPattern) (*cmpPtnGraph, error) {
 }
 
 // createCmpPtnGraphNode is a constructor, saving the label and initializing the slices
-func createCmpPtnGraphNode(label string) *cmpPtnGraphNode {
-	pgn := new(cmpPtnGraphNode)
-	pgn.label = label
-	pgn.inEdges = make([]*cmpPtnGraphEdge, 0)
-	pgn.outEdges = make([]*cmpPtnGraphEdge, 0)
+func createCmpPtnGraphNode(label string) *CmpPtnGraphNode {
+	pgn := new(CmpPtnGraphNode)
+	pgn.Label = label
+	pgn.InEdges = make([]*CmpPtnGraphEdge, 0)
+	pgn.OutEdges = make([]*CmpPtnGraphEdge, 0)
 	return pgn
 }
 
 // buildCmpPtns goes through every CompPattern in the input CompPatternDict,
-// and creates a run-time cmpPtnInst representation for it.
-func buildCmpPtns(cpd *CompPatternDict, cpid *CPInitListDict, cpfsd *CPFuncStateDict) error {
+// and creates a run-time CmpPtnInst representation for it.
+func buildCmpPtns(cpd *CompPatternDict, cpid *CPInitListDict) error {
 
 	errList := []error{}
-	// CompPatterns are arranged in a map that is index by the CompPattern name
+	// CompPatterns are arranged in a map that is indexed by the CompPattern name
 	for cpName, cp := range cpd.Patterns {
-
-		var cpfs CPFuncState
-		var present bool = false
-		if cpfsd != nil {
-			cpfs, present = cpfsd.StateByCP[cpName]
-		}
 
 		// use the CompPattern name to index to the correct member
 		// of the map of comp pattern initialization structs
-		var cpi *cmpPtnInst
+		var cpi *CmpPtnInst
 		var err error
-		if present {
-			cpi, err = createCmpPtnInst(cpName, cp, cpid.InitList[cpName], &cpfs)
-		} else {
-			cpi, err = createCmpPtnInst(cpName, cp, cpid.InitList[cpName], nil)
-		}
+		cpi, err = createCmpPtnInst(cpName, cp, cpid.InitList[cpName])
 
 		errList = append(errList, err)
 
 		// save the instance we can look it up given the comp pattern name
-		cmpPtnInstByName[cpName] = cpi
+		CmpPtnInstByName[cpName] = cpi
 	}
 	return ReportErrs(errList)
 }
@@ -183,33 +174,33 @@ func buildCmpPtns(cpd *CompPatternDict, cpid *CPInitListDict, cpfsd *CPFuncState
 // buildFuncExecTimeTbl creates a very nested map that stores information
 // about comp pattern function execution times.  The keys in order of application are
 //
-//	map[function type] -> map[cpu type] -> map[message length] -> execution time
+//	map[operation] -> map[hardware] -> map[message length] -> execution time
 func buildFuncExecTimeTbl(fel *FuncExecList) map[string]map[string]map[int]float64 {
 	et := make(map[string]map[string]map[int]float64)
 
 	// loop over the primary key, function type
-	for funcType, mapList := range fel.Times {
+	for operation, mapList := range fel.Times {
 
-		// make sure that we've initialized a map for the map[funcType] value
-		_, present := et[funcType]
+		// make sure that we've initialized a map for the map[operation] value
+		_, present := et[operation]
 		if !present {
-			et[funcType] = make(map[string]map[int]float64)
+			et[operation] = make(map[string]map[int]float64)
 		}
 
-		// given the function type, the associated mapList is a list of
+		// given the function class, the associated mapList is a list of
 		// structs that associate attribute information (cpu type, packet len) with the execution time
 		for _, funcExecDesc := range mapList {
-			cpuType := funcExecDesc.ProcessorType
+			hardware := funcExecDesc.Hardware
 			pcktLen := funcExecDesc.PcktLen
 			execTime := funcExecDesc.ExecTime
 
 			// use the cpuType and pckLen attributes to flesh out the execution time table
-			_, present := et[funcType][cpuType]
+			_, present := et[operation][hardware]
 			if !present {
-				et[funcType][cpuType] = make(map[int]float64)
+				et[operation][hardware] = make(map[int]float64)
 			}
 
-			et[funcType][cpuType][pcktLen] = execTime
+			et[operation][hardware][pcktLen] = execTime
 		}
 	}
 	return et
@@ -233,12 +224,14 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm Tr
 	// call GetExperimentCPDicts to do the heavy lifting of extracting data structures
 	// (typically maps) designed for serialization/deserialization,  and assign those maps to variables
 	// we'll use to re-represent this information in structures optimized for run-time use
-	cpd, cpid, cpfsd, fel, cpmd := GetExperimentCPDicts(syn)
+	cpd, cpid, fel, cpmd := GetExperimentCPDicts(syn)
 
 	// get a pointer to a mrns NetworkPortal
 
+	netportal = mrnes.CreateNetworkPortal()
 	_, use := syn["qksim"]
-	netportal = mrnes.CreateNetworkPortal(use)
+	netportal.SetQkNetSim(use)
+
 
 	// panic if any one of these dictionaries could not be built
 	if (cpd == nil) || (cpid == nil) || (fel == nil) || (cpmd == nil) {
@@ -249,16 +242,13 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm Tr
 	traceMgr = tm
 
 	// remember the mapping of functions to host
-	cmpPtnMapDict = cpmd
+	CmpPtnMapDict = cpmd
 
 	// build the tables used to look up the execution time of comp pattern functions, and device operations
 	funcExecTimeTbl = buildFuncExecTimeTbl(fel)
 
 	// create the run-time representation of comp patterns, and initialize them
-	err := buildCmpPtns(cpd, cpid, cpfsd)
-
-	// build the response function table
-	buildRespTbl()
+	err := buildCmpPtns(cpd, cpid)
 
 	// schedule the initiating events on self-initiating funcs
 	evtMgr := evtm.New()
@@ -276,7 +266,7 @@ func nxtId() int {
 
 // GetExperimentDicts accepts a map that holds the names of the input files used to define an experiment,
 // creates internal representations of the information they hold, and returns those structs.
-func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListDict, *CPFuncStateDict, *FuncExecList, *CompPatternMapDict) {
+func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListDict, *FuncExecList, *CompPatternMapDict) {
 	var cpd *CompPatternDict
 	var cpid *CPInitListDict
 	var fel *FuncExecList
@@ -288,7 +278,7 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 	var err error
 
 	// we allow some variation in input names, so apply fixup if needed
-	checkFields := []string{"cpInput", "cpInitInput", "cpStateInput", "funcExecInput", "mapInput"}
+	checkFields := []string{"cpInput", "cpInitInput", "funcExecInput", "mapInput"}
 	for _, filename := range checkFields {
 		trimmed := strings.Replace(filename, "Input", "", -1)
 		_, present := syn[trimmed]
@@ -310,17 +300,6 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 	cpid, err = ReadCPInitListDict(syn["cpInitInput"], useYAML, empty)
 	errs = append(errs, err)
 
-	// a State input file may or may not be present, so be careful
-	_, present := syn["cpStateInput"]
-	var cpfsd *CPFuncStateDict = nil
-	if present {
-		ext = path.Ext(syn["cpStateInput"])
-		useYAML = (ext == ".yaml") || (ext == ".yml")
-
-		cpfsd, err = ReadCPFuncStateDict(syn["cpStateInput"], useYAML, empty)
-		errs = append(errs, err)
-	}
-
 	ext = path.Ext(syn["funcExecInput"])
 	useYAML = (ext == ".yaml") || (ext == ".yml")
 
@@ -338,11 +317,11 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 		panic(err)
 	}
 
-	return cpd, cpid, cpfsd, fel, cpmd
+	return cpd, cpid, fel, cpmd
 }
 
 func ReportStatistics() {
-	for _, cpi := range cmpPtnInstByName {
+	for _, cpi := range CmpPtnInstByName {
 		cpi.ExecReport()
 	}
 }
