@@ -37,7 +37,7 @@ func CreateCompPattern(cmptnType string) *CompPattern {
 }
 
 var cmptnByName map[string]*CompPattern = make(map[string]*CompPattern)
-var Algorithms []string = []string{"rsa", "aes", "rsa-3072","rsa-2048","rsa-1024"}
+var Algorithms []string = []string{"rsa", "aes", "rsa-3072", "rsa-2048", "rsa-1024"}
 
 // AddFunc includes a function specification to a CompPattern
 func (cpt *CompPattern) AddFunc(fs *Func) {
@@ -59,9 +59,9 @@ func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType strin
 	// look for duplicated message type for edges with the same destination
 	for _, edge := range cpt.Edges {
 		if edge.DstLabel == dstFuncLabel && msgType == edge.MsgType {
-			panic(fmt.Errorf("%s declares identical message type %s directed to destination %s\n", 
+			panic(fmt.Errorf("%s declares identical message type %s directed to destination %s\n",
 				cpt.Name, msgType, dstFuncLabel))
-			}
+		}
 	}
 
 	// include the edge
@@ -70,7 +70,7 @@ func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType strin
 
 // GetInEdge returns a list of InEdges that match the specified source and destination
 func (cpt *CompPattern) GetInEdges(srcLabel, dstLabel string) []InEdge {
-	rtn  := []InEdge{}
+	rtn := []InEdge{}
 	for _, edge := range cpt.Edges {
 		if edge.SrcLabel == srcLabel && edge.DstLabel == dstLabel {
 			rtn = append(rtn, InEdge{SrcLabel: srcLabel, MsgType: edge.MsgType})
@@ -81,7 +81,7 @@ func (cpt *CompPattern) GetInEdges(srcLabel, dstLabel string) []InEdge {
 
 // GetInEdge returns a list of OutEdges that match the specified source and destination
 func (cpt *CompPattern) GetOutEdges(srcLabel, dstLabel string) []OutEdge {
-	rtn  := []OutEdge{}
+	rtn := []OutEdge{}
 	for _, edge := range cpt.Edges {
 		if edge.SrcLabel == srcLabel && edge.DstLabel == dstLabel {
 			rtn = append(rtn, OutEdge{DstLabel: dstLabel, MsgType: edge.MsgType})
@@ -89,8 +89,6 @@ func (cpt *CompPattern) GetOutEdges(srcLabel, dstLabel string) []OutEdge {
 	}
 	return rtn
 }
-
-
 
 // CompPatterDict holds pattern descriptions, is serializable
 type CompPatternDict struct {
@@ -476,10 +474,9 @@ func DecodeFuncParameters(paramStr string, useYAML bool) (*FuncParameters, error
 // Tables that hold class names and methods for those classes, can be tested against
 // both when model is built and when model is run
 
-var FuncClassNames map[string][]string = map[string][]string{"SelectDst":{"return-op", "initiate-op"}, "CryptoSrvr":{"encrypt-op", "decrypt-op"}, 
-		"PassThru":{"process-op"}, "FlowEndpt": {"initiate-op", "genflow-op", "sink-op"},
-		"GenPckt":{"initiate-op", "return-op"}, "PcktProcess":{"process-op"}}
-
+var FuncClassNames map[string][]string = map[string][]string{"SelectDst": {"return-op", "initiate-op"}, "CryptoSrvr": {"encrypt-op", "decrypt-op"},
+	"PassThru": {"process-op"}, "FlowEndpt": {"initiate-op", "genflow-op", "sink-op"},
+	"GenPckt": {"initiate-op", "return-op"}, "PcktProcess": {"process-op"}}
 
 // CompPatternMsg defines the structure of identification of messages that pass between Funcs in a CompPattern.
 // Structures of this sort are transformed by a simulation run into a form that include experiment-defined payloads,
@@ -490,7 +487,7 @@ type CompPatternMsg struct {
 
 	// a message may be a packet or a flow
 	IsPckt bool `json:"ispckt" yaml:"ispckt"`
-	
+
 	// PcktLen is a parameter used by some functions to select their execution time.  Not the same as the length of the message carrying the packet
 	PcktLen int `json:"pcktlen" yaml:"pcktlen"`
 
@@ -505,8 +502,8 @@ func CreateCompPatternMsg(msgType string, pcktLen int, msgLen int) *CompPatternM
 	cpm.PcktLen = pcktLen
 	cpm.MsgLen = msgLen
 
-	// zero args for pcktlen or msgLen mean this is a flow, not a packet 
-	cpm.IsPckt = (pcktLen>0 && msgLen>0)
+	// zero args for pcktlen or msgLen mean this is a flow, not a packet
+	cpm.IsPckt = (pcktLen > 0 && msgLen > 0)
 	return cpm
 }
 
@@ -535,10 +532,10 @@ func CreatePatternEdge(srcLabel, dstLabel, msgType, edgeLabel string) *PatternEd
 //		Hardware - the CPU,
 //	 PcktLen - number of bytes in data packet being operated on
 type FuncExecDesc struct {
-	Class string  `json:"class" yaml:"class"`
+	Class    string  `json:"class" yaml:"class"`
 	Hardware string  `json:"processortype" yaml:"processortype"`
-	PcktLen       int     `json:"pcktlen" yaml:"pcktlen"`
-	ExecTime      float64 `json:"exectime" yaml:"exectime"`
+	PcktLen  int     `json:"pcktlen" yaml:"pcktlen"`
+	ExecTime float64 `json:"exectime" yaml:"exectime"`
 }
 
 // A FuncExecList holds a map (Times) whose key is the class
@@ -631,7 +628,7 @@ func (fel *FuncExecList) AddTiming(class, hardware string, pcktLen int, execTime
 	fel.Times[class] = append(fel.Times[class], FuncExecDesc{Hardware: hardware, PcktLen: pcktLen, ExecTime: execTime, Class: class})
 }
 
-// A Func represents a function used within a [CompPattern].  
+// A Func represents a function used within a [CompPattern].
 // Its 'Label' attribute is an identifier for an instance of the Func that is unique among all Funcs
 // that make up a CompPattern which uses it, and the Class attribute is an identifier used when Func describes are
 // stored in a dictionary before being copied and assembled as part of CompPattern construction. Class typically describes
@@ -664,7 +661,7 @@ type OutEdge struct {
 var EmptyOutEdge OutEdge
 
 // A FuncResp maps an InEdge to an outEdgeStruct, which for a Func with static execution type
-// means an input received on the InEdge _may_ generate in response a message on the OutEdge.  
+// means an input received on the InEdge _may_ generate in response a message on the OutEdge.
 // 'Choice is an identifier used by the Func's logic for selecting an output edge.
 type FuncResp struct {
 	// input edge
@@ -726,20 +723,20 @@ func (fp *FuncParameters) AddState(state string) {
 // and includes it in the struct's list of responses
 func (fp *FuncParameters) AddResponse(inEdge InEdge, outEdge OutEdge, methodCode string) {
 	// find the label of the output edge named in this response and record it as the choice
-	fr := FuncResp{InEdge: inEdge, OutEdge: outEdge, MethodCode: methodCode, Choice: "" }
+	fr := FuncResp{InEdge: inEdge, OutEdge: outEdge, MethodCode: methodCode, Choice: ""}
 	fp.Response = append(fp.Response, fr)
 }
 
 // AddResponseChoice finds the response associated with the InEdge/OutEdge and sets its choice
 func (fp *FuncParameters) AddResponseChoice(inEdge InEdge, outEdge OutEdge, choice string) {
 	// find the label of the output edge named in this response and record it as the choice
-	for idx := 0; idx<len(fp.Response); idx++ {
+	for idx := 0; idx < len(fp.Response); idx++ {
 		if fp.Response[idx].InEdge == inEdge && fp.Response[idx].OutEdge == outEdge {
 			fp.Response[idx].Choice = choice
 			break
 		}
 	}
-}	
+}
 
 // Serialize returns a serialized representation of the FuncParameters struct, in either json or yaml
 // form, depending on the input parameter 'useYAML'.  If the serialization generates an error it is returned
@@ -779,12 +776,9 @@ func CreateFunc(class, funcLabel string) *Func {
 
 // SerialParameters returns a serialization of the input parameter struct given as an argument.
 func (fd *Func) SerializeParameters(params any, useYAML bool) (string, error) {
-	var err error = nil
-
 	fp := params.(*FuncParameters)
-	return fp.Serialize(useYAML)
 
-	return "", err
+	return fp.Serialize(useYAML)
 }
 
 // A CompPatternMap describes how funcs in an instantiated [CompPattern]

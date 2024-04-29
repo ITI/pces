@@ -14,7 +14,7 @@ import (
 // interface to network simulator
 type NetSimPortal interface {
 	HostCPU(string) string
-	EnterNetwork(*evtm.EventManager, string, string, int, int, float64, any, 
+	EnterNetwork(*evtm.EventManager, string, string, int, int, float64, any,
 		any, evtm.EventHandlerFunction, any, evtm.EventHandlerFunction) any
 }
 
@@ -231,7 +231,6 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm Tr
 	netportal = mrnes.CreateNetworkPortal()
 	_, use := syn["qksim"]
 	netportal.SetQkNetSim(use)
-
 
 	// panic if any one of these dictionaries could not be built
 	if (cpd == nil) || (cpid == nil) || (fel == nil) || (cpmd == nil) {

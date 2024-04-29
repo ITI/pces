@@ -20,18 +20,18 @@ type funcOutEdge struct {
 //
 //	constrained to the 'statefulerminisitc' execution model.
 type CmpPtnFuncInst struct {
-	InitFunc evtm.EventHandlerFunction  // if not 'emptyInitFunc' call this to initialize the function	
-	InitMsg *CmpPtnMsg  // message that is copied when this instance is used to initiate a chain of func evaluations
-	class  string	 // specifier leading to specific state, entrance, and exit functions
-	Label  string    // an identifier for this func, unique within the instance of CompPattern holding it.
-	host    string   // identity of the host to which this func is mapped for execution
-	PtnName string   // name of the instantiated CompPattern holding this function
-	id      int      // integer identity which is unique among all objects in the MrNesbits model
-	active  bool     // flag whether function is actively processing inputs
-	State   any      // holds string-coded state for string-code state variable names
-	Reflect bool	 // whether the direction of the cmpHdr be return
-	InterarrivalDist string  // for self-initiation
-	InterarrivalMean float64 // for self-initiation
+	InitFunc         evtm.EventHandlerFunction // if not 'emptyInitFunc' call this to initialize the function
+	InitMsg          *CmpPtnMsg                // message that is copied when this instance is used to initiate a chain of func evaluations
+	class            string                    // specifier leading to specific state, entrance, and exit functions
+	Label            string                    // an identifier for this func, unique within the instance of CompPattern holding it.
+	host             string                    // identity of the host to which this func is mapped for execution
+	PtnName          string                    // name of the instantiated CompPattern holding this function
+	id               int                       // integer identity which is unique among all objects in the MrNesbits model
+	active           bool                      // flag whether function is actively processing inputs
+	State            any                       // holds string-coded state for string-code state variable names
+	Reflect          bool                      // whether the direction of the cmpHdr be return
+	InterarrivalDist string                    // for self-initiation
+	InterarrivalMean float64                   // for self-initiation
 
 	// at run-time start-up this function is initialized with its responses
 	// the set of potential output edges may be constrained, but not statefulermined solely by the input edge as with the static model.
@@ -49,23 +49,22 @@ type CmpPtnFuncInst struct {
 	methodCode map[string]string
 }
 
-
 // createDestFuncInst== is a constructor that builds an instance of CmpPtnFunctInst from a Func description and
 // a serialized representation of a StaticParameters struct.
 func createFuncInst(cpInstName string, fnc *Func, paramStr, stateStr string, useYAML bool) *CmpPtnFuncInst {
 	cpfi := new(CmpPtnFuncInst)
-	cpfi.id = nxtId()                    // get an integer id that is unique across all objects in the simulation model
-	cpfi.Label = fnc.Label               // remember a label given to this function instance as part of building a CompPattern graph
-	cpfi.PtnName = cpInstName            // remember the name of the instance of the comp pattern in which this func resides
-	cpfi.InitFunc = nil					 // will be over-ridden if there is an initialization event scheduled later
-	cpfi.InitMsg = nil					 // will be over-ridden if the initialization block indicates initiation possible
+	cpfi.id = nxtId()         // get an integer id that is unique across all objects in the simulation model
+	cpfi.Label = fnc.Label    // remember a label given to this function instance as part of building a CompPattern graph
+	cpfi.PtnName = cpInstName // remember the name of the instance of the comp pattern in which this func resides
+	cpfi.InitFunc = nil       // will be over-ridden if there is an initialization event scheduled later
+	cpfi.InitMsg = nil        // will be over-ridden if the initialization block indicates initiation possible
 	cpfi.active = true
 	cpfi.class = fnc.Class
 	cpfi.Resp = make(map[InEdge][]funcOutEdge)
 	cpfi.msgResp = make(map[int][]*CmpPtnMsg)
 	cpfi.methodCode = make(map[string]string)
 	cpfi.respMethods = make(map[string]*respMethod)
-	
+
 	// look up the func-to-host assignment, established earlier in the initialization sequence
 	cpfi.host = CmpPtnFuncHost(cpfi)
 
@@ -91,7 +90,7 @@ func createFuncInst(cpInstName string, fnc *Func, paramStr, stateStr string, use
 	// N.B. copy of state map used to be here.  Replace it
 
 	// edges are maps of message type to func node labels. Here we copy the input list, but
-	// gather together responses that have a common InEdge  (N.B., InEdge is a structure more complex 
+	// gather together responses that have a common InEdge  (N.B., InEdge is a structure more complex
 	// than an int or string, but can be used to index maps)
 	for _, resp := range params.Response {
 		_, present := cpfi.Resp[resp.InEdge]
@@ -117,7 +116,7 @@ func createFuncInst(cpInstName string, fnc *Func, paramStr, stateStr string, use
 }
 
 func (cpfsi *CmpPtnFuncInst) GlobalName() string {
-	return cpfsi.PtnName+":"+cpfsi.Label
+	return cpfsi.PtnName + ":" + cpfsi.Label
 }
 
 // AddResponse stores the selected out message response from executing the function,
@@ -144,8 +143,8 @@ func (cpfi *CmpPtnFuncInst) isInitiating() bool {
 }
 
 func (cpfi *CmpPtnFuncInst) InitMsgParams(msgType string, msgLen, pcktLen int, rate float64) {
-    edge := CmpPtnGraphEdge{SrcLabel: cpfi.Label, DstLabel: cpfi.Label, MsgType: "initiate"}
-    cpfi.InitMsg = CreateCmpPtnMsg(edge, cpfi.Label, cpfi.Label, msgType, msgLen, pcktLen, rate, cpfi.PtnName, cpfi.PtnName, nil, 0)
+	edge := CmpPtnGraphEdge{SrcLabel: cpfi.Label, DstLabel: cpfi.Label, MsgType: "initiate"}
+	cpfi.InitMsg = CreateCmpPtnMsg(edge, cpfi.Label, cpfi.Label, msgType, msgLen, pcktLen, rate, cpfi.PtnName, cpfi.PtnName, nil, 0)
 }
 
 // funcActive indicates whether the function is processing messages
@@ -182,16 +181,15 @@ func (cpfi *CmpPtnFuncInst) funcDevice() string {
 func (cpfi *CmpPtnFuncInst) funcInitEvtHdlr() evtm.EventHandlerFunction {
 	return cpfi.InitFunc
 }
-	
+
 // respMethod associates two RespFunc that implement a function's response,
 // one when it starts, the other when it ends
 type respMethod struct {
 	Start StartMethod
-	End evtm.EventHandlerFunction
+	End   evtm.EventHandlerFunction
 }
 
-
-// AddStartMethod associates a string response 'name' with a pair of methods used to 
+// AddStartMethod associates a string response 'name' with a pair of methods used to
 // represent the start and end of the function's execution.   The default method
 // for the end method is ExitFunc
 // Return of bool allows call to RegisterFuncClass
@@ -222,4 +220,3 @@ func CmpPtnFuncHost(cpfi *CmpPtnFuncInst) string {
 	ptnMap := CmpPtnMapDict.Map[cpfi.PtnName]
 	return ptnMap.FuncMap[cpfi.Label]
 }
-

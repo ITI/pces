@@ -10,7 +10,7 @@ import (
 // types of responses, so we use a map whose key selects the start, end pair of methods
 type FuncClass interface {
 	Class() string
-	InitState(*CmpPtnFuncInst, string, bool) 
+	InitState(*CmpPtnFuncInst, string, bool)
 }
 
 // functions called to implement function's funcExec are of type RespFunc
@@ -21,10 +21,10 @@ type StartMethod func(*evtm.EventManager, *CmpPtnFuncInst, string,
 // one when it starts, the other when it ends
 type RespMethod struct {
 	Start StartMethod
-	End evtm.EventHandlerFunction
+	End   evtm.EventHandlerFunction
 }
 
-// Register is called to tell the system that a particular 
+// Register is called to tell the system that a particular
 // function class exists, and gives a point to its description.
 // The idea is to register only those function classes actually used, or at least,
 // provide clear separation between classes.  Return of bool allows call to RegisterFuncClass
@@ -38,7 +38,7 @@ func RegisterFuncClass(fc FuncClass) bool {
 	FuncClasses[className] = fc
 	return true
 }
-	
+
 // map that takes us from the name of a FuncClass
 var FuncClasses map[string]FuncClass = make(map[string]FuncClass)
 
@@ -51,4 +51,3 @@ func validFuncClass(class string) bool {
 	_, present := FuncClasses[class]
 	return present
 }
-
