@@ -1,0 +1,14 @@
+github.com/iti/evt v0.1.0 h1:kjSXXxF+mwKPpKWtp0oLRfwPX9BSS+xWUaeNxfS0BsQ=
+github.com/iti/evt v0.1.0/go.mod h1:7inW/lMkXSMwOCVG7udj0YE0ssxd6l0H5rgN5iR/RRU=
+github.com/iti/mrnes v0.0.0-20240429121527-32f9f9d901ff h1:HYstnoNmCqyikYVKFZRtULeL+m1gec/E4Sr6o/CGPsY=
+github.com/iti/mrnes v0.0.0-20240429121527-32f9f9d901ff/go.mod h1:4HOsudFnAMFmWLWv43PammHQXdiEn834QWFZegJGOJw=
+github.com/iti/rngstream v0.2.2 h1:9cfSikwWPW1Yie+RjdJ23uUuMryLu+Ou38/TChYLPZ8=
+github.com/iti/rngstream v0.2.2/go.mod h1:sf9vdWtEjVW4dxOocgIqbivkNIrfcl10H8jEeeqFNnQ=
+golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f h1:99ci1mjWVBWwJiEKYY6jWa4d2nTQVIEhZIptnrVb1XY=
+golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f/go.mod h1:/lliqkxwWAhPjf5oSOIJup2XcqJaw8RGS6k3TGEc7GI=
+gonum.org/v1/gonum v0.14.0 h1:2NiG67LD1tEH0D7kM+ps2V+fXmsAnpUeec7n8tcr4S0=
+gonum.org/v1/gonum v0.14.0/go.mod h1:AoWeoz0becf9QMWtE8iWXNXc27fK4fNeHNf/oMejGfU=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
+gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
