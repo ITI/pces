@@ -11,7 +11,7 @@ import (
 )
 
 // A FuncClass represents the methods used to simulate the effect
-// of executing a function.  Different types of input generate different
+// of executing a function,  different types of input generate different
 // types of responses, so we use a map whose key selects the start, end pair of methods
 type FuncClass interface {
 	Class() string
