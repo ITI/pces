@@ -14,9 +14,10 @@ import (
 // and at runtime are read into MrNesbits.  Runtime data-structures (such as CmpPtnInst
 // and CmpPtnMsg) are created from constructors that take desc structures as arguments.
 
-// given the name (alt., id) of an instance of a CompPattern, get a pointer to its struct
+// CmpPtnInstByName and CmpPtnInstByID take the the name (alt., id) of an instance of a CompPattern, 
+// and associate a pointer to its struct
 var CmpPtnInstByName map[string]*CmpPtnInst = make(map[string]*CmpPtnInst)
-var CmpPtnInstById map[int]*CmpPtnInst = make(map[int]*CmpPtnInst)
+var CmpPtnInstByID map[int]*CmpPtnInst = make(map[int]*CmpPtnInst)
 
 type execRecord struct {
 	src   string  // func initiating execution trace
@@ -41,8 +42,8 @@ type CmpPtnInst struct {
 	Rngs      *rngstream.RngStream
 	Graph     *CmpPtnGraph                      // graph describing structure of funcs and edges
 	active    map[int]execRecord                // executions that are active now
-	activeCnt map[int]int                       // number of instances of executions with common execId (>1 by branching)
-	lostExec  map[int]evtm.EventHandlerFunction // call this handler when a packet for a given execId is lost
+	activeCnt map[int]int                       // number of instances of executions with common execID (>1 by branching)
+	lostExec  map[int]evtm.EventHandlerFunction // call this handler when a packet for a given execID is lost
 	finished  map[string]execSummary            // summary of completed executions
 }
 
@@ -55,7 +56,7 @@ func createCmpPtnInst(ptnInstName string, cpd CompPattern, cpid CPInitList) (*Cm
 	cpi.name = ptnInstName
 
 	// get assuredly unique id
-	cpi.id = nxtId()
+	cpi.id = nxtID()
 
 	// initialize slice of the func instances that make up the cpmPtnInst
 	cpi.funcs = make(map[string]*CmpPtnFuncInst)
@@ -66,7 +67,7 @@ func createCmpPtnInst(ptnInstName string, cpd CompPattern, cpid CPInitList) (*Cm
 	// initialize map that carries number of active execs with same execid
 	cpi.activeCnt = make(map[int]int)
 
-	// initialize map that carries event scheduler to call if packet on execId is lost
+	// initialize map that carries event scheduler to call if packet on execID is lost
 	cpi.lostExec = make(map[int]evtm.EventHandlerFunction)
 
 	// initialize map that carries information about completed executions
@@ -79,14 +80,14 @@ func createCmpPtnInst(ptnInstName string, cpd CompPattern, cpid CPInitList) (*Cm
 
 	// enable access to this struct through its name, and through its id
 	CmpPtnInstByName[cpi.name] = cpi
-	CmpPtnInstById[cpi.id] = cpi
+	CmpPtnInstByID[cpi.id] = cpi
 
 	// The cpd structure has a list of desc descriptions of functions.
 	// Call a constructor for each, depending on the func's execution type.
 	// Save the created runtime representation of the function in the CmpPtnInst's list of funcs
 	for _, funcDesc := range cpd.Funcs {
 		if !validFuncClass(funcDesc.Class) {
-			panic(fmt.Errorf("Function class %s not recognized\n", funcDesc.Class))
+			panic(fmt.Errorf("function class %s not recognized", funcDesc.Class))
 		}
 
 		df := createFuncInst(ptnInstName, &funcDesc, cpid.Params[funcDesc.Label], cpid.State[funcDesc.Label], cpid.UseYAML)
@@ -107,19 +108,19 @@ func createCmpPtnInst(ptnInstName string, cpd CompPattern, cpid CPInitList) (*Cm
 
 // startRecExec records the name of the initialiating func, and starting
 // time of an execution trace
-func (cpi *CmpPtnInst) startRecExec(execId int, funcName string, time float64) {
+func (cpi *CmpPtnInst) startRecExec(execID int, funcName string, time float64) {
 	activeRec := execRecord{src: funcName, start: time}
-	cpi.active[execId] = activeRec
-	cpi.activeCnt[execId] = 1
+	cpi.active[execID] = activeRec
+	cpi.activeCnt[execID] = 1
 }
 
 // EndRecExec computes the completed execution time of the execution identified,
 // given the ending time, incorporates its statistics into the CmpPtnInst
 // statistics summary
-func (cpi *CmpPtnInst) EndRecExec(execId int, time float64, completed bool) float64 {
-	rtn := time - cpi.active[execId].start
-	src := cpi.active[execId].src
-	delete(cpi.active, execId)
+func (cpi *CmpPtnInst) EndRecExec(execID int, time float64, completed bool) float64 {
+	rtn := time - cpi.active[execID].start
+	src := cpi.active[execID].src
+	delete(cpi.active, execID)
 	rec, present := cpi.finished[src]
 	if !present {
 		rec = execSummary{n: 0, sum: float64(0.0), sum2: float64(0.0), completed: 0}
@@ -136,8 +137,8 @@ func (cpi *CmpPtnInst) EndRecExec(execId int, time float64, completed bool) floa
 }
 
 func (cpi *CmpPtnInst) cleanUp() {
-	for execId := range cpi.active {
-		delete(cpi.active, execId)
+	for execID := range cpi.active {
+		delete(cpi.active, execID)
 	}
 }
 
@@ -171,7 +172,7 @@ func (cpi *CmpPtnInst) ExecReport() {
 	}
 }
 
-// endPts carries information on a CmpPtnMsg about where the execution thread started, and holds a place for a destination
+// EndPts carries information on a CmpPtnMsg about where the execution thread started, and holds a place for a destination
 type EndPts struct {
 	SrtLabel string
 	EndLabel string
@@ -180,7 +181,7 @@ type EndPts struct {
 // A CmpPtnMsg struct describes a message going from one CompPattern function to another.
 // It carries ancillary information about the message that is included for referencing.
 type CmpPtnMsg struct {
-	ExecId int    // initialize when with an initating comp pattern message.  Carried by every resulting message.
+	ExecID int    // initialize when with an initating comp pattern message.  Carried by every resulting message.
 	SrcCP  string // name of comp pattern instance from which the message originates
 	DstCP  string // name of comp pattern instance to which the message is directed
 
@@ -205,13 +206,13 @@ func (cpm *CmpPtnMsg) carriesPckt() bool {
 // CreateCmpPtnMsg is a constructor whose arguments are all the attributes needed to make a CmpPtnMsg.
 // One is created and returnedl
 func CreateCmpPtnMsg(edge CmpPtnGraphEdge, srt, end string, msgType string, msgLen int, pcktLen int, rate float64, SrcCP, DstCP string,
-	payload any, execId int) *CmpPtnMsg {
+	payload any, execID int) *CmpPtnMsg {
 
 	// record that the srt point is the srcLabel on the message, but at this construction no destination is chosen
 	cmphdr := EndPts{SrtLabel: srt, EndLabel: end}
 
 	return &CmpPtnMsg{SrcCP: SrcCP, DstCP: DstCP, Edge: edge, CmpHdr: cmphdr, MsgType: msgType,
-		MsgLen: msgLen, PcktLen: pcktLen, Rate: rate, Payload: payload, ExecId: execId}
+		MsgLen: msgLen, PcktLen: pcktLen, Rate: rate, Payload: payload, ExecID: execID}
 }
 
 // InEdgeMsg returns the InEdge structure embedded in a CmpPtnMsg
@@ -238,7 +239,7 @@ func CmpPtnFuncInstHost(cpfi *CmpPtnFuncInst) string {
 	return CmpPtnMapDict.Map[cpfCmpPtn].FuncMap[cpfLabel]
 }
 
-// funcExecTime returns the increase in execution time resulting from executing the
+// FuncExecTime returns the increase in execution time resulting from executing the
 // CmpPtnFuncInst offered as argument, to the message also offered as argument.
 // If the pcktlen of the message does not exactly match the pcktlen parameter of a func timing entry,
 // an interpolation or extrapolation of existing entries is performed.
@@ -254,13 +255,13 @@ func FuncExecTime(cpfi *CmpPtnFuncInst, op string, hardware string, msg *CmpPtnM
 	// if we don't have an entry for this function type, complain
 	_, present := funcExecTimeTbl[op]
 	if !present {
-		panic(fmt.Errorf("no function timing look up for operation %s\n", op))
+		panic(fmt.Errorf("no function timing look up for operation %s", op))
 	}
 
 	// if we don't have an entry for the named CPU for this function type, throw an error
 	lenMap, here := funcExecTimeTbl[op][hardware]
 	if !here || lenMap == nil {
-		panic(fmt.Errorf("no function timing look for operation %s on hardware %s\n", op, hardware))
+		panic(fmt.Errorf("no function timing look for operation %s on hardware %s", op, hardware))
 	}
 
 	// lenMap is map[int]string associating an execution time for a packet with the stated length,
@@ -336,15 +337,15 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 	if initiating && cpm == nil {
 		cpm = new(CmpPtnMsg)
 		*cpm = *cpfi.InitMsg
-		cpm.ExecId = numExecThreads
+		cpm.ExecID = numExecThreads
 		cpm.MsgType = "initiate"
 		numExecThreads += 1
 		// EnterFunc starts the clock on the execution thread
-		cpi.startRecExec(cpm.ExecId, cpfi.funcLabel(), evtMgr.CurrentSeconds())
+		cpi.startRecExec(cpm.ExecID, cpfi.funcLabel(), evtMgr.CurrentSeconds())
 	}
 
 	// note entry to function
-	traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecId, 0, cpfi.id, "enter", cpm.carriesPckt(), cpm.Rate)
+	traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, cpfi.id, "enter", cpm.carriesPckt(), cpm.Rate)
 
 	// separating the methodCode from the response allows
 	// different inedges to map to the same response
@@ -363,7 +364,7 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 
 	// if not accepted, stop the collection of information about the execution thread
 	if !accepted {
-		cpi.EndRecExec(cpm.ExecId, evtMgr.CurrentSeconds(), false)
+		cpi.EndRecExec(cpm.ExecID, evtMgr.CurrentSeconds(), false)
 	}
 
 	// calling funcEnter could inactivate the function altogether.
@@ -374,8 +375,8 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 
 	// check whether the action completion can be scheduled
 	if scheduleExit {
-		// save the response output messages, indexed by msg.ExecId
-		cpfi.AddResponse(cpm.ExecId, outMsgs)
+		// save the response output messages, indexed by msg.ExecID
+		cpfi.AddResponse(cpm.ExecID, outMsgs)
 
 		// if schedule the end method. N.B. this may be the ExitFunc handler if
 		// so configured, but need not necessarily be so.  Buried in the table, we don't see it here
@@ -416,18 +417,18 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 	cpm := cpMsg.(*CmpPtnMsg)
 
 	// get the response(s), if any.  Note that result is a slice of CmpPtnMsgs.
-	msgs := cpfi.funcResp(cpm.ExecId)
+	msgs := cpfi.funcResp(cpm.ExecID)
 
 	// note exit from function
-	traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecId, 0, cpfi.id, "exit", cpm.carriesPckt(), cpm.Rate)
+	traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, cpfi.id, "exit", cpm.carriesPckt(), cpm.Rate)
 
 	// see if we're done
 	if len(msgs) == 0 || len(cpm.Edge.DstLabel) == 0 {
 		cpi := CmpPtnInstByName[cpfi.funcCmpPtn()]
 
-		cpi.EndRecExec(cpm.ExecId, evtMgr.CurrentSeconds(), true)
-		// fmt.Printf("at time %f execId %d hit the end of the function chain at %s with delay %f\n",
-		//	evtMgr.CurrentSeconds(), cpm.ExecId, cpfi.funcLabel(), delay)
+		cpi.EndRecExec(cpm.ExecID, evtMgr.CurrentSeconds(), true)
+		// fmt.Printf("at time %f execID %d hit the end of the function chain at %s with delay %f\n",
+		//	evtMgr.CurrentSeconds(), cpm.ExecID, cpfi.funcLabel(), delay)
 		return nil
 	}
 
@@ -459,7 +460,7 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 			} else {
 				// to get to the dstHost we need to go through the network
 				isPckt := msg.carriesPckt()
-				netportal.EnterNetwork(evtMgr, cpfi.host, dstHost, msg.MsgLen, cpm.ExecId, isPckt, msg.Rate, msg,
+				netportal.EnterNetwork(evtMgr, cpfi.host, dstHost, msg.MsgLen, cpm.ExecID, isPckt, msg.Rate, msg,
 					nil, ReEnter, cpFunc, LostCmpPtnMsg)
 
 			}
@@ -471,7 +472,7 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 	return nil
 }
 
-// reEnter is scheduled from the mrnes side to report the delivery
+// ReEnter is scheduled from the mrnes side to report the delivery
 func ReEnter(evtMgr *evtm.EventManager, context any, msg any) any {
 	cpMsg := msg.(*CmpPtnMsg)
 
@@ -494,22 +495,22 @@ func ReEnter(evtMgr *evtm.EventManager, context any, msg any) any {
 	return nil
 }
 
-// lostCmpPtnMsg is scheduled from the mrnes side to report the loss of a comp pattern message
+// LostCmpPtnMsg is scheduled from the mrnes side to report the loss of a comp pattern message
 func LostCmpPtnMsg(evtMgr *evtm.EventManager, context any, msg any) any {
 	cpMsg := msg.(*CmpPtnMsg)
 
 	// cpMmsg.CP is the name of pattern
 	CP := cpMsg.DstCP
-	execId := cpMsg.ExecId
+	execID := cpMsg.ExecID
 
 	// look up a description of the comp pattern
 	cpi := CmpPtnInstByName[CP]
 
-	cpi.activeCnt[execId] -= 1
+	cpi.activeCnt[execID] -= 1
 
-	// if no other msgs active for this execId report loss
-	if cpi.activeCnt[execId] == 0 {
-		fmt.Printf("Comp Pattern %s lost message for execution id %d\n", CP, execId)
+	// if no other msgs active for this execID report loss
+	if cpi.activeCnt[execID] == 0 {
+		fmt.Printf("Comp Pattern %s lost message for execution id %d\n", CP, execID)
 		return nil
 	}
 	return nil

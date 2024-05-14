@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// interface to network simulator
+// NetSimPortal provides an interface to network simulator
 type NetSimPortal interface {
 	HostCPU(string) string
 	EnterNetwork(*evtm.EventManager, string, string, int, int, float64, any,
@@ -41,6 +41,7 @@ var traceMgr TraceManager
 
 // declare global variables that are loaded from
 // analysis of input files
+
 var CmpPtnMapDict *CompPatternMapDict
 var funcExecTimeTbl map[string]map[string]map[int]float64
 
@@ -52,7 +53,7 @@ type CmpPtnGraph struct {
 	Nodes map[string]*CmpPtnGraphNode
 }
 
-// A CmpPtnGraph edge declares the possibility that a function with label srcLabel
+// CmpPtnGraphEdge declares the possibility that a function with label srcLabel
 // might send a message of type msgType to the function (in the same CPG) with label dstLabel
 type CmpPtnGraphEdge struct {
 	SrcLabel  string
@@ -91,7 +92,7 @@ func (cpg *CmpPtnGraph) addEdge(srcLabel, msgType, dstLabel, edgeLabel string) e
 	}
 
 	// add to srcNode outEdges, if needed, and if not initiation
-	var duplicated bool = false
+	duplicated := false
 	for _, outEdge := range srcNode.OutEdges {
 		if *outEdge == *edge {
 			duplicated = true
@@ -206,7 +207,7 @@ func buildFuncExecTimeTbl(fel *FuncExecList) map[string]map[string]map[int]float
 	return et
 }
 
-// BuildExperiment is called from the module that creates and runs
+// BuildExperimentCP is called from the module that creates and runs
 // a simulation. Its inputs identify the names of input files, which it
 // uses to assemble and initialize the model (and experiment) data structures.
 // It returns a pointer to an EventManager data structure used to coordinate the
@@ -237,7 +238,7 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm Tr
 		panic("empty dictionary")
 	}
 
-	NumIds = idCounter
+	NumIDs = idCounter
 	traceMgr = tm
 
 	// remember the mapping of functions to host
@@ -255,15 +256,15 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm Tr
 	return evtMgr, err
 }
 
-// utility function for generating unique integer ids on demand
-var NumIds int = 0
+// NumIDs holds value that utility function used for generating unique integer ids on demand
+var NumIDs int = 0
 
-func nxtId() int {
-	NumIds += 1
-	return NumIds
+func nxtID() int {
+	NumIDs += 1
+	return NumIDs
 }
 
-// GetExperimentDicts accepts a map that holds the names of the input files used to define an experiment,
+// GetExperimentCPDicts accepts a map that holds the names of the input files used to define an experiment,
 // creates internal representations of the information they hold, and returns those structs.
 func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListDict, *FuncExecList, *CompPatternMapDict) {
 	var cpd *CompPatternDict
@@ -271,7 +272,7 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 	var fel *FuncExecList
 	var cpmd *CompPatternMapDict
 
-	var empty []byte = make([]byte, 0)
+	empty := make([]byte, 0)
 
 	var errs []error
 	var err error

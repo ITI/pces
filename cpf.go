@@ -38,7 +38,7 @@ type CmpPtnFuncInst struct {
 	// Here, for a given input edge, 'resp' holds a slice of possible responses.
 	Resp map[InEdge][]funcOutEdge
 
-	// buffer the output messages created by executing the function body, indexed by the execId of the
+	// buffer the output messages created by executing the function body, indexed by the execID of the
 	// initiating message
 	msgResp map[int][]*CmpPtnMsg
 
@@ -53,7 +53,7 @@ type CmpPtnFuncInst struct {
 // a serialized representation of a StaticParameters struct.
 func createFuncInst(cpInstName string, fnc *Func, paramStr, stateStr string, useYAML bool) *CmpPtnFuncInst {
 	cpfi := new(CmpPtnFuncInst)
-	cpfi.id = nxtId()         // get an integer id that is unique across all objects in the simulation model
+	cpfi.id = nxtID()         // get an integer id that is unique across all objects in the simulation model
 	cpfi.Label = fnc.Label    // remember a label given to this function instance as part of building a CompPattern graph
 	cpfi.PtnName = cpInstName // remember the name of the instance of the comp pattern in which this func resides
 	cpfi.InitFunc = nil       // will be over-ridden if there is an initialization event scheduled later
@@ -83,7 +83,7 @@ func createFuncInst(cpInstName string, fnc *Func, paramStr, stateStr string, use
 		// fnc.Class was already validated
 
 		if !slices.Contains(FuncClassNames[fnc.Class], resp.MethodCode) {
-			panic(fmt.Errorf("function method code %s not recognized for function class %s\n", resp.MethodCode, fnc.Class))
+			panic(fmt.Errorf("function method code %s not recognized for function class %s", resp.MethodCode, fnc.Class))
 		}
 	}
 
@@ -104,7 +104,7 @@ func createFuncInst(cpInstName string, fnc *Func, paramStr, stateStr string, use
 		df := funcOutEdge{DstLabel: resp.OutEdge.DstLabel, MsgType: resp.OutEdge.MsgType, Choice: resp.Choice}
 		_, present = cpfi.methodCode[resp.InEdge.MsgType]
 		if present {
-			panic(fmt.Errorf("message type %s maps to multiple method codes\n", resp.InEdge.MsgType))
+			panic(fmt.Errorf("message type %s maps to multiple method codes", resp.InEdge.MsgType))
 		}
 
 		cpfi.methodCode[resp.InEdge.MsgType] = resp.MethodCode
@@ -115,25 +115,25 @@ func createFuncInst(cpInstName string, fnc *Func, paramStr, stateStr string, use
 	return cpfi
 }
 
-func (cpfsi *CmpPtnFuncInst) GlobalName() string {
-	return cpfsi.PtnName + ":" + cpfsi.Label
+func (cpfi *CmpPtnFuncInst) GlobalName() string {
+	return cpfi.PtnName + ":" + cpfi.Label
 }
 
 // AddResponse stores the selected out message response from executing the function,
-// to be released later.  Saving through cpfsi.Resp[execId] to account for concurrent overlapping executions
-func (cpfsi *CmpPtnFuncInst) AddResponse(execId int, resp []*CmpPtnMsg) {
-	cpfsi.msgResp[execId] = resp
+// to be released later.  Saving through cpfi.Resp[execID] to account for concurrent overlapping executions
+func (cpfi *CmpPtnFuncInst) AddResponse(execID int, resp []*CmpPtnMsg) {
+	cpfi.msgResp[execID] = resp
 }
 
 // funcResp returns the saved list of function response messages associated
 // the the response to the input msg, and removes it from the msgResp map
-func (cpfi *CmpPtnFuncInst) funcResp(execId int) []*CmpPtnMsg {
+func (cpfi *CmpPtnFuncInst) funcResp(execID int) []*CmpPtnMsg {
 
-	rtn, present := cpfi.msgResp[execId]
+	rtn, present := cpfi.msgResp[execID]
 	if !present {
-		panic(fmt.Errorf("unsuccessful resp recovery\n"))
+		panic(fmt.Errorf("unsuccessful resp recovery"))
 	}
-	delete(cpfi.msgResp, execId)
+	delete(cpfi.msgResp, execID)
 
 	return rtn
 }
@@ -162,8 +162,8 @@ func (cpfi *CmpPtnFuncInst) funcLabel() string {
 	return cpfi.Label
 }
 
-// funcId returns the unique-across-model integer identifier for this CmpPtnFunc
-func (cpfi *CmpPtnFuncInst) funcId() int {
+// funcID returns the unique-across-model integer identifier for this CmpPtnFunc
+func (cpfi *CmpPtnFuncInst) funcID() int {
 	return cpfi.id
 }
 
@@ -194,25 +194,25 @@ type respMethod struct {
 // for the end method is ExitFunc
 // Return of bool allows call to RegisterFuncClass
 // as part of a variable assignment outside of a function body
-func (cpfsi *CmpPtnFuncInst) AddStartMethod(methodCode string, start StartMethod) bool {
+func (cpfi *CmpPtnFuncInst) AddStartMethod(methodCode string, start StartMethod) bool {
 	// if the name for the methods is already in use, panic
-	_, present := cpfsi.respMethods[methodCode]
+	_, present := cpfi.respMethods[methodCode]
 	if present {
-		panic(fmt.Errorf("function method name %s already in use\n", methodCode))
+		panic(fmt.Errorf("function method name %s already in use", methodCode))
 	}
 
 	rp := respMethod{Start: start, End: ExitFunc}
-	cpfsi.respMethods[methodCode] = &rp
+	cpfi.respMethods[methodCode] = &rp
 	return true
 }
 
 // AddEndMethod includes a customized End method to a previously defined respMethod
-func (cpfsi *CmpPtnFuncInst) AddEndMethod(methodCode string, end evtm.EventHandlerFunction) bool {
-	_, present := cpfsi.respMethods[methodCode]
+func (cpfi *CmpPtnFuncInst) AddEndMethod(methodCode string, end evtm.EventHandlerFunction) bool {
+	_, present := cpfi.respMethods[methodCode]
 	if !present {
-		panic(fmt.Errorf("AddEndMethod requires methodCode %s to have been declared already\n", methodCode))
+		panic(fmt.Errorf("AddEndMethod requires methodCode %s to have been declared already", methodCode))
 	}
-	cpfsi.respMethods[methodCode].End = end
+	cpfi.respMethods[methodCode].End = end
 	return true
 }
 

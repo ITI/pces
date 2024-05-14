@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// CompPatternDesc is a directed graph that describes the data flow among functions that implement an end-to-end computation
+// CompPattern is a directed graph that describes the data flow among functions that implement an end-to-end computation
 type CompPattern struct {
 	// a model may use a number of instances of CompPatterns that have the same CPType
 	CPType string `json:"cptype" yaml:"cptype"`
@@ -30,7 +30,7 @@ type CompPattern struct {
 // CreateCompPattern is an initialization constructor.
 // Its output struct has methods for integrating data.
 func CreateCompPattern(cmptnType string) *CompPattern {
-	var cp *CompPattern = &CompPattern{CPType: cmptnType, Funcs: make([]Func, 0), Edges: make([]PatternEdge, 0)}
+	cp := &CompPattern{CPType: cmptnType, Funcs: make([]Func, 0), Edges: make([]PatternEdge, 0)}
 	cmptnByName[cmptnType] = cp
 
 	return cp
@@ -59,7 +59,7 @@ func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType strin
 	// look for duplicated message type for edges with the same destination
 	for _, edge := range cpt.Edges {
 		if edge.DstLabel == dstFuncLabel && msgType == edge.MsgType {
-			panic(fmt.Errorf("%s declares identical message type %s directed to destination %s\n",
+			panic(fmt.Errorf("%s declares identical message type %s directed to destination %s",
 				cpt.Name, msgType, dstFuncLabel))
 		}
 	}
@@ -68,7 +68,7 @@ func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType strin
 	cpt.Edges = append(cpt.Edges, pe)
 }
 
-// GetInEdge returns a list of InEdges that match the specified source and destination
+// GetInEdges returns a list of InEdges that match the specified source and destination
 func (cpt *CompPattern) GetInEdges(srcLabel, dstLabel string) []InEdge {
 	rtn := []InEdge{}
 	for _, edge := range cpt.Edges {
@@ -79,7 +79,7 @@ func (cpt *CompPattern) GetInEdges(srcLabel, dstLabel string) []InEdge {
 	return rtn
 }
 
-// GetInEdge returns a list of OutEdges that match the specified source and destination
+// GetOutEdges returns a list of OutEdges that match the specified source and destination
 func (cpt *CompPattern) GetOutEdges(srcLabel, dstLabel string) []OutEdge {
 	rtn := []OutEdge{}
 	for _, edge := range cpt.Edges {
@@ -90,7 +90,7 @@ func (cpt *CompPattern) GetOutEdges(srcLabel, dstLabel string) []OutEdge {
 	return rtn
 }
 
-// CompPatterDict holds pattern descriptions, is serializable
+// CompPatternDict holds pattern descriptions, is serializable
 type CompPatternDict struct {
 	Prebuilt bool                   `json:"prebuilt" yaml:"prebuilt"`
 	DictName string                 `json:"dictname" yaml:"dictname"`
@@ -111,7 +111,7 @@ func CreateCompPatternDict(name string, preblt bool) *CompPatternDict {
 // RecoverCompPattern returns a copy of a CompPattern from the dictionary,
 // indexing by type, and applying a name
 func (cpd *CompPatternDict) RecoverCompPattern(cptype string, cpname string) (*CompPattern, bool) {
-	var key string = cptype
+	key := cptype
 	if !cpd.Prebuilt {
 		key = cpname
 	}
@@ -145,7 +145,7 @@ func (cpd *CompPatternDict) AddCompPattern(ptn *CompPattern, prb bool, overwrite
 		}
 
 		if present {
-			return fmt.Errorf("Overwrite pattern name %s in dictionary %s\n", ptn.Name, cpd.DictName)
+			return fmt.Errorf("overwrite pattern name %s in dictionary %s", ptn.Name, cpd.DictName)
 		}
 	}
 
@@ -361,7 +361,7 @@ func CreateCPInitListDict(name string, preblt bool) *CPInitListDict {
 // RecoverCPInitList returns a copy of a CPInitList from the dictionary, using the Prebuilt flag to
 // choose index key, and applys a name
 func (cpild *CPInitListDict) RecoverCPInitList(cptype string, cpname string) (*CPInitList, bool) {
-	var key string = cptype
+	key := cptype
 
 	if !cpild.Prebuilt {
 		key = cpname
@@ -379,7 +379,7 @@ func (cpild *CPInitListDict) RecoverCPInitList(cptype string, cpname string) (*C
 // AddCPInitList puts a CPInitList into the dictionary, selectively warning
 // if this would overwrite
 func (cpild *CPInitListDict) AddCPInitList(cpil *CPInitList, overwrite bool) error {
-	var key string = cpil.CPType
+	key := cpil.CPType
 	if !cpild.Prebuilt {
 		key = cpil.Name
 	}
@@ -387,7 +387,7 @@ func (cpild *CPInitListDict) AddCPInitList(cpil *CPInitList, overwrite bool) err
 	if !overwrite {
 		_, present := cpild.InitList[key]
 		if present {
-			return fmt.Errorf("Attempt to overwrite comp pattern initialization list %s\n", cpild.DictName)
+			return fmt.Errorf("attempt to overwrite comp pattern initialization list %s", cpild.DictName)
 		}
 	}
 	cpild.InitList[key] = *cpil
@@ -767,14 +767,14 @@ func CreateFunc(class, funcLabel string) *Func {
 	// see whether class is recognized
 	_, present := FuncClassNames[class]
 	if !present {
-		panic(fmt.Errorf("function class %s not recognized\n", class))
+		panic(fmt.Errorf("function class %s not recognized", class))
 	}
 	fd := &Func{Class: class, Label: funcLabel}
 
 	return fd
 }
 
-// SerialParameters returns a serialization of the input parameter struct given as an argument.
+// SerializeParameters returns a serialization of the input parameter struct given as an argument.
 func (fd *Func) SerializeParameters(params any, useYAML bool) (string, error) {
 	fp := params.(*FuncParameters)
 
@@ -807,7 +807,7 @@ func (cpm *CompPatternMap) AddMapping(funcLabel string, hostname string, overwri
 	if !overwrite {
 		host, present := cpm.FuncMap[funcLabel]
 		if present && host != hostname {
-			return fmt.Errorf("attempt to overwrite mapping of func label %s in %s\n",
+			return fmt.Errorf("attempt to overwrite mapping of func label %s in %s",
 				funcLabel, cpm.PatternName)
 		}
 	}
@@ -901,7 +901,7 @@ func (cpmd *CompPatternMapDict) AddCompPatternMap(cpm *CompPatternMap, overwrite
 	if !overwrite {
 		_, present := cpmd.Map[cpm.PatternName]
 		if present {
-			return fmt.Errorf("attempt to overwrite mapping of %s to comp pattern map dictionary\n", cpm.PatternName)
+			return fmt.Errorf("attempt to overwrite mapping of %s to comp pattern map dictionary", cpm.PatternName)
 		}
 	}
 	cpmd.Map[cpm.PatternName] = *cpm
@@ -950,15 +950,15 @@ func ReadCompPatternMapDict(filename string, useYAML bool, dict []byte) (*CompPa
 
 // WriteToFile stores the CompPatternMapDict struct to the file whose name is given.
 // Serialization to json or to yaml is selected based on the extension of this name.
-func (cpd *CompPatternMapDict) WriteToFile(filename string) error {
+func (cpmd *CompPatternMapDict) WriteToFile(filename string) error {
 	pathExt := path.Ext(filename)
 	var bytes []byte
 	var merr error = nil
 
 	if pathExt == ".yaml" || pathExt == ".YAML" || pathExt == ".yml" {
-		bytes, merr = yaml.Marshal(*cpd)
+		bytes, merr = yaml.Marshal(*cpmd)
 	} else if pathExt == ".json" || pathExt == ".JSON" {
-		bytes, merr = json.MarshalIndent(*cpd, "", "\t")
+		bytes, merr = json.MarshalIndent(*cpmd, "", "\t")
 	}
 
 	if merr != nil {
@@ -1037,7 +1037,7 @@ func (ecd *ExpCfgDict) AddExpCfg(ec *ExpCfg, overwrite bool) error {
 	if !overwrite {
 		_, present := ecd.Cfgs[ec.Name]
 		if present {
-			return fmt.Errorf("Attempt to overwrite template ExpCfg %s\n", ec.Name)
+			return fmt.Errorf("attempt to overwrite template ExpCfg %s", ec.Name)
 		}
 	}
 	// save it
@@ -1125,7 +1125,7 @@ func CreateExpCfg(name string) *ExpCfg {
 func ValidateParameter(paramObj, attribute, param string) error {
 	// the paramObj string has to be recognized as one of the permitted ones (stored in list ExpParamObjs)
 	if !slices.Contains(ExpParamObjs, paramObj) {
-		return fmt.Errorf("paramater paramObj %s is not recognized\n", paramObj)
+		return fmt.Errorf("paramater paramObj %s is not recognized", paramObj)
 	}
 
 	// Start the analysis of the attribute by splitting it by comma
@@ -1137,7 +1137,7 @@ func ValidateParameter(paramObj, attribute, param string) error {
 		// if name is present it is the only acceptable attribute in the comma-separated list
 		if strings.Contains(attrb, "name%%") {
 			if len(attrbList) != 1 {
-				return fmt.Errorf("name paramater attribute %s paramObj %s is included with more attributes\n", attrb, paramObj)
+				return fmt.Errorf("name paramater attribute %s paramObj %s is included with more attributes", attrb, paramObj)
 			}
 			// otherwise OK
 			return nil
@@ -1146,7 +1146,7 @@ func ValidateParameter(paramObj, attribute, param string) error {
 		// if "*" is present it is the only acceptable attribute in the comma-separated list
 		if strings.Contains(attrb, "*") {
 			if len(attrbList) != 1 {
-				return fmt.Errorf("name paramater attribute * paramObj %s is included with more attributes\n", paramObj)
+				return fmt.Errorf("name paramater attribute * paramObj %s is included with more attributes", paramObj)
 			}
 
 			// otherwise OK
@@ -1155,13 +1155,13 @@ func ValidateParameter(paramObj, attribute, param string) error {
 
 		// otherwise check the legitmacy of the individual attribute.  Whole string is invalidate if one component is invalid.
 		if !slices.Contains(ExpAttributes[paramObj], attrb) {
-			return fmt.Errorf("paramater attribute %s is not recognized for paramObj %s\n", attrb, paramObj)
+			return fmt.Errorf("paramater attribute %s is not recognized for paramObj %s", attrb, paramObj)
 		}
 	}
 
 	// comma-separated attribute is OK, make sure the type of param is consistent with the paramObj
 	if !slices.Contains(ExpParams[paramObj], param) {
-		return fmt.Errorf("paramater %s is not recognized for paramObj %s\n", param, paramObj)
+		return fmt.Errorf("paramater %s is not recognized for paramObj %s", param, paramObj)
 	}
 
 	// it's all good
@@ -1188,15 +1188,15 @@ func (expcfg *ExpCfg) AddParameter(paramObj, attribute, param, value string) err
 
 // WriteToFile stores the ExpCfg struct to the file whose name is given.
 // Serialization to json or to yaml is selected based on the extension of this name.
-func (dict *ExpCfg) WriteToFile(filename string) error {
+func (expcfg *ExpCfg) WriteToFile(filename string) error {
 	pathExt := path.Ext(filename)
 	var bytes []byte
 	var merr error = nil
 
 	if pathExt == ".yaml" || pathExt == ".YAML" || pathExt == ".yml" {
-		bytes, merr = yaml.Marshal(*dict)
+		bytes, merr = yaml.Marshal(*expcfg)
 	} else if pathExt == ".json" || pathExt == ".JSON" {
-		bytes, merr = json.MarshalIndent(*dict, "", "\t")
+		bytes, merr = json.MarshalIndent(*expcfg, "", "\t")
 	}
 
 	if merr != nil {
@@ -1247,17 +1247,17 @@ func ReadExpCfg(filename string, useYAML bool, dict []byte) (*ExpCfg, error) {
 // ReportErrs transforms a list of errors and transforms the non-nil ones into a single error
 // with comma-separated report of all the constituent errors, and returns it.
 func ReportErrs(errs []error) error {
-	err_msg := make([]string, 0)
+	errMsg := make([]string, 0)
 	for _, err := range errs {
 		if err != nil {
-			err_msg = append(err_msg, err.Error())
+			errMsg = append(errMsg, err.Error())
 		}
 	}
-	if len(err_msg) == 0 {
+	if len(errMsg) == 0 {
 		return nil
 	}
 
-	return errors.New(strings.Join(err_msg, ","))
+	return errors.New(strings.Join(errMsg, ","))
 }
 
 // CheckDirectories probes the file system for the existence
@@ -1299,13 +1299,13 @@ func CheckDirectories(dirs []string) (bool, error) {
 	return false, err
 }
 
-// CheckReadableFileNames probles the file system to ensure that every
+// CheckReadableFiles probles the file system to ensure that every
 // one of the argument filenames exists and is readable
 func CheckReadableFiles(names []string) (bool, error) {
 	return CheckFiles(names, true)
 }
 
-// CheckOpututFileNames probles the file system to ensure that every
+// CheckOutputFiles probles the file system to ensure that every
 // argument filename can be written.
 func CheckOutputFiles(names []string) (bool, error) {
 	return CheckFiles(names, false)
@@ -1350,8 +1350,8 @@ func CheckFiles(names []string, checkExistence bool) (bool, error) {
 	return true, nil
 }
 
-// ExpParamObjs, ExpAttributes, and ExpParams hold descriptions of the types of objects
-// that are initialized by an exp file, for each the attributes of the object that can be tested for to determine
+// ExpParamObjs holds descriptions of the types of objects
+// that are initialized by an exp file for each the attributes of the object that can be tested for to determine
 // whether the object is to receive the configuration parameter, and the parameter types defined for each object type
 var ExpParamObjs []string
 var ExpAttributes map[string][]string
