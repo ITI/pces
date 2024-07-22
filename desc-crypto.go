@@ -1,27 +1,31 @@
 package mrnesbits
 
+// file desc-crypto.go holds structs, data structures, and methods used to
+// build and read summaries of the measurements of cryptographic algorithms
+// available to the mrnesbits model.  In particular the data structures
+// can be accessed by a GUI used to guide model development
+
 import (
+	"encoding/json"
 	"fmt"
-	"strings"
-	"sort"
-	"strconv"
-	"path"
 	"gopkg.in/yaml.v3"
 	"os"
-	"encoding/json"
+	"path"
+	"sort"
+	"strconv"
+	"strings"
 )
-
 
 // AlgSpec provides representation of crypto algorithm and key lengths
 // for which we have timing measurements.  Used in the CryptoDesc struct
 // below, which can be read by a GUI to align with the crypto algorithms
 // and key lengths that are available
 type AlgSpec struct {
-	Name string		// e.g., 'aes','des'
-	KeyLen []int	// lengths of keys used in measurements represented in the functional timings
+	Name   string // e.g., 'aes','des'
+	KeyLen []int  // lengths of keys used in measurements represented in the functional timings
 }
 
-// CryptoDesc is a structure used so that the GUI and simulator can 
+// CryptoDesc is a structure used so that the GUI and simulator can
 // 'see' the same set of crypto algorithms that might be chosen,
 // and have their performance included in the system behavior
 type CryptoDesc struct {
@@ -41,12 +45,12 @@ func createCryptoDesc() *CryptoDesc {
 func createAlgSpec(name string, keyLen []int) *AlgSpec {
 	algSpec := new(AlgSpec)
 	algSpec.Name = strings.ToLower(name)
-	algSpec.KeyLen	= keyLen
+	algSpec.KeyLen = keyLen
 	return algSpec
 }
 
 // addCryptoAlg is called to include another algorithm
-// in the CryptoDesc's list  
+// in the CryptoDesc's list
 func (cd *CryptoDesc) addAlgSpec(algSpec AlgSpec) {
 	for _, as := range cd.Algs {
 		if as.Name == algSpec.Name {
@@ -120,7 +124,7 @@ func BuildCryptoDesc(filename string) *CryptoDesc {
 	cd := createCryptoDesc()
 
 	var emptyBytes []byte
-	fdl, _ := ReadFuncExecList(filename, true, emptyBytes) 
+	fdl, _ := ReadFuncExecList(filename, true, emptyBytes)
 
 	// create a temporary dictionary to more easily detect
 	// when an algorithm has already been referenced
@@ -133,10 +137,10 @@ func BuildCryptoDesc(filename string) *CryptoDesc {
 			// identified as having the param attribute have the format
 			// keylength="integer"
 			param := strings.ToLower(fd.Param)
-			param = strings.Replace(param," ","", -1)
-			if strings.Contains(param,"keylength=") {
-				ps := strings.Split(param,"=")
-				keyLen, err := strconv.Atoi(ps[1])
+			param = strings.Replace(param, " ", "", -1)
+			if strings.Contains(param, "keylength=") {
+				ps := strings.Split(param, "=")
+				_, err := strconv.Atoi(ps[1])
 				if err != nil {
 					panic(fmt.Errorf("faulty parameter description for crypto timing"))
 				}
@@ -145,7 +149,7 @@ func BuildCryptoDesc(filename string) *CryptoDesc {
 				// 'op-alg-keylen', and that neither op nor alg have the character '-' embedded,
 				// so we can split on '-' to get the pieces
 				lcName := strings.ToLower(fd.Identifier)
-				cryptoParts := strings.Split(lcName,"-")
+				cryptoParts := strings.Split(lcName, "-")
 
 				if len(cryptoParts) != 3 {
 					panic(fmt.Errorf("expect identifier in form of 'op-alg-keylen"))
@@ -153,25 +157,24 @@ func BuildCryptoDesc(filename string) *CryptoDesc {
 
 				// pull out notationally the algorithm and key lengths
 				alg := cryptoParts[1]
-				keyLen,_ = strconv.Atoi(cryptoParts[2])
+				keyLen, _ := strconv.Atoi(cryptoParts[2])
 
 				// see whether we've already seen this algorithm
 				_, present := algDict[alg]
 
-
 				if !present {
 					// no, so create a representation for it
-					algDict[alg] = AlgSpec{Name:alg, KeyLen: []int{}}
+					algDict[alg] = AlgSpec{Name: alg, KeyLen: []int{}}
 				}
 
 				// add keylength, if not present
-				as := algDict[alg]	
+				as := algDict[alg]
 				foundKey := false
 				for _, kl := range as.KeyLen {
 					if kl == keyLen {
 						foundKey = true
 						break
-					}	
+					}
 				}
 				if foundKey {
 					continue
@@ -180,19 +183,19 @@ func BuildCryptoDesc(filename string) *CryptoDesc {
 				kls := algDict[alg].KeyLen
 				kls = append(kls, keyLen)
 				sort.Ints(kls)
-				algDict[alg] = AlgSpec{Name:alg, KeyLen: kls}
+				algDict[alg] = AlgSpec{Name: alg, KeyLen: kls}
 			}
 		}
 	}
-	// AlgDict is now a dictionary indexed by representation of 
+	// AlgDict is now a dictionary indexed by representation of
 	// some crypto algorithm, with a list of key lengths that have been
 	// observed as being declared in functional timings
 	// Add these to the CryptoDesc
 	for algName := range algDict {
-		algName = strings.Replace(algName,"encrypt-","",-1)
-		algName = strings.Replace(algName,"decrypt-","",-1)
-		algName = strings.Replace(algName,"hash-","",-1)
-		algName = strings.Replace(algName,"sign-","",-1)
+		algName = strings.Replace(algName, "encrypt-", "", -1)
+		algName = strings.Replace(algName, "decrypt-", "", -1)
+		algName = strings.Replace(algName, "hash-", "", -1)
+		algName = strings.Replace(algName, "sign-", "", -1)
 
 		as := createAlgSpec(algName, algDict[algName].KeyLen)
 		cd.addAlgSpec(*as)
@@ -201,5 +204,3 @@ func BuildCryptoDesc(filename string) *CryptoDesc {
 	// so it can written out to file
 	return cd
 }
-
-

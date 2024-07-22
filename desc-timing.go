@@ -1,23 +1,29 @@
 package mrnesbits
 
+// file desc-timing.go holds structs, methods, and data structures related
+// to expression and recovery of timings of computational functions and device
+// operations
+
 import (
-	"path"
-	"os"
-	"gopkg.in/yaml.v3"
 	"encoding/json"
+	"gopkg.in/yaml.v3"
+	"os"
+	"path"
 )
+
 // A FuncExecDesc struct holds a description of a function timing.
 // ExecTime is the time (in seconds), attributes it depends on are
-//  Identifier - a unique name for this func call 
-//  Param - additional information, e.g., key length for crypto
-//	Hardware - the CPU,
-//	PcktLen - number of bytes in data packet being operated on
+//
+//	 Identifier - a unique name for this func call
+//	 Param - additional information, e.g., key length for crypto
+//		Hardware - the CPU,
+//		PcktLen - number of bytes in data packet being operated on
 type FuncExecDesc struct {
 	Identifier string  `json:"identifier" yaml:"identifier"`
-	Param	 string  `json:"param" yaml:"param"`
-	Hardware string  `json:"processortype" yaml:"processortype"`
-	PcktLen  int     `json:"pcktlen" yaml:"pcktlen"`
-	ExecTime float64 `json:"exectime" yaml:"exectime"`
+	Param      string  `json:"param" yaml:"param"`
+	Hardware   string  `json:"processortype" yaml:"processortype"`
+	PcktLen    int     `json:"pcktlen" yaml:"pcktlen"`
+	ExecTime   float64 `json:"exectime" yaml:"exectime"`
 }
 
 // A FuncExecList holds a map (Times) whose key is the class
@@ -102,14 +108,13 @@ func ReadFuncExecList(filename string, useYAML bool, dict []byte) (*FuncExecList
 }
 
 // AddTiming takes the parameters of a FuncExecDesc, creates one, and adds it to the FuncExecList
-func (fel *FuncExecList) AddTiming(identifier, param, hardware string, 
-			pcktLen int, execTime float64) {
+func (fel *FuncExecList) AddTiming(identifier, param, hardware string,
+	pcktLen int, execTime float64) {
 	_, present := fel.Times[identifier]
 	if !present {
 		fel.Times[identifier] = make([]FuncExecDesc, 0)
 	}
-	fel.Times[identifier] = append(fel.Times[identifier], 
-		FuncExecDesc{Param: param, Hardware: hardware, 
-		PcktLen: pcktLen, ExecTime: execTime, Identifier: identifier})
+	fel.Times[identifier] = append(fel.Times[identifier],
+		FuncExecDesc{Param: param, Hardware: hardware,
+			PcktLen: pcktLen, ExecTime: execTime, Identifier: identifier})
 }
-

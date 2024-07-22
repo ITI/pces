@@ -1,12 +1,17 @@
 package mrnesbits
 
+// desc-map.go holds structs, methods, and data structures used to define and then
+// access mapping of a mrnesbits model's computational pattern function instances to
+// CPUs in the underlaying mrnes computer and network model
+
 import (
+	"encoding/json"
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"os"
 	"path"
-	"encoding/json"
-	"gopkg.in/yaml.v3"
 )
+
 // A CompPatternMap describes how funcs in an instantiated [CompPattern]
 // are mapped to hosts
 type CompPatternMap struct {
@@ -203,4 +208,3 @@ func (cpmd *CompPatternMapDict) WriteToFile(filename string) error {
 
 	return werr
 }
-

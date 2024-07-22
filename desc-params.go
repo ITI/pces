@@ -1,13 +1,16 @@
 package mrnesbits
 
+// file desc-params.go holds structs, methods, and data structures used in specifying
+// assignment of performance parameters to mrnesbits/mrnes models
+
 import (
-	"fmt"
-	"path"
-	"os"
 	"encoding/json"
-	"strings"
-	"gopkg.in/yaml.v3"
+	"fmt"
 	"golang.org/x/exp/slices"
+	"gopkg.in/yaml.v3"
+	"os"
+	"path"
+	"strings"
 )
 
 // An ExpParameter struct describes an input to experiment configuration at run-time. It specified
@@ -303,4 +306,3 @@ func GetExpParamDesc() ([]string, map[string][]string, map[string][]string) {
 
 	return ExpParamObjs, ExpAttributes, ExpParams
 }
-

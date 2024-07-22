@@ -1,6 +1,6 @@
 package mrnesbits
 
-// mrnesbits.go has code that builds the system data structures
+// mrnesbits.go has code that builds mrnes system data structures
 
 import (
 	"fmt"
@@ -8,12 +8,12 @@ import (
 	"github.com/iti/evt/vrtime"
 	"github.com/iti/mrnes"
 	"path"
-	"strings"
 	"sort"
+	"strings"
 )
 
 // NetSimPortal provides an interface to network simulator in the mrnes package.
-// mrnes does not import mrnesbits (to avoid circular imports).  However, 
+// mrnes does not import mrnesbits (to avoid circular imports).  However,
 // code in mrnesbits can call a function in mrnes that returns a pointer
 // to a structure that satisfies the NetSimPortal interface.
 type NetSimPortal interface {
@@ -59,29 +59,27 @@ type CmpPtnGraph struct {
 // CmpPtnGraphEdge declares the possibility that a function with label srcLabel
 // might send a message of type msgType to the function (in the same CPG) with label dstLabel
 type CmpPtnGraphEdge struct {
-	SrcLabel  string
-	MsgType   string
-	DstLabel  string
+	SrcLabel   string
+	MsgType    string
+	DstLabel   string
 	MethodCode string
 }
 
-
 func (cpge *CmpPtnGraphEdge) EdgeStr() string {
-	rtn := fmt.Sprintf("src %s, type %s, dst %s, method %s", 
+	rtn := fmt.Sprintf("src %s, type %s, dst %s, method %s",
 		cpge.SrcLabel, cpge.MsgType, cpge.DstLabel, cpge.MethodCode)
 	return rtn
-} 
+}
 
 type ExtCmpPtnGraphEdge struct {
 	SrcCP string
-	CPGE CmpPtnGraphEdge
+	CPGE  CmpPtnGraphEdge
 }
 
 func CreateCmpPtnGraphEdge(srcLabel, msgType, dstLabel, methodCode string) *CmpPtnGraphEdge {
 	cpge := &CmpPtnGraphEdge{SrcLabel: srcLabel, MsgType: msgType, DstLabel: dstLabel, MethodCode: methodCode}
 	return cpge
 }
-
 
 // A CmpPtnGraphNode names a function with its label, and describes
 // the edges for which it is a destination (inEdges) and edges
@@ -296,8 +294,8 @@ func nxtID() int {
 
 // GetExperimentCPDicts accepts a map that holds the names of the input files used to define an experiment,
 // creates internal representations of the information they hold, and returns those structs.
-func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListDict, 
-		*SharedStateGroupList, *FuncExecList, *CompPatternMapDict) {
+func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListDict,
+	*SharedStateGroupList, *FuncExecList, *CompPatternMapDict) {
 
 	var cpd *CompPatternDict
 	var cpid *CPInitListDict
@@ -363,7 +361,7 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 }
 
 // buildSharedStateMaps fills out two maps used to initialize funcs with shared state.
-// The read-in list of shared state groups (if any) are examined 
+// The read-in list of shared state groups (if any) are examined
 // to create the initial set up of the shared state, create one map that, given the name of the
 // shared state group returns a pointer to that state, and another which given the (cmpPtnName, label)
 // of a function that has shared state, a pointer to that state.
@@ -392,35 +390,35 @@ func buildSharedStateMaps(ssgl *SharedStateGroupList, useYAML bool) {
 		// given the group name, get a pointer to the state structure
 		nameToSharedState[ssg.name] = state
 
-		for _, gfid := range(ssg.instances) {
+		for _, gfid := range ssg.instances {
 			// given the (cmpPtnName, label) identity, get a pointer to the state structure
 			funcInstToSharedState[gfid] = state
 		}
-	}	
-}		
+	}
+}
 
-// checkSharedStateAssignment ensures that every function instance in a 
+// checkSharedStateAssignment ensures that every function instance in a
 // shared state group has the same class
 func checkSharedStateAssignment(ssgl *SharedStateGroupList) {
 
 	// shared state groups in *ssgl are listed in unordered sequence
-	for _, ssg := range(ssgl.Groups) {
+	for _, ssg := range ssgl.Groups {
 
 		// check all the functions with shared state in the same group
-		for _, gfid := range(ssg.instances) {
+		for _, gfid := range ssg.instances {
 
 			// pull out the function's comp pattern label
 			ptnName := gfid.CmpPtnName
-			label   := gfid.Label
+			label := gfid.Label
 
 			// find representation of the comp pattern instance
-			cpInst, present  := CmpPtnInstByName[ptnName]
+			cpInst, present := CmpPtnInstByName[ptnName]
 			if !present {
 				panic(fmt.Errorf("comp pattern name %s from shared state group %s not found", ptnName, ssg.name))
 			}
 
-			// find representation of the comp pattern's function	
-			cpf, present := cpInst.funcs[label]	
+			// find representation of the comp pattern's function
+			cpf, present := cpInst.funcs[label]
 			if !present {
 				panic(fmt.Errorf("function label %s from shared state group %s not found", label, ssg.name))
 			}
@@ -432,21 +430,21 @@ func checkSharedStateAssignment(ssgl *SharedStateGroupList) {
 		}
 	}
 }
-	
+
 func ReportStatistics() {
 	// gather data by trace group
-	tgData := make(map[string][]float64)	
- 
+	tgData := make(map[string][]float64)
+
 	for tgName, tg := range allTrackingGroups {
 		_, present := tgData[tgName]
 		if !present {
-			tgData[tgName] = make([]float64,0)
+			tgData[tgName] = make([]float64, 0)
 		}
 
-		rec := tg.finished 
+		rec := tg.finished
 		if rec.n > 0 {
 			tgData[tgName] = append(tgData[tgName], rec.samples...)
-		} 
+		}
 	}
 
 	var minv, maxv, mean, med, q25, q75 float64
@@ -455,68 +453,67 @@ func ReportStatistics() {
 		sort.Float64s(data)
 		num := len(data)
 		sum := 0.0
-		for _,v := range data {
+		for _, v := range data {
 			sum += v
 		}
-		mean = sum/ float64(num)
+		mean = sum / float64(num)
 
-		if num>4 {
-			medp := int(num/2)
+		if num > 4 {
+			medp := int(num / 2)
 			minv = data[0]
 			maxv = data[len(data)-1]
 			if num%2 == 1 {
-				med = data[medp+1]		
+				med = data[medp+1]
 			} else {
-				med = (data[medp]+data[medp+1])/2
+				med = (data[medp] + data[medp+1]) / 2
 			}
-	
+
 			if num%4 == 0 {
-				qrt = int(num/4)
-				q25 = (data[qrt-1]+data[qrt])/2
-				q75 = (data[3*qrt]+data[3*qrt-1])/2
+				qrt = int(num / 4)
+				q25 = (data[qrt-1] + data[qrt]) / 2
+				q75 = (data[3*qrt] + data[3*qrt-1]) / 2
 			} else if num%4 == 2 {
 				q25 = data[int(num/4)]
 				q75 = data[int(num/2)+int(num/4)]
-			}	else if num%4 == 1 {
-				// means that the list length is odd, lengths from median to 
+			} else if num%4 == 1 {
+				// means that the list length is odd, lengths from median to
 				// endpoints are even
-				mid := (num-1)/2
-				qrt = int(mid/2)
-				q25 = (data[qrt]+data[qrt+1])/2
-				q75 = (data[mid+qrt]+data[mid+qrt+1])/2	
+				mid := (num - 1) / 2
+				qrt = int(mid / 2)
+				q25 = (data[qrt] + data[qrt+1]) / 2
+				q75 = (data[mid+qrt] + data[mid+qrt+1]) / 2
 			} else {
 				// list length is odd, lengths from median to endpoints are odd
-				mid := (num-1)/2
-				qrt = int(mid/2)+1
+				mid := (num - 1) / 2
+				qrt = int(mid/2) + 1
 				q25 = data[qrt]
-				q75 = data[mid+qrt]	
+				q75 = data[mid+qrt]
 			}
-		} else if num==4 {
+		} else if num == 4 {
 			minv = data[0]
 			maxv = data[3]
-			med  = (data[1]+data[2])/2
+			med = (data[1] + data[2]) / 2
 			q25 = data[1]
 			q75 = data[2]
-		} else if num==3 {
+		} else if num == 3 {
 			minv = data[0]
 			maxv = data[2]
-			med  = data[1]
-			q25 = (data[0]+data[1])/2
-			q75 = (data[2]+data[1])/2
-		} else if num==2 {
+			med = data[1]
+			q25 = (data[0] + data[1]) / 2
+			q75 = (data[2] + data[1]) / 2
+		} else if num == 2 {
 			minv = data[0]
 			maxv = data[1]
-			med  = (data[1]+data[0])/2
-			q25 = (data[0]+data[1])/4
-			q75 = 3*(data[0]+data[1])/4
-		} else if num==1 {
+			med = (data[1] + data[0]) / 2
+			q25 = (data[0] + data[1]) / 4
+			q75 = 3 * (data[0] + data[1]) / 4
+		} else if num == 1 {
 			minv = data[0]
 			maxv = data[0]
-			med  = data[0]
-			q25  = data[0]
-			q75  = data[0]
+			med = data[0]
+			q25 = data[0]
+			q75 = data[0]
 		}
 		fmt.Printf("Trace gathering group %s has spread %f, %f, %f %f, %f, %f\n", name, minv, q25, mean, med, q75, maxv)
 	}
 }
-

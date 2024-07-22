@@ -1,19 +1,17 @@
 package mrnesbits
 
+// file cpf.go holds structs and methods related to instances of computational pattern functions
+
 import (
 	"fmt"
 	"github.com/iti/evt/evtm"
-	_ "golang.org/x/exp/slices"
 )
-
-// file cpf.go holds structs and methods related to comp functions
-
 
 // The edgeStruct struct describes a possible output edge for a response
 type edgeStruct struct {
-	CPID      int      // ID of comp pattern     
-	FuncLabel string   // might be source or destination function label, depending on context
-	MsgType  string
+	CPID      int    // ID of comp pattern
+	FuncLabel string // might be source or destination function label, depending on context
+	MsgType   string
 }
 
 func createEdgeStruct(cpID int, label, msgType string) edgeStruct {
@@ -22,26 +20,25 @@ func createEdgeStruct(cpID int, label, msgType string) edgeStruct {
 }
 
 // The CmpPtnFuncInst struct represents an instantiated instance of a function
-//
 type CmpPtnFuncInst struct {
 	InitFunc         evtm.EventHandlerFunction // if not 'emptyInitFunc' call this to initialize the function
 	InitMsg          *CmpPtnMsg                // message that is copied when this instance is used to initiate a chain of func evaluations
 	class            string                    // specifier leading to specific state, entrance, and exit functions
 	Label            string                    // an identifier for this func, unique within the instance of CompPattern holding it.
 	host             string                    // identity of the host to which this func is mapped for execution
-	sharedGroup		 string					   // empty means state not shared, otherwise global name of group with shared state
+	sharedGroup      string                    // empty means state not shared, otherwise global name of group with shared state
 	PtnName          string                    // name of the instantiated CompPattern holding this function
-	CPID			 int					   // id of the comp pattern this func is attached to
+	CPID             int                       // id of the comp pattern this func is attached to
 	ID               int                       // integer identity which is unique among all objects in the MrNesbits model
 	active           bool                      // flag whether function is actively processing inputs
-	trace			 bool					   // indicate whether this function should record its enter/exit in the trace
+	trace            bool                      // indicate whether this function should record its enter/exit in the trace
 	State            any                       // holds string-coded state for string-code state variable names
 	InterarrivalDist string
 	InterarrivalMean float64
 
 	// represent the comp pattern edges touching this function.  The in edge
 	// is indexed by the source function label and message type, yielding the method code
-	inEdgeMethodCode map[edgeStruct] string
+	inEdgeMethodCode map[edgeStruct]string
 
 	// the out edges are in a list of edgeStructs
 	outEdges []edgeStruct
@@ -70,7 +67,7 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, stateStr string, use
 
 	// inEdges, outEdges, and methodCode filled in after all function instances for a comp pattern created
 	cpfi.inEdgeMethodCode = make(map[edgeStruct]string)
-	cpfi.outEdges = make([]edgeStruct,0)
+	cpfi.outEdges = make([]edgeStruct, 0)
 	// cpfi.methodCode = make(map[string]string)
 	cpfi.respMethods = make(map[string]*RespMethod)
 
@@ -83,7 +80,7 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, stateStr string, use
 		for mc, mcr := range ClassMethods[fnc.Class] {
 			mcrcpy := new(RespMethod)
 			*mcrcpy = mcr
-			cpfi.respMethods[mc] = mcrcpy 
+			cpfi.respMethods[mc] = mcrcpy
 		}
 	}
 
@@ -94,10 +91,10 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, stateStr string, use
 	fc := FuncClasses[fnc.Class]
 
 	/*
-	params, err := DecodeFuncParameters(paramStr, useYAML)
-	if err != nil {
-		panic(err)
-	}
+		params, err := DecodeFuncParameters(paramStr, useYAML)
+		if err != nil {
+			panic(err)
+		}
 	*/
 
 	// if the function is not shared we initialize its state from the stateStr string.
@@ -150,7 +147,7 @@ func (cpfi *CmpPtnFuncInst) isInitiating() bool {
 }
 
 func (cpfi *CmpPtnFuncInst) InitMsgParams(msgType string, msgLen, pcktLen int, rate float64) {
-	edge := CreateCmpPtnGraphEdge(cpfi.Label, "initiate", cpfi.Label, "") 
+	edge := CreateCmpPtnGraphEdge(cpfi.Label, "initiate", cpfi.Label, "")
 	cpm := CreateCmpPtnMsg(*edge, cpfi.Label, cpfi.Label, msgType, msgLen, pcktLen, rate, cpfi.PtnName, cpfi.PtnName, nil, 0)
 	cpfi.InitMsg = &cpm
 }
@@ -223,6 +220,6 @@ func (cpfi *CmpPtnFuncInst) AddEndMethod(methodCode string, end evtm.EventHandle
 }
 
 func CmpPtnFuncHost(cpfi *CmpPtnFuncInst) string {
-	ptnMap := CmpPtnMapDict.Map[cpfi.PtnName]   // note binding of pattern to dictionary map to function map.  Shared needs something different
+	ptnMap := CmpPtnMapDict.Map[cpfi.PtnName] // note binding of pattern to dictionary map to function map.  Shared needs something different
 	return ptnMap.FuncMap[cpfi.Label]
 }

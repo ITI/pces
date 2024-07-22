@@ -6,12 +6,10 @@ package mrnesbits
 // that read in those models from file and transform them into
 // data structures used at run-time by the simulator
 
-
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	_ "golang.org/x/exp/slices"
 	"gopkg.in/yaml.v3"
 	"os"
 	"path"
@@ -42,15 +40,15 @@ type CompPattern struct {
 func CreateCompPattern(cmptnType string) *CompPattern {
 
 	cp := &CompPattern{CPType: cmptnType, Funcs: make([]Func, 0), Edges: make([]CmpPtnGraphEdge, 0)}
-	cp.ExtEdges = make(map[string][]XCPEdge)	
+	cp.ExtEdges = make(map[string][]XCPEdge)
 
-	// make type the default name, possible over-ride later	
-	cp.SetName(cmptnType)	
+	// make type the default name, possible over-ride later
+	cp.SetName(cmptnType)
 
 	return cp
 }
 
-// local dictionary that gives access to a CompPattern give its name 
+// local dictionary that gives access to a CompPattern give its name
 var cmptnByName map[string]*CompPattern = make(map[string]*CompPattern)
 
 // AddFunc includes a function specification to a CompPattern
@@ -58,7 +56,7 @@ func (cpt *CompPattern) AddFunc(fs *Func) {
 	// make sure that the class declared for the function exists
 	_, present := ClassMethods[fs.Class]
 	if !present {
-		panic(fmt.Errorf("Function %s declares unrecognized class %s", fs.Label, fs.Class))
+		panic(fmt.Errorf("function %s declares unrecognized class %s", fs.Label, fs.Class))
 	}
 	cpt.Funcs = append(cpt.Funcs, *fs)
 }
@@ -66,9 +64,8 @@ func (cpt *CompPattern) AddFunc(fs *Func) {
 // AddEdge creates an edge that describes message flow from one Func to another in the same comp pattern
 // and adds it to the CompPattern's list of edges. Called from code that is building a model, applies some
 // sanity checking
-//
-func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType string, methodCode string, 
-		msgs *[]CompPatternMsg ) {
+func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType string, methodCode string,
+	msgs *[]CompPatternMsg) {
 
 	pe := CmpPtnGraphEdge{SrcLabel: srcFuncLabel, DstLabel: dstFuncLabel, MsgType: msgType, MethodCode: methodCode}
 
@@ -106,13 +103,13 @@ func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType strin
 	if !srcFound || !dstFound {
 		panic(fmt.Errorf("call to CmpPtn %s AddEdge specifies undeclared function", cpt.Name))
 	}
- 
+
 	// ensure that the methodCode for the destination is recognized by its Class.
 	// The ClassMethods map is 'hardwired' into the mrnesbits package. It (like a few other data structures)
 	// needs to be updated and the simulator (and model building programs) recompiled to include
 	// new function classes
-	methodFound := false	
-	fmap := ClassMethods[dstClass] 
+	methodFound := false
+	fmap := ClassMethods[dstClass]
 	for mc := range fmap {
 		if mc == methodCode {
 			methodFound = true
@@ -120,16 +117,16 @@ func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType strin
 		}
 	}
 
-	// panic if methodCode is not part of the ClassMethod map 
+	// panic if methodCode is not part of the ClassMethod map
 	if !methodFound {
 		panic(fmt.Errorf("method %s not found associated with class %s of destination %s in CmpPtn %s AddEdge",
 			methodCode, dstClass, dstFuncLabel, cpt.Name))
-	} 		 
+	}
 
 	// check whether message type was added to the CompPatterns cpInit dictionary
 	// whose Msgs list is an argument to this call
 	msgTypeFound := false
-	for _, msg := range (*msgs) {
+	for _, msg := range *msgs {
 		if msgType == msg.MsgType {
 			msgTypeFound = true
 			break
@@ -139,34 +136,36 @@ func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType strin
 	// panic if the message type has not (yet) been declared
 	if !msgTypeFound {
 		panic(fmt.Errorf("message type %s in AddEdge for CmpPtn %s not yet declared", msgType, cpt.Name))
-	}	
+	}
 
 	// passed all the checks above, so include the edge
 	cpt.Edges = append(cpt.Edges, pe)
 }
 
 // XCPEdge describes an edge between different CmpPtns.
-//   These are always rooted in a function of the chgCP class, 
+//
+//	These are always rooted in a function of the chgCP class,
+//
 // where they are organized in a map whose index is the ultimate target CP for a message.
 // The attribute is an XCPEdge, which specifies (a) the identity of the next CmpPtn,
 // (b) the identity of the function to receive the message, (c) the type of the X-CP message, and
 // (d) the methodCode for the function method to be executed.   Note that this structure
 // limits one XCPEdge per chgCP instance per target CP.
 type XCPEdge struct {
-	SrcCP     string
-	EndCP	  string	
-	NxtCP	  string	
-	SrcLabel  string	
-	DstLabel  string
-	MsgType   string	
-	MethodCode string	
+	SrcCP      string
+	EndCP      string
+	NxtCP      string
+	SrcLabel   string
+	DstLabel   string
+	MsgType    string
+	MethodCode string
 }
 
-// AddExtEdge creates an edge that describes message flow from one Func to another in 
+// AddExtEdge creates an edge that describes message flow from one Func to another in
 // a different computational pattern and adds it to the CompPattern's list of external edges.
 // Perform some sanity checks before commiting the edge
-func (cpt *CompPattern) AddExtEdge(srcCP, endCP, nxtCP, srcLabel, dstLabel string, msgType string, methodCode string, 
-		srcMsgs *[]CompPatternMsg, dstMsgs *[]CompPatternMsg) {
+func (cpt *CompPattern) AddExtEdge(srcCP, endCP, nxtCP, srcLabel, dstLabel string, msgType string, methodCode string,
+	srcMsgs *[]CompPatternMsg, dstMsgs *[]CompPatternMsg) {
 
 	// create the edge we'll commit if it passes sanity checks
 	pxe := XCPEdge{SrcCP: srcCP, EndCP: endCP, NxtCP: nxtCP, SrcLabel: srcLabel, DstLabel: dstLabel, MsgType: msgType, MethodCode: methodCode}
@@ -178,7 +177,7 @@ func (cpt *CompPattern) AddExtEdge(srcCP, endCP, nxtCP, srcLabel, dstLabel strin
 
 	if present {
 		// a list of external edges from cpt aimed at dstCPName exists, so
-		// check each for exact duplication 
+		// check each for exact duplication
 		for _, xedge := range cpt.ExtEdges[endCP] {
 			if pxe == xedge {
 				fmt.Printf("Warning: duplicated declaration of external edge from %s for destination CP %s through %s\n",
@@ -190,7 +189,7 @@ func (cpt *CompPattern) AddExtEdge(srcCP, endCP, nxtCP, srcLabel, dstLabel strin
 			// other attributes didn't match (otherwise the test above would have
 			// caused a return
 			if (xedge.SrcCP == srcCP) && (xedge.SrcLabel == srcLabel) {
-				panic(fmt.Errorf("Inconsistent external edge declaration"))
+				panic(fmt.Errorf("inconsistent external edge declaration"))
 			}
 		}
 	}
@@ -198,18 +197,17 @@ func (cpt *CompPattern) AddExtEdge(srcCP, endCP, nxtCP, srcLabel, dstLabel strin
 	if !present {
 		cpt.ExtEdges[endCP] = []XCPEdge{}
 	}
-	
 
 	// make sure the msgType is in the message lists of both CmpPtn cpInit dictionary lists
 	srcFound := false
 	dstFound := false
-	for _, msg := range (*srcMsgs) {
+	for _, msg := range *srcMsgs {
 		if msgType == msg.MsgType {
 			srcFound = true
 			break
 		}
 	}
-	for _, msg := range (*dstMsgs) {
+	for _, msg := range *dstMsgs {
 		if msgType == msg.MsgType {
 			dstFound = true
 			break
@@ -339,21 +337,20 @@ func (cpd *CompPatternDict) WriteToFile(filename string) error {
 	return nil
 }
 
-
 // GlobalFuncInstID is a global identifier for a function,
 // naming the CmpPtn that holds it and its label within that CmpPtn
 type GlobalFuncInstID struct {
 	CmpPtnName string
-	Label string
+	Label      string
 }
 
 // SharedStateGroup gathers descriptions of functions that share
 // the same state information, even across CmpPtn boundaries
 type SharedStateGroup struct {
-	name string       // give a name to this shared state group
-	class string      // all members have to be in the same class
-	instances []GlobalFuncInstID   // slice identifying the representations that share state
-	stateStr string   // the state they share, used at initialization
+	name      string             // give a name to this shared state group
+	class     string             // all members have to be in the same class
+	instances []GlobalFuncInstID // slice identifying the representations that share state
+	stateStr  string             // the state they share, used at initialization
 }
 
 // CreateSharedStateGroup is a constructor
@@ -389,15 +386,15 @@ func (ssg *SharedStateGroup) AddState(stateStr string) {
 // for inclusion in a shared state description file
 type SharedStateGroupList struct {
 	// UseYAML flags whether to interpret the seriaized state using json or yaml
-	UseYAML bool `json:"useyaml" yaml:"useyaml"`
-	Groups []SharedStateGroup `json:"groups" yaml:"groups"`
+	UseYAML bool               `json:"useyaml" yaml:"useyaml"`
+	Groups  []SharedStateGroup `json:"groups" yaml:"groups"`
 }
 
 // CreateSharedStateGroupList is a constructor
 func CreateSharedStateGroupList(yaml bool) *SharedStateGroupList {
 	ssgl := new(SharedStateGroupList)
 	ssgl.UseYAML = yaml
-	ssgl.Groups = make([]SharedStateGroup,0)
+	ssgl.Groups = make([]SharedStateGroup, 0)
 	return ssgl
 }
 
@@ -409,7 +406,7 @@ func (ssgl *SharedStateGroupList) AddSharedStateGroup(ssg *SharedStateGroup) {
 			panic(fmt.Errorf("attempt to include shared state class with same name %s and class	%s as previously included",
 				ssg.name, ssg.class))
 		}
-	}	
+	}
 	ssgl.Groups = append(ssgl.Groups, *ssg)
 }
 
@@ -509,7 +506,6 @@ func CreateCPInitList(name string, cptype string, useYAML bool) *CPInitList {
 	return cpil
 }
 
-
 // AddState puts a serialized initialization struct in the dictionary indexed by Func label
 func (cpil *CPInitList) AddState(cp *CompPattern, fnc *Func, state string) {
 	// make sure that the function to which the state is attached has been defined for the given CmpPtn
@@ -522,7 +518,7 @@ func (cpil *CPInitList) AddState(cp *CompPattern, fnc *Func, state string) {
 	}
 	if !foundFunc {
 		panic(fmt.Errorf("attempt to add state to CmpPtn %s for a function %s not defined", cp.Name, fnc.Label))
-	}	
+	}
 	cpil.State[fnc.Label] = state
 }
 
@@ -715,7 +711,7 @@ type CompPatternMsg struct {
 	// a message may be a packet or a flow
 	IsPckt bool `json:"ispckt" yaml:"ispckt"`
 
-	// PcktLen is a parameter used by some functions to select their execution time.  
+	// PcktLen is a parameter used by some functions to select their execution time.
 	// Not the same as the length of the message carrying the packet
 	PcktLen int `json:"pcktlen" yaml:"pcktlen"`
 
@@ -735,13 +731,12 @@ func CreateCompPatternMsg(msgType string, pcktLen int, msgLen int) *CompPatternM
 	return cpm
 }
 
-
-// An InEdge describes the source Func of an incoming edge, the type of message it carries, and the method code 
+// An InEdge describes the source Func of an incoming edge, the type of message it carries, and the method code
 // flagging what code should execute as a result
 type InEdge struct {
-	SrcLabel string `json:"srclabel" yaml:"srclabel"`
-	MsgType  string `json:"msgtype" yaml:"msgtype"`
-	MethodCode  string `json:"methodcode" yaml:"methodcode"`
+	SrcLabel   string `json:"srclabel" yaml:"srclabel"`
+	MsgType    string `json:"msgtype" yaml:"msgtype"`
+	MethodCode string `json:"methodcode" yaml:"methodcode"`
 }
 
 // An OutEdge describes the destination Func of an outbound edge, and the type of message it carries.
@@ -763,7 +758,6 @@ type Func struct {
 	Label string `json:"label" yaml:"label"`
 }
 
-
 // CreateFunc is a constructor for a [Func].  All parameters are given:
 //   - Class, a string identifying what instances of this Func do.  Like a variable type.
 //   - FuncLabel, a unique identifier (within an instance of a [CompPattern]) of an instance of this Func
@@ -778,7 +772,6 @@ func CreateFunc(class, funcLabel string) *Func {
 
 	return fd
 }
-
 
 // ReportErrs transforms a list of errors and transforms the non-nil ones into a single error
 // with comma-separated report of all the constituent errors, and returns it.
@@ -885,4 +878,3 @@ func CheckFiles(names []string, checkExistence bool) (bool, error) {
 
 	return true, nil
 }
-
