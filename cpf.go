@@ -3,67 +3,89 @@ package mrnesbits
 import (
 	"fmt"
 	"github.com/iti/evt/evtm"
-	"golang.org/x/exp/slices"
+	_ "golang.org/x/exp/slices"
 )
 
 // file cpf.go holds structs and methods related to comp functions
 
-// The funcOut struct describes a possible output edge for a response, along with a topology-free label
-// 'choice' that can be used in the response selection process.
-type funcOutEdge struct {
-	DstLabel string
+
+// The edgeStruct struct describes a possible output edge for a response
+type edgeStruct struct {
+	CPID      int      // ID of comp pattern     
+	FuncLabel string   // might be source or destination function label, depending on context
 	MsgType  string
-	Choice   string
+}
+
+func createEdgeStruct(cpID int, label, msgType string) edgeStruct {
+	es := edgeStruct{CPID: cpID, FuncLabel: label, MsgType: msgType}
+	return es
 }
 
 // The CmpPtnFuncInst struct represents an instantiated instance of a function
 //
-//	constrained to the 'statefulerminisitc' execution model.
 type CmpPtnFuncInst struct {
 	InitFunc         evtm.EventHandlerFunction // if not 'emptyInitFunc' call this to initialize the function
 	InitMsg          *CmpPtnMsg                // message that is copied when this instance is used to initiate a chain of func evaluations
 	class            string                    // specifier leading to specific state, entrance, and exit functions
 	Label            string                    // an identifier for this func, unique within the instance of CompPattern holding it.
 	host             string                    // identity of the host to which this func is mapped for execution
+	sharedGroup		 string					   // empty means state not shared, otherwise global name of group with shared state
 	PtnName          string                    // name of the instantiated CompPattern holding this function
-	id               int                       // integer identity which is unique among all objects in the MrNesbits model
+	CPID			 int					   // id of the comp pattern this func is attached to
+	ID               int                       // integer identity which is unique among all objects in the MrNesbits model
 	active           bool                      // flag whether function is actively processing inputs
+	trace			 bool					   // indicate whether this function should record its enter/exit in the trace
 	State            any                       // holds string-coded state for string-code state variable names
-	Reflect          bool                      // whether the direction of the cmpHdr be return
-	InterarrivalDist string                    // for self-initiation
-	InterarrivalMean float64                   // for self-initiation
+	InterarrivalDist string
+	InterarrivalMean float64
 
-	// at run-time start-up this function is initialized with its responses
-	// the set of potential output edges may be constrained, but not statefulermined solely by the input edge as with the static model.
-	// Here, for a given input edge, 'resp' holds a slice of possible responses.
-	Resp map[InEdge][]funcOutEdge
+	// represent the comp pattern edges touching this function.  The in edge
+	// is indexed by the source function label and message type, yielding the method code
+	inEdgeMethodCode map[edgeStruct] string
 
-	// buffer the output messages created by executing the function body, indexed by the execID of the
-	// initiating message
+	// the out edges are in a list of edgeStructs
+	outEdges []edgeStruct
+
+	// respMethods indexed by method code
+	respMethods map[string]*RespMethod
+
+	// save messages created as result of processing function
 	msgResp map[int][]*CmpPtnMsg
-
-	// respMethods indexed by message type
-	respMethods map[string]*respMethod
-
-	// when a message comes in with a given type, what's the method code we use to guide the executing response
-	methodCode map[string]string
 }
 
 // createDestFuncInst== is a constructor that builds an instance of CmpPtnFunctInst from a Func description and
 // a serialized representation of a StaticParameters struct.
-func createFuncInst(cpInstName string, fnc *Func, paramStr, stateStr string, useYAML bool) *CmpPtnFuncInst {
+func createFuncInst(cpInstName string, cpID int, fnc *Func, stateStr string, useYAML bool) *CmpPtnFuncInst {
 	cpfi := new(CmpPtnFuncInst)
-	cpfi.id = nxtID()         // get an integer id that is unique across all objects in the simulation model
+	cpfi.ID = nxtID()         // get an integer id that is unique across all objects in the simulation model
 	cpfi.Label = fnc.Label    // remember a label given to this function instance as part of building a CompPattern graph
 	cpfi.PtnName = cpInstName // remember the name of the instance of the comp pattern in which this func resides
+	cpfi.CPID = cpID          // remember the ID of the Comp Pattern in which this func resides
 	cpfi.InitFunc = nil       // will be over-ridden if there is an initialization event scheduled later
 	cpfi.InitMsg = nil        // will be over-ridden if the initialization block indicates initiation possible
 	cpfi.active = true
+	cpfi.trace = false
 	cpfi.class = fnc.Class
-	cpfi.Resp = make(map[InEdge][]funcOutEdge)
 	cpfi.msgResp = make(map[int][]*CmpPtnMsg)
-	cpfi.methodCode = make(map[string]string)
-	cpfi.respMethods = make(map[string]*respMethod)
+
+	// inEdges, outEdges, and methodCode filled in after all function instances for a comp pattern created
+	cpfi.inEdgeMethodCode = make(map[edgeStruct]string)
+	cpfi.outEdges = make([]edgeStruct,0)
+	// cpfi.methodCode = make(map[string]string)
+	cpfi.respMethods = make(map[string]*RespMethod)
+
+	// if the ClassMethods map for the cpfi's class exists,
+	// initialize respMethods to be that
+
+	_, present := ClassMethods[fnc.Class]
+	if present {
+		// copy over the mapping to event handlers
+		for mc, mcr := range ClassMethods[fnc.Class] {
+			mcrcpy := new(RespMethod)
+			*mcrcpy = mcr
+			cpfi.respMethods[mc] = mcrcpy 
+		}
+	}
 
 	// look up the func-to-host assignment, established earlier in the initialization sequence
 	cpfi.host = CmpPtnFuncHost(cpfi)
@@ -71,46 +93,26 @@ func createFuncInst(cpInstName string, fnc *Func, paramStr, stateStr string, use
 	// get a pointer to the function's class
 	fc := FuncClasses[fnc.Class]
 
+	/*
 	params, err := DecodeFuncParameters(paramStr, useYAML)
 	if err != nil {
 		panic(err)
 	}
+	*/
 
-	fc.InitState(cpfi, params.State, useYAML)
-
-	// look for a response that flags a non-default (empty) self initiation
-	for _, resp := range params.Response {
-		// fnc.Class was already validated
-
-		if !slices.Contains(FuncClassNames[fnc.Class], resp.MethodCode) {
-			panic(fmt.Errorf("function method code %s not recognized for function class %s", resp.MethodCode, fnc.Class))
-		}
+	// if the function is not shared we initialize its state from the stateStr string.
+	// otherwise we have already created the state and just recover it
+	// FINDME N.B. revisit notion/use of shared function
+	if len(cpfi.sharedGroup) == 0 {
+		fc.InitState(cpfi, stateStr, useYAML)
+	} else {
+		gfid := GlobalFuncInstID{CmpPtnName: cpfi.PtnName, Label: cpfi.Label}
+		cpfi.State = funcInstToSharedState[gfid]
 	}
 
-	// N.B. copy of state map used to be here.  Replace it
-
-	// edges are maps of message type to func node labels. Here we copy the input list, but
-	// gather together responses that have a common InEdge  (N.B., InEdge is a structure more complex
-	// than an int or string, but can be used to index maps)
-	for _, resp := range params.Response {
-		_, present := cpfi.Resp[resp.InEdge]
-
-		// first time with this InEdge initialize the slice of responses
-		if !present {
-			cpfi.Resp[resp.InEdge] = make([]funcOutEdge, 0)
-		}
-
-		// create a response from the input response record
-		df := funcOutEdge{DstLabel: resp.OutEdge.DstLabel, MsgType: resp.OutEdge.MsgType, Choice: resp.Choice}
-		_, present = cpfi.methodCode[resp.InEdge.MsgType]
-		if present {
-			panic(fmt.Errorf("message type %s maps to multiple method codes", resp.InEdge.MsgType))
-		}
-
-		cpfi.methodCode[resp.InEdge.MsgType] = resp.MethodCode
-		cpfi.Resp[resp.InEdge] = append(cpfi.Resp[resp.InEdge], df)
+	if cpfi.funcTrace() {
+		traceMgr.AddName(cpfi.ID, cpfi.GlobalName(), "application")
 	}
-	traceMgr.AddName(cpfi.id, cpfi.GlobalName(), "application")
 
 	return cpfi
 }
@@ -122,7 +124,12 @@ func (cpfi *CmpPtnFuncInst) GlobalName() string {
 // AddResponse stores the selected out message response from executing the function,
 // to be released later.  Saving through cpfi.Resp[execID] to account for concurrent overlapping executions
 func (cpfi *CmpPtnFuncInst) AddResponse(execID int, resp []*CmpPtnMsg) {
-	cpfi.msgResp[execID] = resp
+	_, present := cpfi.msgResp[execID]
+
+	// add response for this function instance with this execId if it is not already present
+	if !present {
+		cpfi.msgResp[execID] = resp
+	}
 }
 
 // funcResp returns the saved list of function response messages associated
@@ -143,8 +150,9 @@ func (cpfi *CmpPtnFuncInst) isInitiating() bool {
 }
 
 func (cpfi *CmpPtnFuncInst) InitMsgParams(msgType string, msgLen, pcktLen int, rate float64) {
-	edge := CmpPtnGraphEdge{SrcLabel: cpfi.Label, DstLabel: cpfi.Label, MsgType: "initiate"}
-	cpfi.InitMsg = CreateCmpPtnMsg(edge, cpfi.Label, cpfi.Label, msgType, msgLen, pcktLen, rate, cpfi.PtnName, cpfi.PtnName, nil, 0)
+	edge := CreateCmpPtnGraphEdge(cpfi.Label, "initiate", cpfi.Label, "") 
+	cpm := CreateCmpPtnMsg(*edge, cpfi.Label, cpfi.Label, msgType, msgLen, pcktLen, rate, cpfi.PtnName, cpfi.PtnName, nil, 0)
+	cpfi.InitMsg = &cpm
 }
 
 // funcActive indicates whether the function is processing messages
@@ -164,12 +172,17 @@ func (cpfi *CmpPtnFuncInst) funcLabel() string {
 
 // funcID returns the unique-across-model integer identifier for this CmpPtnFunc
 func (cpfi *CmpPtnFuncInst) funcID() int {
-	return cpfi.id
+	return cpfi.ID
 }
 
 // funcCmpPtn gives the name of the CmpPtnInst the CmpPtnFunc is part of
 func (cpfi *CmpPtnFuncInst) funcCmpPtn() string {
 	return cpfi.PtnName
+}
+
+// funcTrace returns the value of the trace attribute
+func (cpfi *CmpPtnFuncInst) funcTrace() bool {
+	return cpfi.trace
 }
 
 // funcDevice returns the name of the topological Host upon which this CmpPtnFunc executes
@@ -180,13 +193,6 @@ func (cpfi *CmpPtnFuncInst) funcDevice() string {
 // func funcInitEvtHdlr gives the function to schedule to initialize the function instance
 func (cpfi *CmpPtnFuncInst) funcInitEvtHdlr() evtm.EventHandlerFunction {
 	return cpfi.InitFunc
-}
-
-// respMethod associates two RespFunc that implement a function's response,
-// one when it starts, the other when it ends
-type respMethod struct {
-	Start StartMethod
-	End   evtm.EventHandlerFunction
 }
 
 // AddStartMethod associates a string response 'name' with a pair of methods used to
@@ -201,7 +207,7 @@ func (cpfi *CmpPtnFuncInst) AddStartMethod(methodCode string, start StartMethod)
 		panic(fmt.Errorf("function method name %s already in use", methodCode))
 	}
 
-	rp := respMethod{Start: start, End: ExitFunc}
+	rp := RespMethod{Start: start, End: ExitFunc}
 	cpfi.respMethods[methodCode] = &rp
 	return true
 }
@@ -217,6 +223,6 @@ func (cpfi *CmpPtnFuncInst) AddEndMethod(methodCode string, end evtm.EventHandle
 }
 
 func CmpPtnFuncHost(cpfi *CmpPtnFuncInst) string {
-	ptnMap := CmpPtnMapDict.Map[cpfi.PtnName]
+	ptnMap := CmpPtnMapDict.Map[cpfi.PtnName]   // note binding of pattern to dictionary map to function map.  Shared needs something different
 	return ptnMap.FuncMap[cpfi.Label]
 }

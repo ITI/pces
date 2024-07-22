@@ -1,6 +1,6 @@
 package mrnesbits
 
-// sys.go has code that builds the system data structures
+// mrnesbits.go has code that builds the system data structures
 
 import (
 	"fmt"
@@ -9,9 +9,13 @@ import (
 	"github.com/iti/mrnes"
 	"path"
 	"strings"
+	"sort"
 )
 
-// NetSimPortal provides an interface to network simulator
+// NetSimPortal provides an interface to network simulator in the mrnes package.
+// mrnes does not import mrnesbits (to avoid circular imports).  However, 
+// code in mrnesbits can call a function in mrnes that returns a pointer
+// to a structure that satisfies the NetSimPortal interface.
 type NetSimPortal interface {
 	HostCPU(string) string
 	EnterNetwork(*evtm.EventManager, string, string, int, int, float64, any,
@@ -19,7 +23,7 @@ type NetSimPortal interface {
 }
 
 // The TraceManager interface helps integrate use of the mrnes functionality for managing
-// traces in this (different) model
+// traces in the mrnesbits package
 type TraceManager interface {
 
 	// at creation a flag is set indicating whether the trace manager will be active
@@ -35,15 +39,14 @@ type TraceManager interface {
 	WriteToFile(string) bool
 }
 
-// pointers that are global to mrnesbits to mrnes implemenations of the NetworkPortal and TraceManager interfaces
+// mrnesbits pointers to mrnes implemenations of the NetworkPortal and TraceManager interfaces
 var netportal *mrnes.NetworkPortal
 var traceMgr TraceManager
 
-// declare global variables that are loaded from
-// analysis of input files
-
 var CmpPtnMapDict *CompPatternMapDict
 var funcExecTimeTbl map[string]map[string]map[int]float64
+var nameToSharedState map[string]any
+var funcInstToSharedState map[GlobalFuncInstID]any
 
 // A CmpPtnGraph is the run-time description of a CompPattern
 type CmpPtnGraph struct {
@@ -59,13 +62,26 @@ type CmpPtnGraphEdge struct {
 	SrcLabel  string
 	MsgType   string
 	DstLabel  string
-	EdgeLabel string
+	MethodCode string
 }
 
-func CreateCmpPtnGraphEdge(srcLabel, msgType, dstLabel, edgeLabel string) CmpPtnGraphEdge {
-	edge := CmpPtnGraphEdge{SrcLabel: srcLabel, MsgType: msgType, DstLabel: dstLabel, EdgeLabel: edgeLabel}
-	return edge
+
+func (cpge *CmpPtnGraphEdge) EdgeStr() string {
+	rtn := fmt.Sprintf("src %s, type %s, dst %s, method %s", 
+		cpge.SrcLabel, cpge.MsgType, cpge.DstLabel, cpge.MethodCode)
+	return rtn
+} 
+
+type ExtCmpPtnGraphEdge struct {
+	SrcCP string
+	CPGE CmpPtnGraphEdge
 }
+
+func CreateCmpPtnGraphEdge(srcLabel, msgType, dstLabel, methodCode string) *CmpPtnGraphEdge {
+	cpge := &CmpPtnGraphEdge{SrcLabel: srcLabel, MsgType: msgType, DstLabel: dstLabel, MethodCode: methodCode}
+	return cpge
+}
+
 
 // A CmpPtnGraphNode names a function with its label, and describes
 // the edges for which it is a destination (inEdges) and edges
@@ -78,8 +94,8 @@ type CmpPtnGraphNode struct {
 
 // addEdge takes the description of a CPG edge and attempts
 // to add that edge to the CPG node corresponding to the edge's source and destination
-func (cpg *CmpPtnGraph) addEdge(srcLabel, msgType, dstLabel, edgeLabel string) error {
-	edge := &CmpPtnGraphEdge{SrcLabel: srcLabel, MsgType: msgType, DstLabel: dstLabel, EdgeLabel: edgeLabel}
+func (cpg *CmpPtnGraph) addEdge(srcLabel, msgType, dstLabel, methodCode string) error {
+	edge := &CmpPtnGraphEdge{SrcLabel: srcLabel, MsgType: msgType, DstLabel: dstLabel, MethodCode: methodCode}
 
 	srcNode, present1 := cpg.Nodes[srcLabel]
 	if !present1 {
@@ -135,9 +151,10 @@ func createCmpPtnGraph(cp *CompPattern) (*CmpPtnGraph, error) {
 	// note that nodes are inferred from edges, not pulled out explicitly first
 	// Edge is (SrcLabel, DstLabel, MsgType) where the labels are for funcs
 	for _, edge := range cp.Edges {
-		err := cpg.addEdge(edge.SrcLabel, edge.MsgType, edge.DstLabel, edge.EdgeLabel)
+		err := cpg.addEdge(edge.SrcLabel, edge.MsgType, edge.DstLabel, edge.MethodCode)
 		errList = append(errList, err)
 	}
+
 	return cpg, ReportErrs(errList)
 }
 
@@ -152,7 +169,7 @@ func createCmpPtnGraphNode(label string) *CmpPtnGraphNode {
 
 // buildCmpPtns goes through every CompPattern in the input CompPatternDict,
 // and creates a run-time CmpPtnInst representation for it.
-func buildCmpPtns(cpd *CompPatternDict, cpid *CPInitListDict) error {
+func buildCmpPtns(cpd *CompPatternDict, cpid *CPInitListDict, ssgl *SharedStateGroupList) error {
 
 	errList := []error{}
 	// CompPatterns are arranged in a map that is indexed by the CompPattern name
@@ -169,6 +186,10 @@ func buildCmpPtns(cpd *CompPatternDict, cpid *CPInitListDict) error {
 		// save the instance we can look it up given the comp pattern name
 		CmpPtnInstByName[cpName] = cpi
 	}
+
+	// after all the patterns have been built, create their edge tables
+	buildAllEdgeTables(cpd)
+
 	return ReportErrs(errList)
 }
 
@@ -217,7 +238,7 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm Tr
 	// The keys are
 	//	"cpInput"		- file describing comp patterns and functions
 	//	"cpInitInput"	- file describing initializations for comp patterns and functions
-	//	"funcExecInput"		- file describing function and device operation execution timing
+	//	"funcExecInput"	- file describing function and device operation execution timing
 	//	"mapInput"		- file describing the mapping of functions to hosts
 
 	// "qksim" if present means to tell the network portal to use quick simulation
@@ -225,7 +246,7 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm Tr
 	// call GetExperimentCPDicts to do the heavy lifting of extracting data structures
 	// (typically maps) designed for serialization/deserialization,  and assign those maps to variables
 	// we'll use to re-represent this information in structures optimized for run-time use
-	cpd, cpid, fel, cpmd := GetExperimentCPDicts(syn)
+	cpd, cpid, ssgl, fel, cpmd := GetExperimentCPDicts(syn)
 
 	// get a pointer to a mrns NetworkPortal
 
@@ -238,6 +259,7 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm Tr
 		panic("empty dictionary")
 	}
 
+	// N.B. ssgl may be empty if there are no functions with shared state
 	NumIDs = idCounter
 	traceMgr = tm
 
@@ -247,8 +269,16 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm Tr
 	// build the tables used to look up the execution time of comp pattern functions, and device operations
 	funcExecTimeTbl = buildFuncExecTimeTbl(fel)
 
+	buildSharedStateMaps(ssgl, useYAML)
+
 	// create the run-time representation of comp patterns, and initialize them
-	err := buildCmpPtns(cpd, cpid)
+	CreateClassMethods()
+	err := buildCmpPtns(cpd, cpid, ssgl)
+
+	// check the coherence of the shared state groups
+	if ssgl != nil {
+		checkSharedStateAssignment(ssgl)
+	}
 
 	// schedule the initiating events on self-initiating funcs
 	evtMgr := evtm.New()
@@ -266,11 +296,14 @@ func nxtID() int {
 
 // GetExperimentCPDicts accepts a map that holds the names of the input files used to define an experiment,
 // creates internal representations of the information they hold, and returns those structs.
-func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListDict, *FuncExecList, *CompPatternMapDict) {
+func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListDict, 
+		*SharedStateGroupList, *FuncExecList, *CompPatternMapDict) {
+
 	var cpd *CompPatternDict
 	var cpid *CPInitListDict
 	var fel *FuncExecList
 	var cpmd *CompPatternMapDict
+	var ssgl *SharedStateGroupList
 
 	empty := make([]byte, 0)
 
@@ -300,6 +333,15 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 	cpid, err = ReadCPInitListDict(syn["cpInitInput"], useYAML, empty)
 	errs = append(errs, err)
 
+	ssgl = nil
+	if len(syn["sharedState"]) > 0 {
+		ext = path.Ext(syn["sharedState"])
+		useYAML = (ext == ".yaml") || (ext == ".yml")
+
+		ssgl, err = ReadSharedStateGroupList(syn["sharedState"], useYAML, empty)
+		errs = append(errs, err)
+	}
+
 	ext = path.Ext(syn["funcExecInput"])
 	useYAML = (ext == ".yaml") || (ext == ".yml")
 
@@ -317,11 +359,164 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 		panic(err)
 	}
 
-	return cpd, cpid, fel, cpmd
+	return cpd, cpid, ssgl, fel, cpmd
 }
 
-func ReportStatistics() {
-	for _, cpi := range CmpPtnInstByName {
-		cpi.ExecReport()
+// buildSharedStateMaps fills out two maps used to initialize funcs with shared state.
+// The read-in list of shared state groups (if any) are examined 
+// to create the initial set up of the shared state, create one map that, given the name of the
+// shared state group returns a pointer to that state, and another which given the (cmpPtnName, label)
+// of a function that has shared state, a pointer to that state.
+func buildSharedStateMaps(ssgl *SharedStateGroupList, useYAML bool) {
+
+	// map index is the shared state group identity
+	nameToSharedState = make(map[string]any)
+
+	// map index is struct whose first member is name of a comp pattern, and the second one is the label within
+	funcInstToSharedState = make(map[GlobalFuncInstID]any)
+
+	// if there are no shared state groups we can leave now that the maps above are initialized to be empty
+	if ssgl == nil {
+		return
+	}
+
+	// the shared state groups are simply listed
+	for _, ssg := range ssgl.Groups {
+
+		// get a pointer to the class
+		fc := FuncClasses[ssg.class]
+
+		// create the state for this group, what the maps will point to
+		state := fc.CreateState(ssg.stateStr, useYAML)
+
+		// given the group name, get a pointer to the state structure
+		nameToSharedState[ssg.name] = state
+
+		for _, gfid := range(ssg.instances) {
+			// given the (cmpPtnName, label) identity, get a pointer to the state structure
+			funcInstToSharedState[gfid] = state
+		}
+	}	
+}		
+
+// checkSharedStateAssignment ensures that every function instance in a 
+// shared state group has the same class
+func checkSharedStateAssignment(ssgl *SharedStateGroupList) {
+
+	// shared state groups in *ssgl are listed in unordered sequence
+	for _, ssg := range(ssgl.Groups) {
+
+		// check all the functions with shared state in the same group
+		for _, gfid := range(ssg.instances) {
+
+			// pull out the function's comp pattern label
+			ptnName := gfid.CmpPtnName
+			label   := gfid.Label
+
+			// find representation of the comp pattern instance
+			cpInst, present  := CmpPtnInstByName[ptnName]
+			if !present {
+				panic(fmt.Errorf("comp pattern name %s from shared state group %s not found", ptnName, ssg.name))
+			}
+
+			// find representation of the comp pattern's function	
+			cpf, present := cpInst.funcs[label]	
+			if !present {
+				panic(fmt.Errorf("function label %s from shared state group %s not found", label, ssg.name))
+			}
+
+			// the class of the func instance needs to be the class of the shared state group
+			if cpf.class != ssg.class {
+				panic(fmt.Errorf("(%s,%s) from shared state group %s suffers class mismatch", ptnName, label, ssg.name))
+			}
+		}
 	}
 }
+	
+func ReportStatistics() {
+	// gather data by trace group
+	tgData := make(map[string][]float64)	
+ 
+	for tgName, tg := range allTrackingGroups {
+		_, present := tgData[tgName]
+		if !present {
+			tgData[tgName] = make([]float64,0)
+		}
+
+		rec := tg.finished 
+		if rec.n > 0 {
+			tgData[tgName] = append(tgData[tgName], rec.samples...)
+		} 
+	}
+
+	var minv, maxv, mean, med, q25, q75 float64
+	var qrt int
+	for name, data := range tgData {
+		sort.Float64s(data)
+		num := len(data)
+		sum := 0.0
+		for _,v := range data {
+			sum += v
+		}
+		mean = sum/ float64(num)
+
+		if num>4 {
+			medp := int(num/2)
+			minv = data[0]
+			maxv = data[len(data)-1]
+			if num%2 == 1 {
+				med = data[medp+1]		
+			} else {
+				med = (data[medp]+data[medp+1])/2
+			}
+	
+			if num%4 == 0 {
+				qrt = int(num/4)
+				q25 = (data[qrt-1]+data[qrt])/2
+				q75 = (data[3*qrt]+data[3*qrt-1])/2
+			} else if num%4 == 2 {
+				q25 = data[int(num/4)]
+				q75 = data[int(num/2)+int(num/4)]
+			}	else if num%4 == 1 {
+				// means that the list length is odd, lengths from median to 
+				// endpoints are even
+				mid := (num-1)/2
+				qrt = int(mid/2)
+				q25 = (data[qrt]+data[qrt+1])/2
+				q75 = (data[mid+qrt]+data[mid+qrt+1])/2	
+			} else {
+				// list length is odd, lengths from median to endpoints are odd
+				mid := (num-1)/2
+				qrt = int(mid/2)+1
+				q25 = data[qrt]
+				q75 = data[mid+qrt]	
+			}
+		} else if num==4 {
+			minv = data[0]
+			maxv = data[3]
+			med  = (data[1]+data[2])/2
+			q25 = data[1]
+			q75 = data[2]
+		} else if num==3 {
+			minv = data[0]
+			maxv = data[2]
+			med  = data[1]
+			q25 = (data[0]+data[1])/2
+			q75 = (data[2]+data[1])/2
+		} else if num==2 {
+			minv = data[0]
+			maxv = data[1]
+			med  = (data[1]+data[0])/2
+			q25 = (data[0]+data[1])/4
+			q75 = 3*(data[0]+data[1])/4
+		} else if num==1 {
+			minv = data[0]
+			maxv = data[0]
+			med  = data[0]
+			q25  = data[0]
+			q75  = data[0]
+		}
+		fmt.Printf("Trace gathering group %s has spread %f, %f, %f %f, %f, %f\n", name, minv, q25, mean, med, q75, maxv)
+	}
+}
+

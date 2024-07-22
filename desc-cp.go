@@ -1,10 +1,17 @@
 package mrnesbits
 
+// desc-cp.go holds data structures and methods used primarily
+// to build mrnesbits models for files and so is primarily used
+// by separate programs that build models, and by mrnesbits methods
+// that read in those models from file and transform them into
+// data structures used at run-time by the simulator
+
+
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/exp/slices"
+	_ "golang.org/x/exp/slices"
 	"gopkg.in/yaml.v3"
 	"os"
 	"path"
@@ -24,30 +31,46 @@ type CompPattern struct {
 	Funcs []Func `json:"funcs" yaml:"funcs"`
 
 	// description of edges in Pattern graph
-	Edges []PatternEdge `json:"edges" yaml:"edges"`
+	Edges []CmpPtnGraphEdge `json:"edges" yaml:"edges"`
+
+	// description of external edges in Pattern graph
+	ExtEdges map[string][]XCPEdge `json:"extedges" yaml:"extedges"`
 }
 
 // CreateCompPattern is an initialization constructor.
 // Its output struct has methods for integrating data.
 func CreateCompPattern(cmptnType string) *CompPattern {
-	cp := &CompPattern{CPType: cmptnType, Funcs: make([]Func, 0), Edges: make([]PatternEdge, 0)}
-	cmptnByName[cmptnType] = cp
+
+	cp := &CompPattern{CPType: cmptnType, Funcs: make([]Func, 0), Edges: make([]CmpPtnGraphEdge, 0)}
+	cp.ExtEdges = make(map[string][]XCPEdge)	
+
+	// make type the default name, possible over-ride later	
+	cp.SetName(cmptnType)	
 
 	return cp
 }
 
+// local dictionary that gives access to a CompPattern give its name 
 var cmptnByName map[string]*CompPattern = make(map[string]*CompPattern)
-var Algorithms []string = []string{"rsa", "aes", "rsa-3072", "rsa-2048", "rsa-1024"}
 
 // AddFunc includes a function specification to a CompPattern
 func (cpt *CompPattern) AddFunc(fs *Func) {
+	// make sure that the class declared for the function exists
+	_, present := ClassMethods[fs.Class]
+	if !present {
+		panic(fmt.Errorf("Function %s declares unrecognized class %s", fs.Label, fs.Class))
+	}
 	cpt.Funcs = append(cpt.Funcs, *fs)
 }
 
 // AddEdge creates an edge that describes message flow from one Func to another in the same comp pattern
-// and adds it to the CompPattern's list of edges
-func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType string, edgeLabel string) {
-	pe := PatternEdge{SrcLabel: srcFuncLabel, DstLabel: dstFuncLabel, MsgType: msgType, EdgeLabel: edgeLabel}
+// and adds it to the CompPattern's list of edges. Called from code that is building a model, applies some
+// sanity checking
+//
+func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType string, methodCode string, 
+		msgs *[]CompPatternMsg ) {
+
+	pe := CmpPtnGraphEdge{SrcLabel: srcFuncLabel, DstLabel: dstFuncLabel, MsgType: msgType, MethodCode: methodCode}
 
 	// look for duplicated edge
 	for _, edge := range cpt.Edges {
@@ -64,44 +87,159 @@ func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType strin
 		}
 	}
 
-	// include the edge
+	// ensure that both function labels given have been created and
+	// added to the CompPattern already
+	srcFound := false
+	dstFound := false
+	dstClass := ""
+	for _, fnc := range cpt.Funcs {
+		if fnc.Label == srcFuncLabel {
+			srcFound = true
+		}
+		if fnc.Label == dstFuncLabel {
+			dstFound = true
+			dstClass = fnc.Class
+		}
+	}
+
+	// panic if either src or dst func is found
+	if !srcFound || !dstFound {
+		panic(fmt.Errorf("call to CmpPtn %s AddEdge specifies undeclared function", cpt.Name))
+	}
+ 
+	// ensure that the methodCode for the destination is recognized by its Class.
+	// The ClassMethods map is 'hardwired' into the mrnesbits package. It (like a few other data structures)
+	// needs to be updated and the simulator (and model building programs) recompiled to include
+	// new function classes
+	methodFound := false	
+	fmap := ClassMethods[dstClass] 
+	for mc := range fmap {
+		if mc == methodCode {
+			methodFound = true
+			break
+		}
+	}
+
+	// panic if methodCode is not part of the ClassMethod map 
+	if !methodFound {
+		panic(fmt.Errorf("method %s not found associated with class %s of destination %s in CmpPtn %s AddEdge",
+			methodCode, dstClass, dstFuncLabel, cpt.Name))
+	} 		 
+
+	// check whether message type was added to the CompPatterns cpInit dictionary
+	// whose Msgs list is an argument to this call
+	msgTypeFound := false
+	for _, msg := range (*msgs) {
+		if msgType == msg.MsgType {
+			msgTypeFound = true
+			break
+		}
+	}
+
+	// panic if the message type has not (yet) been declared
+	if !msgTypeFound {
+		panic(fmt.Errorf("message type %s in AddEdge for CmpPtn %s not yet declared", msgType, cpt.Name))
+	}	
+
+	// passed all the checks above, so include the edge
 	cpt.Edges = append(cpt.Edges, pe)
 }
 
-// GetInEdges returns a list of InEdges that match the specified source and destination
-func (cpt *CompPattern) GetInEdges(srcLabel, dstLabel string) []InEdge {
-	rtn := []InEdge{}
-	for _, edge := range cpt.Edges {
-		if edge.SrcLabel == srcLabel && edge.DstLabel == dstLabel {
-			rtn = append(rtn, InEdge{SrcLabel: srcLabel, MsgType: edge.MsgType})
-		}
-	}
-	return rtn
+// XCPEdge describes an edge between different CmpPtns.
+//   These are always rooted in a function of the chgCP class, 
+// where they are organized in a map whose index is the ultimate target CP for a message.
+// The attribute is an XCPEdge, which specifies (a) the identity of the next CmpPtn,
+// (b) the identity of the function to receive the message, (c) the type of the X-CP message, and
+// (d) the methodCode for the function method to be executed.   Note that this structure
+// limits one XCPEdge per chgCP instance per target CP.
+type XCPEdge struct {
+	SrcCP     string
+	EndCP	  string	
+	NxtCP	  string	
+	SrcLabel  string	
+	DstLabel  string
+	MsgType   string	
+	MethodCode string	
 }
 
-// GetOutEdges returns a list of OutEdges that match the specified source and destination
-func (cpt *CompPattern) GetOutEdges(srcLabel, dstLabel string) []OutEdge {
-	rtn := []OutEdge{}
-	for _, edge := range cpt.Edges {
-		if edge.SrcLabel == srcLabel && edge.DstLabel == dstLabel {
-			rtn = append(rtn, OutEdge{DstLabel: dstLabel, MsgType: edge.MsgType})
+// AddExtEdge creates an edge that describes message flow from one Func to another in 
+// a different computational pattern and adds it to the CompPattern's list of external edges.
+// Perform some sanity checks before commiting the edge
+func (cpt *CompPattern) AddExtEdge(srcCP, endCP, nxtCP, srcLabel, dstLabel string, msgType string, methodCode string, 
+		srcMsgs *[]CompPatternMsg, dstMsgs *[]CompPatternMsg) {
+
+	// create the edge we'll commit if it passes sanity checks
+	pxe := XCPEdge{SrcCP: srcCP, EndCP: endCP, NxtCP: nxtCP, SrcLabel: srcLabel, DstLabel: dstLabel, MsgType: msgType, MethodCode: methodCode}
+
+	// N.B. when AddExtEdge is called the model is being built and we do not yet have
+	// instances of the CmpPtn, so index on the string name rather than the instance id
+	// look for duplicated edge
+	_, present := cpt.ExtEdges[endCP]
+
+	if present {
+		// a list of external edges from cpt aimed at dstCPName exists, so
+		// check each for exact duplication 
+		for _, xedge := range cpt.ExtEdges[endCP] {
+			if pxe == xedge {
+				fmt.Printf("Warning: duplicated declaration of external edge from %s for destination CP %s through %s\n",
+					cpt.Name, endCP, srcLabel)
+				return
+			}
+
+			// if there is a match in the srcLabel attribute, then one of the
+			// other attributes didn't match (otherwise the test above would have
+			// caused a return
+			if (xedge.SrcCP == srcCP) && (xedge.SrcLabel == srcLabel) {
+				panic(fmt.Errorf("Inconsistent external edge declaration"))
+			}
 		}
 	}
-	return rtn
+
+	if !present {
+		cpt.ExtEdges[endCP] = []XCPEdge{}
+	}
+	
+
+	// make sure the msgType is in the message lists of both CmpPtn cpInit dictionary lists
+	srcFound := false
+	dstFound := false
+	for _, msg := range (*srcMsgs) {
+		if msgType == msg.MsgType {
+			srcFound = true
+			break
+		}
+	}
+	for _, msg := range (*dstMsgs) {
+		if msgType == msg.MsgType {
+			dstFound = true
+			break
+		}
+	}
+	if !srcFound || !dstFound {
+		panic(fmt.Errorf("message type not declared for endpoint CmpPtn in AddExtEdge"))
+	}
+
+	// include the edge
+	cpt.ExtEdges[endCP] = append(cpt.ExtEdges[endCP], pxe)
+}
+
+// SetName copies the given name to be the CmpPtn's attribute and
+// saves the name -> CmpPtn mapping in cmptnByName
+func (cpt *CompPattern) SetName(name string) {
+	cpt.Name = name
+	cmptnByName[name] = cpt
 }
 
 // CompPatternDict holds pattern descriptions, is serializable
 type CompPatternDict struct {
-	Prebuilt bool                   `json:"prebuilt" yaml:"prebuilt"`
 	DictName string                 `json:"dictname" yaml:"dictname"`
 	Patterns map[string]CompPattern `json:"patterns" yaml:"patterns"`
 }
 
 // CreateCompPatternDict is an initialization constructor.
 // Its output struct has methods for integrating data.
-func CreateCompPatternDict(name string, preblt bool) *CompPatternDict {
+func CreateCompPatternDict(name string) *CompPatternDict {
 	cpd := new(CompPatternDict)
-	cpd.Prebuilt = preblt
 	cpd.DictName = name
 	cpd.Patterns = make(map[string]CompPattern)
 
@@ -111,10 +249,7 @@ func CreateCompPatternDict(name string, preblt bool) *CompPatternDict {
 // RecoverCompPattern returns a copy of a CompPattern from the dictionary,
 // indexing by type, and applying a name
 func (cpd *CompPatternDict) RecoverCompPattern(cptype string, cpname string) (*CompPattern, bool) {
-	key := cptype
-	if !cpd.Prebuilt {
-		key = cpname
-	}
+	key := cpname
 
 	// do we have any using the named type? Note that cp is a copy of that stored in the dictionary
 	cp, present := cpd.Patterns[key]
@@ -134,27 +269,15 @@ func (cpd *CompPatternDict) RecoverCompPattern(cptype string, cpname string) (*C
 // is the CompPattern cptype when accessing a prb dictionary, and the name otherwise
 // so the CP type is used as a key when true, otherwise the CP name is known and used. If requested, and error is
 // returned if the comp pattern being added is a duplicate.
-func (cpd *CompPatternDict) AddCompPattern(ptn *CompPattern, prb bool, overwrite bool) error {
+func (cpd *CompPatternDict) AddCompPattern(ptn *CompPattern) error {
 	// warn if we're overwriting an existing entry?
-	if !overwrite {
-		present := false
-		if !prb {
-			_, present = cpd.Patterns[ptn.Name]
-		} else {
-			_, present = cpd.Patterns[ptn.CPType]
-		}
-
-		if present {
-			return fmt.Errorf("overwrite pattern name %s in dictionary %s", ptn.Name, cpd.DictName)
-		}
+	_, present := cpd.Patterns[ptn.Name]
+	if present {
+		return fmt.Errorf("overwrite pattern name %s in dictionary %s", ptn.Name, cpd.DictName)
 	}
 
 	// save a copy, not a pointer to a struct
-	if !prb {
-		cpd.Patterns[ptn.Name] = *ptn
-	} else {
-		cpd.Patterns[ptn.CPType] = *ptn
-	}
+	cpd.Patterns[ptn.Name] = *ptn
 	return nil
 }
 
@@ -216,9 +339,148 @@ func (cpd *CompPatternDict) WriteToFile(filename string) error {
 	return nil
 }
 
+
+// GlobalFuncInstID is a global identifier for a function,
+// naming the CmpPtn that holds it and its label within that CmpPtn
+type GlobalFuncInstID struct {
+	CmpPtnName string
+	Label string
+}
+
+// SharedStateGroup gathers descriptions of functions that share
+// the same state information, even across CmpPtn boundaries
+type SharedStateGroup struct {
+	name string       // give a name to this shared state group
+	class string      // all members have to be in the same class
+	instances []GlobalFuncInstID   // slice identifying the representations that share state
+	stateStr string   // the state they share, used at initialization
+}
+
+// CreateSharedStateGroup is a constructor
+func CreateSharedStateGroup(name string, class string) *SharedStateGroup {
+	ssg := new(SharedStateGroup)
+	ssg.name = name
+	ssg.class = class
+	ssg.instances = make([]GlobalFuncInstID, 0)
+	return ssg
+}
+
+// AddInstance appends a global function description to
+// a shared state group, but makes sure that it does not exist
+// already in that group
+func (ssg *SharedStateGroup) AddInstance(cmpPtnName, label string) {
+
+	for _, gfid := range ssg.instances {
+		if cmpPtnName == gfid.CmpPtnName && label == gfid.Label {
+			fmt.Printf("Warning, attempt to add duplicated global function id to shared state group %s\n", ssg.name)
+			return
+		}
+	}
+	gfid := GlobalFuncInstID{CmpPtnName: cmpPtnName, Label: label}
+	ssg.instances = append(ssg.instances, gfid)
+}
+
+// AddState gives a shared state group a serialized common state
+func (ssg *SharedStateGroup) AddState(stateStr string) {
+	ssg.stateStr = stateStr
+}
+
+// SharedStateGroupList holds all the shared state groups defined,
+// for inclusion in a shared state description file
+type SharedStateGroupList struct {
+	// UseYAML flags whether to interpret the seriaized state using json or yaml
+	UseYAML bool `json:"useyaml" yaml:"useyaml"`
+	Groups []SharedStateGroup `json:"groups" yaml:"groups"`
+}
+
+// CreateSharedStateGroupList is a constructor
+func CreateSharedStateGroupList(yaml bool) *SharedStateGroupList {
+	ssgl := new(SharedStateGroupList)
+	ssgl.UseYAML = yaml
+	ssgl.Groups = make([]SharedStateGroup,0)
+	return ssgl
+}
+
+// AddSharedStateGroup includes an offered state group the the list,
+// but checks that there is not already one there with the same name and class
+func (ssgl *SharedStateGroupList) AddSharedStateGroup(ssg *SharedStateGroup) {
+	for _, ssgrp := range ssgl.Groups {
+		if ssgrp.name == ssg.name && ssgrp.class == ssg.class {
+			panic(fmt.Errorf("attempt to include shared state class with same name %s and class	%s as previously included",
+				ssg.name, ssg.class))
+		}
+	}	
+	ssgl.Groups = append(ssgl.Groups, *ssg)
+}
+
+// ReadSharedStateGroupList returns a deserialized slice of bytes into a SharedStateGroupList.  Bytes are either provided, or are
+// read from a file whose name is given.
+func ReadSharedStateGroupList(filename string, useYAML bool, dict []byte) (*SharedStateGroupList, error) {
+	var err error
+
+	// empty slice of bytes means we get those bytes from the named file
+	if len(dict) == 0 {
+		// validate input file name
+		fileInfo, err := os.Stat(filename)
+		if os.IsNotExist(err) || fileInfo.IsDir() {
+			msg := fmt.Sprintf("shared state group list file %s does not exist or cannot be read", filename)
+			fmt.Println(msg)
+			return nil, fmt.Errorf(msg)
+		}
+		dict, err = os.ReadFile(filename)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	example := SharedStateGroupList{}
+
+	if useYAML {
+		err = yaml.Unmarshal(dict, &example)
+		example.UseYAML = true
+	} else {
+		err = json.Unmarshal(dict, &example)
+		example.UseYAML = false
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return &example, nil
+}
+
+// WriteToFile serializes the SharedStateGroupList and writes it to a file.  Output file
+// extension identifies whether serialization is to json or to yaml
+func (ssgl *SharedStateGroupList) WriteToFile(filename string) error {
+	pathExt := path.Ext(filename)
+	var bytes []byte
+	var merr error = nil
+
+	if pathExt == ".yaml" || pathExt == ".YAML" || pathExt == ".yml" {
+		bytes, merr = yaml.Marshal(*ssgl)
+	} else if pathExt == ".json" || pathExt == ".JSON" {
+		bytes, merr = json.MarshalIndent(*ssgl, "", "\t")
+	}
+
+	if merr != nil {
+		panic(merr)
+	}
+
+	f, cerr := os.Create(filename)
+	if cerr != nil {
+		panic(cerr)
+	}
+	_, werr := f.WriteString(string(bytes[:]))
+	if werr != nil {
+		panic(werr)
+	}
+	f.Close()
+	return nil
+}
+
 // CPInitList describes configuration parameters for the Funcs of a CompPattern
 type CPInitList struct {
-	// label of the Computation Pattern whose Funcs are being initialized
+	// name of the Computation Pattern whose Funcs are being initialized
 	Name string `json:"name" yaml:"name"`
 
 	// CPType of CP being initialized
@@ -227,37 +489,41 @@ type CPInitList struct {
 	// UseYAML flags whether to interpret the seriaized initialization structure using json or yaml
 	UseYAML bool `json:"useyaml" yaml:"useyaml"`
 
-	// Params is indexed by Func label, mapping to a serialized representation of a struct
-	Params map[string]string `json:"params" yaml:"params"`
-
-	// Params is indexed by Func label, mapping to a serialized representation of a struct
+	// State is indexed by Func label, mapping to a serialized representation of a struct
 	State map[string]string `json:"state" yaml:"state"`
 
 	// Msgs holds a list of CompPatternMsgs used between Funcs in a CompPattern
 	Msgs []CompPatternMsg `json:"msgs" yaml:"msgs"`
 }
 
-// CreateCPInitList constructs a CPInitList and initializes it with a name and flag indicating whether YAML is used
+// CreateCPInitList constructs a CPInitList for an instance of a CompPattern
+// and initializes it with a name and flag indicating whether YAML is used
 func CreateCPInitList(name string, cptype string, useYAML bool) *CPInitList {
 	cpil := new(CPInitList)
 	cpil.Name = name
 	cpil.CPType = cptype
 	cpil.UseYAML = useYAML
-	cpil.Params = make(map[string]string)
 	cpil.State = make(map[string]string)
 
 	cpil.Msgs = make([]CompPatternMsg, 0)
 	return cpil
 }
 
-// AddParam puts a serialized initialization struct in the dictionary indexed by Func label
-func (cpil *CPInitList) AddParam(label, param string) {
-	cpil.Params[label] = param
-}
 
 // AddState puts a serialized initialization struct in the dictionary indexed by Func label
-func (cpil *CPInitList) AddState(label, state string) {
-	cpil.State[label] = state
+func (cpil *CPInitList) AddState(cp *CompPattern, fnc *Func, state string) {
+	// make sure that the function to which the state is attached has been defined for the given CmpPtn
+	foundFunc := false
+	for _, cpFunc := range cp.Funcs {
+		if cpFunc.Label == fnc.Label {
+			foundFunc = true
+			break
+		}
+	}
+	if !foundFunc {
+		panic(fmt.Errorf("attempt to add state to CmpPtn %s for a function %s not defined", cp.Name, fnc.Label))
+	}	
+	cpil.State[fnc.Label] = state
 }
 
 // AddMsg appends description of a ComPatternMsg to the CPInitList's slice of messages used by the CompPattern.
@@ -341,7 +607,6 @@ func (cpil *CPInitList) WriteToFile(filename string) error {
 // prebuilt versions (in which case InitList is indexed by CompPattern type) or
 // is holding init lists for CPs to be part of an experiment, so the CP name is known is used as the key
 type CPInitListDict struct {
-	Prebuilt bool   `json:"prebuilt" yaml:"prebuilt"`
 	DictName string `json:"dictname" yaml:"dictname"`
 
 	// indexed by name of comp pattern
@@ -350,48 +615,30 @@ type CPInitListDict struct {
 
 // CreateCPInitListDict is an initialization constructor.
 // Its output struct has methods for integrating data.
-func CreateCPInitListDict(name string, preblt bool) *CPInitListDict {
+func CreateCPInitListDict(name string) *CPInitListDict {
 	cpild := new(CPInitListDict)
-	cpild.Prebuilt = preblt
 	cpild.DictName = name
 	cpild.InitList = make(map[string]CPInitList)
 	return cpild
 }
 
-// RecoverCPInitList returns a copy of a CPInitList from the dictionary, using the Prebuilt flag to
-// choose index key, and applys a name
+// RecoverCPInitList returns a copy of a CPInitList from the dictionary
 func (cpild *CPInitListDict) RecoverCPInitList(cptype string, cpname string) (*CPInitList, bool) {
-	key := cptype
-
-	if !cpild.Prebuilt {
-		key = cpname
-	}
-
-	cpil, present := cpild.InitList[key]
+	cpil, present := cpild.InitList[cpname]
 	if !present {
 		return nil, false
 	}
-
-	cpil.Name = cpname
 	return &cpil, true
 }
 
-// AddCPInitList puts a CPInitList into the dictionary, selectively warning
-// if this would overwrite
-func (cpild *CPInitListDict) AddCPInitList(cpil *CPInitList, overwrite bool) error {
-	key := cpil.CPType
-	if !cpild.Prebuilt {
-		key = cpil.Name
+// AddCPInitList puts a CPInitList into the dictionary
+func (cpild *CPInitListDict) AddCPInitList(cpil *CPInitList) error {
+	_, present := cpild.InitList[cpil.Name]
+	if present {
+		return fmt.Errorf("attempt to overwrite comp pattern initialization list %s", cpild.DictName)
 	}
 
-	if !overwrite {
-		_, present := cpild.InitList[key]
-		if present {
-			return fmt.Errorf("attempt to overwrite comp pattern initialization list %s", cpild.DictName)
-		}
-	}
-	cpild.InitList[key] = *cpil
-
+	cpild.InitList[cpil.Name] = *cpil
 	return nil
 }
 
@@ -458,26 +705,6 @@ func ReadCPInitListDict(filename string, useYAML bool, dict []byte) (*CPInitList
 	return &example, nil
 }
 
-// DecodeFuncParameters deserializes and returns a "FuncParameters" structure from
-// a string that encodes its serialization
-func DecodeFuncParameters(paramStr string, useYAML bool) (*FuncParameters, error) {
-	funcResp := FuncParameters{}
-	var err error
-	if useYAML {
-		err = yaml.Unmarshal([]byte(paramStr), &funcResp)
-	} else {
-		err = json.Unmarshal([]byte(paramStr), &funcResp)
-	}
-	return &funcResp, err
-}
-
-// Tables that hold class names and methods for those classes, can be tested against
-// both when model is built and when model is run
-
-var FuncClassNames map[string][]string = map[string][]string{"SelectDst": {"return-op", "initiate-op"}, "CryptoSrvr": {"encrypt-op", "decrypt-op"},
-	"PassThru": {"process-op"}, "FlowEndpt": {"initiate-op", "genflow-op", "sink-op"},
-	"GenPckt": {"initiate-op", "return-op"}, "PcktProcess": {"process-op"}}
-
 // CompPatternMsg defines the structure of identification of messages that pass between Funcs in a CompPattern.
 // Structures of this sort are transformed by a simulation run into a form that include experiment-defined payloads,
 // and so representation of payload is absent here,
@@ -488,7 +715,8 @@ type CompPatternMsg struct {
 	// a message may be a packet or a flow
 	IsPckt bool `json:"ispckt" yaml:"ispckt"`
 
-	// PcktLen is a parameter used by some functions to select their execution time.  Not the same as the length of the message carrying the packet
+	// PcktLen is a parameter used by some functions to select their execution time.  
+	// Not the same as the length of the message carrying the packet
 	PcktLen int `json:"pcktlen" yaml:"pcktlen"`
 
 	// MsgLen is the total length of the message c
@@ -507,125 +735,19 @@ func CreateCompPatternMsg(msgType string, pcktLen int, msgLen int) *CompPatternM
 	return cpm
 }
 
-// A PatternEdge exists between the Funcs whose labels are given as SrcLabel and DstLabel. The edge is denoted to have a message type,
-// and also a 'weight' whose use and interpretation depends on the Funcs whose labels are given
-type PatternEdge struct {
-	SrcLabel  string `json:"srclabel" yaml:"srclabel"`
-	DstLabel  string `json:"dstlabel" yaml:"dstlabel"`
-	MsgType   string `json:"msgtype" yaml:"msgtype"`
-	EdgeLabel string `json:"edgelabel" yaml:"edgelabel"`
+
+// An InEdge describes the source Func of an incoming edge, the type of message it carries, and the method code 
+// flagging what code should execute as a result
+type InEdge struct {
+	SrcLabel string `json:"srclabel" yaml:"srclabel"`
+	MsgType  string `json:"msgtype" yaml:"msgtype"`
+	MethodCode  string `json:"methodcode" yaml:"methodcode"`
 }
 
-// CreatePatternEdge is a constructor.
-func CreatePatternEdge(srcLabel, dstLabel, msgType, edgeLabel string) *PatternEdge {
-	pe := new(PatternEdge)
-	pe.SrcLabel = srcLabel
-	pe.DstLabel = dstLabel
-	pe.EdgeLabel = edgeLabel
-	pe.MsgType = msgType
-	return pe
-}
-
-// A FuncExecDesc struct holds a description of a function timing.
-// ExecTime is the time (in seconds), attributes it depends on are
-//
-//		Hardware - the CPU,
-//	 PcktLen - number of bytes in data packet being operated on
-type FuncExecDesc struct {
-	Class    string  `json:"class" yaml:"class"`
-	Hardware string  `json:"processortype" yaml:"processortype"`
-	PcktLen  int     `json:"pcktlen" yaml:"pcktlen"`
-	ExecTime float64 `json:"exectime" yaml:"exectime"`
-}
-
-// A FuncExecList holds a map (Times) whose key is the class
-// of a Func, and whose value is a list of FuncExecDescs
-// associated with all Funcs of that class
-type FuncExecList struct {
-	// ListName is an identifier for this collection of timings
-	ListName string `json:"listname" yaml:"listname"`
-
-	// Times key is class of CompPattern function.
-	// Value is list of function times for that type of function
-	Times map[string][]FuncExecDesc `json:"times" yaml:"times"`
-}
-
-// CreateFuncExecList is an initialization constructor.
-// Its output struct has methods for integrating data.
-func CreateFuncExecList(listname string) *FuncExecList {
-	fel := new(FuncExecList)
-	fel.ListName = listname
-	fel.Times = make(map[string][]FuncExecDesc)
-	return fel
-}
-
-// WriteToFile stores the FuncExecList struct to the file whose name is given.
-// Serialization to json or to yaml is selected based on the extension of this name.
-func (fel *FuncExecList) WriteToFile(filename string) error {
-	pathExt := path.Ext(filename)
-	var bytes []byte
-	var merr error = nil
-
-	if pathExt == ".yaml" || pathExt == ".YAML" || pathExt == ".yml" {
-		bytes, merr = yaml.Marshal(*fel)
-	} else if pathExt == ".json" || pathExt == ".JSON" {
-		bytes, merr = json.MarshalIndent(*fel, "", "\t")
-	}
-
-	if merr != nil {
-		panic(merr)
-	}
-
-	f, cerr := os.Create(filename)
-	if cerr != nil {
-		panic(cerr)
-	}
-	_, werr := f.WriteString(string(bytes[:]))
-	if werr != nil {
-		panic(werr)
-	}
-	f.Close()
-
-	return werr
-}
-
-// ReadFuncExecList deserializes a byte slice holding a representation of an FuncExecList struct.
-// If the input argument of dict (those bytes) is empty, the file whose name is given is read
-// to acquire them.  A deserialized representation is returned, or an error if one is generated
-// from a file read or the deserialization.
-func ReadFuncExecList(filename string, useYAML bool, dict []byte) (*FuncExecList, error) {
-	var err error
-
-	// if the dict slice of bytes is empty we get them from the file whose name is an argument
-	if len(dict) == 0 {
-		dict, err = os.ReadFile(filename)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	example := FuncExecList{}
-
-	if useYAML {
-		err = yaml.Unmarshal(dict, &example)
-	} else {
-		err = json.Unmarshal(dict, &example)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &example, nil
-}
-
-// AddTiming takes the parameters of a FuncExecDesc, creates one, and adds it to the FuncExecList
-func (fel *FuncExecList) AddTiming(class, hardware string, pcktLen int, execTime float64) {
-	_, present := fel.Times[class]
-	if !present {
-		fel.Times[class] = make([]FuncExecDesc, 0)
-	}
-	fel.Times[class] = append(fel.Times[class], FuncExecDesc{Hardware: hardware, PcktLen: pcktLen, ExecTime: execTime, Class: class})
+// An OutEdge describes the destination Func of an outbound edge, and the type of message it carries.
+type OutEdge struct {
+	MsgType  string `json:"msgtype" yaml:"msgtype"`
+	DstLabel string `json:"dstlabel" yaml:"dstlabel"`
 }
 
 // A Func represents a function used within a [CompPattern].
@@ -639,125 +761,8 @@ type Func struct {
 
 	// particular name given to function instance within a CompPattern
 	Label string `json:"label" yaml:"label"`
-
-	// name that is globally unique within a model, used for addressing
-	GblName string `json:"gblname" yaml:"gblname"`
 }
 
-// An InEdge describes the source Func of an incoming edge, and the type of message it carries.
-type InEdge struct {
-	SrcLabel string `json:"srclabel" yaml:"srclabel"`
-	MsgType  string `json:"msgtype" yaml:"msgtype"`
-}
-
-var EmptyInEdge InEdge
-
-// An OutEdge describes the destination Func of an outbound edge, and the type of message it carries.
-type OutEdge struct {
-	MsgType  string `json:"msgtype" yaml:"msgtype"`
-	DstLabel string `json:"dstlabel" yaml:"dstlabel"`
-}
-
-var EmptyOutEdge OutEdge
-
-// A FuncResp maps an InEdge to an outEdgeStruct, which for a Func with static execution type
-// means an input received on the InEdge _may_ generate in response a message on the OutEdge.
-// 'Choice is an identifier used by the Func's logic for selecting an output edge.
-type FuncResp struct {
-	// input edge
-	InEdge InEdge `json:"inedge" yaml:"inedge"`
-
-	// potential output edge
-	OutEdge OutEdge `json:"outedge" yaml:"outedge"`
-
-	// operation performed on input
-	MethodCode string
-
-	// an identifier used by the logic which chooses an output edge.
-	Choice string `json:"choice" yaml:"choice"`
-}
-
-// A FuncParameters struct holds information for initializing a Func.
-// It names the label of the Func within an instantiated CompPattern, and the name of that CompPattern.
-// It holds a string-to-string map which when filled out carries to the Func representation a general
-// vehicle for defining state variables and initializing them.   The 'FuncSelect' attribute contains
-// a code that the Func uses to select from among different (user pre-defined) behaviors in response to a message.
-// 'Response' is a list of input-output edge responses associated with a Func. N.B. that a given input edge
-// may be specified in multiple responses.
-type FuncParameters struct {
-	// Pattern is name of the CompPattern holding labeled node these parameters modify
-	PatternName string `json:"patternname" yaml:"patternname"`
-
-	// Label of function whose parameters are specified
-	Label string `json:"label" yaml:"label"`
-
-	// Global name of function whose parameters are specified
-	GblName string `json:"gblname" yaml:"gblname"`
-
-	// State variables and their initial values (string-encoded)
-	State string `json:"state" yaml:"state"`
-
-	// Response holds a list of all responses the Func may make
-	Response []FuncResp `json:"response" yaml:"response"`
-}
-
-// CreateFuncParameters is a constructor. Its arguments initialize all the struct attributes except
-// for the slice of responses, which it just initializes.
-func CreateFuncParameters(ptn, label, gblname string) *FuncParameters {
-	fp := new(FuncParameters)
-	fp.PatternName = ptn
-	fp.Label = label
-	fp.GblName = gblname
-	fp.Response = make([]FuncResp, 0)
-
-	return fp
-}
-
-// AddState includes a string that encodes a state initialization block for the function
-// and includes it in the struct's list of responses
-func (fp *FuncParameters) AddState(state string) {
-	fp.State = state
-}
-
-// AddResponse takes the parameters of a response, creates a FuncResp struct,
-// and includes it in the struct's list of responses
-func (fp *FuncParameters) AddResponse(inEdge InEdge, outEdge OutEdge, methodCode string) {
-	// find the label of the output edge named in this response and record it as the choice
-	fr := FuncResp{InEdge: inEdge, OutEdge: outEdge, MethodCode: methodCode, Choice: ""}
-	fp.Response = append(fp.Response, fr)
-}
-
-// AddResponseChoice finds the response associated with the InEdge/OutEdge and sets its choice
-func (fp *FuncParameters) AddResponseChoice(inEdge InEdge, outEdge OutEdge, choice string) {
-	// find the label of the output edge named in this response and record it as the choice
-	for idx := 0; idx < len(fp.Response); idx++ {
-		if fp.Response[idx].InEdge == inEdge && fp.Response[idx].OutEdge == outEdge {
-			fp.Response[idx].Choice = choice
-			break
-		}
-	}
-}
-
-// Serialize returns a serialized representation of the FuncParameters struct, in either json or yaml
-// form, depending on the input parameter 'useYAML'.  If the serialization generates an error it is returned
-//
-//	with an empty string as the serialization result.
-func (fp *FuncParameters) Serialize(useYAML bool) (string, error) {
-	var bytes []byte
-	var merr error
-
-	if useYAML {
-		bytes, merr = yaml.Marshal(*fp)
-	} else {
-		bytes, merr = json.Marshal(*fp)
-	}
-
-	if merr != nil {
-		return "", merr
-	}
-
-	return string(bytes[:]), nil
-}
 
 // CreateFunc is a constructor for a [Func].  All parameters are given:
 //   - Class, a string identifying what instances of this Func do.  Like a variable type.
@@ -774,475 +779,6 @@ func CreateFunc(class, funcLabel string) *Func {
 	return fd
 }
 
-// SerializeParameters returns a serialization of the input parameter struct given as an argument.
-func (fd *Func) SerializeParameters(params any, useYAML bool) (string, error) {
-	fp := params.(*FuncParameters)
-
-	return fp.Serialize(useYAML)
-}
-
-// A CompPatternMap describes how funcs in an instantiated [CompPattern]
-// are mapped to hosts
-type CompPatternMap struct {
-	// PatternName identifies the name of the pattern instantiation being mapped
-	PatternName string `json:"patternname" yaml:"patternname"`
-
-	// mapping of func labels to hosts. Key is Label attribute of Func
-	FuncMap map[string]string `json:"funcmap" yaml:"funcmap"`
-}
-
-// CreateCompPatternMap is a constructor.
-func CreateCompPatternMap(ptnName string) *CompPatternMap {
-	cpm := new(CompPatternMap)
-	cpm.PatternName = ptnName
-	cpm.FuncMap = make(map[string]string)
-
-	return cpm
-}
-
-// AddMapping inserts into the CompPatternMap a binding of Func label to a host.  Optionally,
-// an error might be returned if a binding of that Func has already been made, and is different.
-func (cpm *CompPatternMap) AddMapping(funcLabel string, hostname string, overwrite bool) error {
-	// only check for overwrite if asked to
-	if !overwrite {
-		host, present := cpm.FuncMap[funcLabel]
-		if present && host != hostname {
-			return fmt.Errorf("attempt to overwrite mapping of func label %s in %s",
-				funcLabel, cpm.PatternName)
-		}
-	}
-
-	// store the mapping
-	cpm.FuncMap[funcLabel] = hostname
-
-	return nil
-}
-
-// WriteToFile stores the CompPatternMap struct to the file whose name is given.
-// Serialization to json or to yaml is selected based on the extension of this name.
-func (cpm *CompPatternMap) WriteToFile(filename string) error {
-	pathExt := path.Ext(filename)
-	var bytes []byte
-	var merr error = nil
-
-	if pathExt == ".yaml" || pathExt == ".YAML" || pathExt == ".yml" {
-		bytes, merr = yaml.Marshal(*cpm)
-	} else if pathExt == ".json" || pathExt == ".JSON" {
-		bytes, merr = json.MarshalIndent(*cpm, "", "\t")
-	}
-
-	if merr != nil {
-		panic(merr)
-	}
-
-	f, cerr := os.Create(filename)
-	if cerr != nil {
-		panic(cerr)
-	}
-	_, werr := f.WriteString(string(bytes[:]))
-	if werr != nil {
-		panic(werr)
-	}
-	f.Close()
-
-	return werr
-}
-
-// ReadCompPatternMap deserializes a byte slice holding a representation of an CompPatternMap struct.
-// If the input argument of dict (those bytes) is empty, the file whose name is given is read
-// to acquire them.  A deserialized representation is returned, or an error if one is generated
-// from a file read or the deserialization.
-func ReadCompPatternMap(filename string, useYAML bool, dict []byte) (*CompPatternMap, error) {
-	var err error
-
-	// if the dict slice of bytes is empty we get them from the file whose name is an argument
-	if len(dict) == 0 {
-		dict, err = os.ReadFile(filename)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	example := CompPatternMap{}
-
-	if useYAML {
-		err = yaml.Unmarshal(dict, &example)
-	} else {
-		err = json.Unmarshal(dict, &example)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &example, nil
-}
-
-// A CompPatternMapDict holds copies of CompPatternMap structs in a map that is
-// indexed by the PatternName of resident CompPatternMaps
-type CompPatternMapDict struct {
-	DictName string                    `json:"dictname" yaml:"dictname"`
-	Map      map[string]CompPatternMap `json:"map" yaml:"map"`
-}
-
-// CreateCompPatternMapDict is a constructor.
-// Saves the dictionary name and initializes the map of CompPatternMaps to-be-stored.
-func CreateCompPatternMapDict(name string) *CompPatternMapDict {
-	cpmd := new(CompPatternMapDict)
-	cpmd.DictName = name
-	cpmd.Map = make(map[string]CompPatternMap)
-
-	return cpmd
-}
-
-// AddCompPatternMap includes in the dictionary a CompPatternMap that is provided as input.
-// Optionally an error may be returned if an entry for the associated CompPattern exists already.
-func (cpmd *CompPatternMapDict) AddCompPatternMap(cpm *CompPatternMap, overwrite bool) error {
-	if !overwrite {
-		_, present := cpmd.Map[cpm.PatternName]
-		if present {
-			return fmt.Errorf("attempt to overwrite mapping of %s to comp pattern map dictionary", cpm.PatternName)
-		}
-	}
-	cpmd.Map[cpm.PatternName] = *cpm
-
-	return nil
-}
-
-// RecoverCompPatternMap returns a CompPatternMap associated with the CompPattern named in the input parameters.
-// It returns also a flag denoting whether the identified CompPattern has an entry in the dictionary.
-func (cpmd *CompPatternMapDict) RecoverCompPatternMap(pattern string) (*CompPatternMap, bool) {
-	cpm, present := cpmd.Map[pattern]
-	if !present {
-		return nil, false
-	}
-	cpm.PatternName = pattern
-
-	return &cpm, true
-}
-
-// ReadCompPatternMapDict deserializes a byte slice holding a representation of an CompPatternMapDict struct.
-// If the input argument of dict (those bytes) is empty, the file whose name is given is read
-// to acquire them.  A deserialized representation is returned, or an error if one is generated
-// from a file read or the deserialization.
-func ReadCompPatternMapDict(filename string, useYAML bool, dict []byte) (*CompPatternMapDict, error) {
-	var err error
-	if len(dict) == 0 {
-		dict, err = os.ReadFile(filename)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	example := CompPatternMapDict{}
-	if useYAML {
-		err = yaml.Unmarshal(dict, &example)
-	} else {
-		err = json.Unmarshal(dict, &example)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &example, nil
-}
-
-// WriteToFile stores the CompPatternMapDict struct to the file whose name is given.
-// Serialization to json or to yaml is selected based on the extension of this name.
-func (cpmd *CompPatternMapDict) WriteToFile(filename string) error {
-	pathExt := path.Ext(filename)
-	var bytes []byte
-	var merr error = nil
-
-	if pathExt == ".yaml" || pathExt == ".YAML" || pathExt == ".yml" {
-		bytes, merr = yaml.Marshal(*cpmd)
-	} else if pathExt == ".json" || pathExt == ".JSON" {
-		bytes, merr = json.MarshalIndent(*cpmd, "", "\t")
-	}
-
-	if merr != nil {
-		panic(merr)
-	}
-
-	f, cerr := os.Create(filename)
-	if cerr != nil {
-		panic(cerr)
-	}
-	_, werr := f.WriteString(string(bytes[:]))
-	if werr != nil {
-		panic(werr)
-	}
-	f.Close()
-
-	return werr
-}
-
-// An ExpParameter struct describes an input to experiment configuration at run-time. It specified
-//   - ParamObj identifies the kind of thing being configured : Switch, Router, Host, Interface, or Network
-//   - Attribute identifies a class of objects of that type to which the configuration parameter should apply.
-//     May be "*" for a wild-card, may be "name%%xxyy" where "xxyy" is the object's identifier, may be
-//     a comma-separated list of other attributes, documented [here]
-type ExpParameter struct {
-	// Type of thing being configured
-	ParamObj string `json:"paramObj" yaml:"paramObj"`
-
-	// attribute identifier for this parameter
-	Attribute string `json:"attribute" yaml:"attribute"`
-
-	// ParameterType, e.g., "Bandwidth", "WiredLatency", "CPU"
-	Param string `json:"param" yaml:"param"`
-
-	// string-encoded value associated with type
-	Value string `json:"value" yaml:"value"`
-}
-
-// CreateExpParameter is a constructor.  Completely fills in the struct with the [ExpParameter] attributes.
-func CreateExpParameter(paramObj, attribute, param, value string) *ExpParameter {
-	exptr := &ExpParameter{ParamObj: paramObj, Attribute: attribute, Param: param, Value: value}
-
-	return exptr
-}
-
-// An ExpCfg structure holds all of the ExpParameters for a named experiment
-type ExpCfg struct {
-	// Name is an identifier for a group of [ExpParameters].  No particular interpretation of this string is
-	// used, except as a referencing label when moving an ExpCfg into or out of a dictionary
-	Name string `json:"expname" yaml:"expname"`
-
-	// Parameters is a list of all the [ExpParameter] objects presented to the simulator for an experiment.
-	Parameters []ExpParameter `json:"parameters" yaml:"parameters"`
-}
-
-// An ExpCfgDict is a dictionary that holds [ExpCfg] objects in a map indexed by their Name.
-type ExpCfgDict struct {
-	DictName string            `json:"dictname" yaml:"dictname"`
-	Cfgs     map[string]ExpCfg `json:"cfgs" yaml:"cfgs"`
-}
-
-// CreateExpCfgDict is a constructor.  Saves a name for the dictionary, and initializes the slice of ExpCfg objects
-func CreateExpCfgDict(name string) *ExpCfgDict {
-	ecd := new(ExpCfgDict)
-	ecd.DictName = name
-	ecd.Cfgs = make(map[string]ExpCfg)
-
-	return ecd
-}
-
-// AddExpCfg adds the offered ExpCfg to the dictionary, optionally returning
-// an error if an ExpCfg with the same Name is already saved.
-func (ecd *ExpCfgDict) AddExpCfg(ec *ExpCfg, overwrite bool) error {
-
-	// allow for overwriting duplication?
-	if !overwrite {
-		_, present := ecd.Cfgs[ec.Name]
-		if present {
-			return fmt.Errorf("attempt to overwrite template ExpCfg %s", ec.Name)
-		}
-	}
-	// save it
-	ecd.Cfgs[ec.Name] = *ec
-
-	return nil
-}
-
-// RecoverExpCfg returns an ExpCfg from the dictionary, with name equal to the input parameter.
-// It returns also a flag denoting whether the identified ExpCfg has an entry in the dictionary.
-func (ecd *ExpCfgDict) RecoverExpCfg(name string) (*ExpCfg, bool) {
-	ec, present := ecd.Cfgs[name]
-	if present {
-		return &ec, true
-	}
-
-	return nil, false
-}
-
-// WriteToFile stores the ExpCfgDict struct to the file whose name is given.
-// Serialization to json or to yaml is selected based on the extension of this name.
-func (ecd *ExpCfgDict) WriteToFile(filename string) error {
-	pathExt := path.Ext(filename)
-	var bytes []byte
-	var merr error = nil
-
-	if pathExt == ".yaml" || pathExt == ".YAML" || pathExt == ".yml" {
-		bytes, merr = yaml.Marshal(*ecd)
-	} else if pathExt == ".json" || pathExt == ".JSON" {
-		bytes, merr = json.MarshalIndent(*ecd, "", "\t")
-	}
-
-	if merr != nil {
-		panic(merr)
-	}
-
-	f, cerr := os.Create(filename)
-	if cerr != nil {
-		panic(cerr)
-	}
-	_, werr := f.WriteString(string(bytes[:]))
-	if werr != nil {
-		panic(werr)
-	}
-	f.Close()
-
-	return werr
-}
-
-// ReadExpCfgDict deserializes a byte slice holding a representation of an ExpCfgDict struct.
-// If the input argument of dict (those bytes) is empty, the file whose name is given is read
-// to acquire them.  A deserialized representation is returned, or an error if one is generated
-// from a file read or the deserialization.
-func ReadExpCfgDict(filename string, useYAML bool, dict []byte) (*ExpCfgDict, error) {
-	var err error
-	if len(dict) == 0 {
-		dict, err = os.ReadFile(filename)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	example := ExpCfgDict{}
-	if useYAML {
-		err = yaml.Unmarshal(dict, &example)
-	} else {
-		err = json.Unmarshal(dict, &example)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &example, nil
-}
-
-// CreateExpCfg is a constructor. Saves the offered Name and initializes the slice of ExpParameters.
-func CreateExpCfg(name string) *ExpCfg {
-	expcfg := &ExpCfg{Name: name, Parameters: make([]ExpParameter, 0)}
-	return expcfg
-}
-
-// ValidateParameter returns an error if the paramObj, attribute, and param values don't
-// make sense taken together within an ExpParameter.
-func ValidateParameter(paramObj, attribute, param string) error {
-	// the paramObj string has to be recognized as one of the permitted ones (stored in list ExpParamObjs)
-	if !slices.Contains(ExpParamObjs, paramObj) {
-		return fmt.Errorf("paramater paramObj %s is not recognized", paramObj)
-	}
-
-	// Start the analysis of the attribute by splitting it by comma
-	attrbList := strings.Split(attribute, ",")
-
-	// every elemental attribute needs to be a name or "*", or recognized as a legitimate attribute
-	// for the associated paramObj
-	for _, attrb := range attrbList {
-		// if name is present it is the only acceptable attribute in the comma-separated list
-		if strings.Contains(attrb, "name%%") {
-			if len(attrbList) != 1 {
-				return fmt.Errorf("name paramater attribute %s paramObj %s is included with more attributes", attrb, paramObj)
-			}
-			// otherwise OK
-			return nil
-		}
-
-		// if "*" is present it is the only acceptable attribute in the comma-separated list
-		if strings.Contains(attrb, "*") {
-			if len(attrbList) != 1 {
-				return fmt.Errorf("name paramater attribute * paramObj %s is included with more attributes", paramObj)
-			}
-
-			// otherwise OK
-			return nil
-		}
-
-		// otherwise check the legitmacy of the individual attribute.  Whole string is invalidate if one component is invalid.
-		if !slices.Contains(ExpAttributes[paramObj], attrb) {
-			return fmt.Errorf("paramater attribute %s is not recognized for paramObj %s", attrb, paramObj)
-		}
-	}
-
-	// comma-separated attribute is OK, make sure the type of param is consistent with the paramObj
-	if !slices.Contains(ExpParams[paramObj], param) {
-		return fmt.Errorf("paramater %s is not recognized for paramObj %s", param, paramObj)
-	}
-
-	// it's all good
-	return nil
-}
-
-// AddParameter accepts the four values in an ExpParameter, creates one, and adds to the ExpCfg's list.
-// Returns an error if the parameters are not validated.
-func (expcfg *ExpCfg) AddParameter(paramObj, attribute, param, value string) error {
-	// validate the offered parameter values
-	err := ValidateParameter(paramObj, attribute, param)
-	if err != nil {
-		return err
-	}
-
-	// create an ExpParameter with these values
-	excp := CreateExpParameter(paramObj, attribute, param, value)
-
-	// save it
-	expcfg.Parameters = append(expcfg.Parameters, *excp)
-
-	return nil
-}
-
-// WriteToFile stores the ExpCfg struct to the file whose name is given.
-// Serialization to json or to yaml is selected based on the extension of this name.
-func (expcfg *ExpCfg) WriteToFile(filename string) error {
-	pathExt := path.Ext(filename)
-	var bytes []byte
-	var merr error = nil
-
-	if pathExt == ".yaml" || pathExt == ".YAML" || pathExt == ".yml" {
-		bytes, merr = yaml.Marshal(*expcfg)
-	} else if pathExt == ".json" || pathExt == ".JSON" {
-		bytes, merr = json.MarshalIndent(*expcfg, "", "\t")
-	}
-
-	if merr != nil {
-		panic(merr)
-	}
-
-	f, cerr := os.Create(filename)
-	if cerr != nil {
-		panic(cerr)
-	}
-	_, werr := f.WriteString(string(bytes[:]))
-	if werr != nil {
-		panic(werr)
-	}
-	f.Close()
-
-	return werr
-}
-
-// ReadExpCfg deserializes a byte slice holding a representation of an ExpCfg struct.
-// If the input argument of dict (those bytes) is empty, the file whose name is given is read
-// to acquire them.  A deserialized representation is returned, or an error if one is generated
-// from a file read or the deserialization.
-func ReadExpCfg(filename string, useYAML bool, dict []byte) (*ExpCfg, error) {
-	var err error
-
-	if len(dict) == 0 {
-		dict, err = os.ReadFile(filename)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	example := ExpCfg{}
-	if useYAML {
-		err = yaml.Unmarshal(dict, &example)
-	} else {
-		err = json.Unmarshal(dict, &example)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &example, nil
-}
 
 // ReportErrs transforms a list of errors and transforms the non-nil ones into a single error
 // with comma-separated report of all the constituent errors, and returns it.
@@ -1350,30 +886,3 @@ func CheckFiles(names []string, checkExistence bool) (bool, error) {
 	return true, nil
 }
 
-// ExpParamObjs holds descriptions of the types of objects
-// that are initialized by an exp file for each the attributes of the object that can be tested for to determine
-// whether the object is to receive the configuration parameter, and the parameter types defined for each object type
-var ExpParamObjs []string
-var ExpAttributes map[string][]string
-var ExpParams map[string][]string
-
-// GetExpParamDesc returns ExpParamObjs, ExpAttributes, and ExpParams after ensuring that they have been build
-func GetExpParamDesc() ([]string, map[string][]string, map[string][]string) {
-	if ExpParamObjs == nil {
-		ExpParamObjs = []string{"Switch", "Router", "Host", "Interface", "Network"}
-		ExpAttributes = make(map[string][]string)
-		ExpAttributes["Switch"] = []string{"model", "*"}
-		ExpAttributes["Router"] = []string{"model", "wired", "wireless", "*"}
-		ExpAttributes["Host"] = []string{"*"}
-		ExpAttributes["Interface"] = []string{"Switch", "Host", "Router", "wired", "wireless", "*"}
-		ExpAttributes["Network"] = []string{"wired", "wireless", "LAN", "WAN", "T3", "T2", "T1", "*"}
-		ExpParams = make(map[string][]string)
-		ExpParams["Switch"] = []string{"execTime", "buffer"}
-		ExpParams["Route"] = []string{"execTime", "buffer"}
-		ExpParams["Host"] = []string{"CPU"}
-		ExpParams["Network"] = []string{"media", "latency", "bandwidth", "capacity"}
-		ExpParams["Interface"] = []string{"media", "latency", "bandwidth", "packetSize"}
-	}
-
-	return ExpParamObjs, ExpAttributes, ExpParams
-}
