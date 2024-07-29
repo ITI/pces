@@ -48,6 +48,40 @@ func CreateCompPattern(cmptnType string) *CompPattern {
 	return cp
 }
 
+// DeepCopy creates a copy of CompPattern that explicitly copies various complex data structures
+func (cp *CompPattern) DeepCopy() *CompPattern {
+	ncp := new(CompPattern)
+	ncp.CPType = cp.CPType
+	ncp.Name = cp.Name
+	ncp.Funcs = make([]Func,len(cp.Funcs))
+	for idx, f := range cp.Funcs {
+		ncp.Funcs[idx] = Func{Class: f.Class, Label: f.Label}
+	}
+
+	ncp.Edges = make([]CmpPtnGraphEdge,len(cp.Edges))
+	for idx, e := range cp.Edges {
+		ncp.Edges[idx] = CmpPtnGraphEdge{SrcLabel: e.SrcLabel, MsgType: e.MsgType, 
+				DstLabel: e.DstLabel, MethodCode: e.MethodCode}
+	}
+
+	ncp.ExtEdges = make(map[string][]XCPEdge)
+	for key, xelist := range cp.ExtEdges {
+		ncp.ExtEdges[key] = make([]XCPEdge, len(xelist))
+		for idx, xe := range xelist {
+			ncp.ExtEdges[key][idx] = 
+				XCPEdge{SrcCP: xe.SrcCP,
+					EndCP: xe.EndCP,
+					NxtCP: xe.NxtCP,
+					SrcLabel: xe.SrcLabel,
+					DstLabel: xe.DstLabel,
+					MsgType: xe.MsgType,	
+					MethodCode: xe.MethodCode}
+		}
+	}
+	return ncp
+}
+
+
 // local dictionary that gives access to a CompPattern give its name
 var cmptnByName map[string]*CompPattern = make(map[string]*CompPattern)
 
@@ -505,6 +539,27 @@ func CreateCPInitList(name string, cptype string, useYAML bool) *CPInitList {
 	cpil.Msgs = make([]CompPatternMsg, 0)
 	return cpil
 }
+
+// DeepCopy creates a copy of CPInitList that explicitly copies various complex data structures
+func (cpil *CPInitList) DeepCopy() *CPInitList {
+	nl := new(CPInitList)
+	nl.Name = cpil.Name
+	nl.CPType = cpil.CPType
+	nl.UseYAML = cpil.UseYAML
+	nl.State = make(map[string]string)
+	for k,v := range cpil.State {
+		nl.State[k] = v
+	}
+	nl.Msgs = make([]CompPatternMsg, len(cpil.Msgs))
+	for idx, msg := range cpil.Msgs {
+		nl.Msgs[idx] = CompPatternMsg{MsgType: msg.MsgType,
+			IsPckt: msg.IsPckt,
+			PcktLen: msg.PcktLen, 
+			MsgLen: msg.MsgLen}
+	}
+	return nl
+}
+
 
 // AddState puts a serialized initialization struct in the dictionary indexed by Func label
 func (cpil *CPInitList) AddState(cp *CompPattern, fnc *Func, state string) {
