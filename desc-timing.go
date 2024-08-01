@@ -1,4 +1,4 @@
-package mrnesbits
+package pces
 
 // file desc-timing.go holds structs, methods, and data structures related
 // to expression and recovery of timings of computational functions and device

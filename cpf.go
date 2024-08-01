@@ -1,4 +1,4 @@
-package mrnesbits
+package pces
 
 // file cpf.go holds structs and methods related to instances of computational pattern functions
 
@@ -29,7 +29,7 @@ type CmpPtnFuncInst struct {
 	sharedGroup      string                    // empty means state not shared, otherwise global name of group with shared state
 	PtnName          string                    // name of the instantiated CompPattern holding this function
 	CPID             int                       // id of the comp pattern this func is attached to
-	ID               int                       // integer identity which is unique among all objects in the MrNesbits model
+	ID               int                       // integer identity which is unique among all objects in the pces model
 	active           bool                      // flag whether function is actively processing inputs
 	trace            bool                      // indicate whether this function should record its enter/exit in the trace
 	State            any                       // holds string-coded state for string-code state variable names

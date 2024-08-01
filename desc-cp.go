@@ -1,8 +1,8 @@
-package mrnesbits
+package pces
 
 // desc-cp.go holds data structures and methods used primarily
-// to build mrnesbits models for files and so is primarily used
-// by separate programs that build models, and by mrnesbits methods
+// to build pces models for files and so is primarily used
+// by separate programs that build models, and by pces methods
 // that read in those models from file and transform them into
 // data structures used at run-time by the simulator
 
@@ -139,7 +139,7 @@ func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType strin
 	}
 
 	// ensure that the methodCode for the destination is recognized by its Class.
-	// The ClassMethods map is 'hardwired' into the mrnesbits package. It (like a few other data structures)
+	// The ClassMethods map is 'hardwired' into the pces package. It (like a few other data structures)
 	// needs to be updated and the simulator (and model building programs) recompiled to include
 	// new function classes
 	methodFound := false

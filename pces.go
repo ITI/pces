@@ -1,6 +1,6 @@
-package mrnesbits
+package pces
 
-// mrnesbits.go has code that builds mrnes system data structures
+// pces.go has code that builds mrnes system data structures
 
 import (
 	"fmt"
@@ -13,8 +13,8 @@ import (
 )
 
 // NetSimPortal provides an interface to network simulator in the mrnes package.
-// mrnes does not import mrnesbits (to avoid circular imports).  However,
-// code in mrnesbits can call a function in mrnes that returns a pointer
+// mrnes does not import pces (to avoid circular imports).  However,
+// code in pces can call a function in mrnes that returns a pointer
 // to a structure that satisfies the NetSimPortal interface.
 type NetSimPortal interface {
 	HostCPU(string) string
@@ -23,7 +23,7 @@ type NetSimPortal interface {
 }
 
 // The TraceManager interface helps integrate use of the mrnes functionality for managing
-// traces in the mrnesbits package
+// traces in the pces package
 type TraceManager interface {
 
 	// at creation a flag is set indicating whether the trace manager will be active
@@ -39,7 +39,7 @@ type TraceManager interface {
 	WriteToFile(string) bool
 }
 
-// mrnesbits pointers to mrnes implemenations of the NetworkPortal and TraceManager interfaces
+// pces pointers to mrnes implemenations of the NetworkPortal and TraceManager interfaces
 var netportal *mrnes.NetworkPortal
 var traceMgr TraceManager
 

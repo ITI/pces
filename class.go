@@ -1,4 +1,4 @@
-package mrnesbits
+package pces
 
 // file class.go holds structures, methods, functions, data structures, and event handlers
 // related to the 'class' specialization of instances of computational functions

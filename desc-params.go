@@ -1,7 +1,7 @@
-package mrnesbits
+package pces
 
 // file desc-params.go holds structs, methods, and data structures used in specifying
-// assignment of performance parameters to mrnesbits/mrnes models
+// assignment of performance parameters to pces/mrnes models
 
 import (
 	"encoding/json"

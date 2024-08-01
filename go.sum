@@ -1,5 +1,9 @@
-github.com/iti/evt v0.1.2 h1:dPG2Ro4+bq/2myj9zaqSeJZbh2/Z07sR1oSP7JjmAq4=
-github.com/iti/evt v0.1.2/go.mod h1:Za5EWHBUFPbqi0k6HsKCS+RpLHgkLTSLFYEcS3QHuPw=
+github.com/iti/evt/evtm v0.1.4 h1:Lh24UpCPgnhMCE+MWKCbFSMjQhc14W/xA2PaxcdiEEY=
+github.com/iti/evt/evtm v0.1.4/go.mod h1:g4WfNeI6lpSfIp7Jyv83Fz+dSCHs7IjXIweuvTg2yPk=
+github.com/iti/evt/evtq v0.1.4 h1:cLkfhqiCRUSeiDVN/YN2ZC2L1mznL9n5o9CFKt/pwkc=
+github.com/iti/evt/evtq v0.1.4/go.mod h1:85Zm3A+dgRd72YV8DS2VoNExUCt3Ckq2GqYnI4oqlBY=
+github.com/iti/evt/vrtime v0.1.5 h1:5d2O3ZGb9OruBkBxZ1PzyXBlHkAUmW27jz9fUXHc6MI=
+github.com/iti/evt/vrtime v0.1.5/go.mod h1:NtgQQ20CSeaLxWNsAROKuHtAdeXNZ86Wg6ox2l5LtrU=
 github.com/iti/mrnes v0.0.2 h1:BAJ80lygpy7in7On+5YJLxFT6o7wIJTLn+Kw6/HVMBI=
 github.com/iti/mrnes v0.0.2/go.mod h1:xRS3mAFK13TAPPJEBiBvJHBpPoM9zUtn722539JOGls=
 github.com/iti/rngstream v0.2.2 h1:9cfSikwWPW1Yie+RjdJ23uUuMryLu+Ou38/TChYLPZ8=
@@ -8,6 +12,7 @@ golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 h1:2dVuKD2vS7b0QIHQbpyTISPd0
 golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56/go.mod h1:M4RDyNAINzryxdtnbRXRL/OHtkFuWGRjvuhBJpk2IlY=
 gonum.org/v1/gonum v0.15.0 h1:2lYxjRbTYyxkJxlhC+LvJIx3SsANPdRybu1tGj9/OrQ=
 gonum.org/v1/gonum v0.15.0/go.mod h1:xzZVBJBtS+Mz4q0Yl2LJTk+OxOg4jiXZ7qBoM0uISGo=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=

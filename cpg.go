@@ -1,7 +1,7 @@
-package mrnesbits
+package pces
 
 // file cpg.go holds structs, methods, and data structures related to the coordination of
-// executing mrnesbits models through the APIs of computational pattern function instances
+// executing pces models through the APIs of computational pattern function instances
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ import (
 )
 
 // CompPattern functions, messages, and edges are described by structs in the desc package,
-// and at runtime are read into MrNesbits.  Runtime data-structures (such as CmpPtnInst
+// and at runtime are read into pces.  Runtime data-structures (such as CmpPtnInst
 // and CmpPtnMsg) are created from constructors that take desc structures as arguments.
 
 // CmpPtnInstByName and CmpPtnInstByID take the the name (alt., id) of an instance of a CompPattern,

@@ -1,8 +1,8 @@
-package mrnesbits
+package pces
 
 // file desc-crypto.go holds structs, data structures, and methods used to
 // build and read summaries of the measurements of cryptographic algorithms
-// available to the mrnesbits model.  In particular the data structures
+// available to the pces model.  In particular the data structures
 // can be accessed by a GUI used to guide model development
 
 import (

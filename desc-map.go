@@ -1,7 +1,7 @@
-package mrnesbits
+package pces
 
 // desc-map.go holds structs, methods, and data structures used to define and then
-// access mapping of a mrnesbits model's computational pattern function instances to
+// access mapping of a pces model's computational pattern function instances to
 // CPUs in the underlaying mrnes computer and network model
 
 import (
