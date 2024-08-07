@@ -45,8 +45,8 @@ var traceMgr TraceManager
 
 var CmpPtnMapDict *CompPatternMapDict
 var funcExecTimeTbl map[string]map[string]map[int]float64
-var nameToSharedState map[string]any
-var funcInstToSharedState map[GlobalFuncInstID]any
+var nameToSharedCfg map[string]any
+var funcInstToSharedCfg map[GlobalFuncID]any
 
 // A CmpPtnGraph is the run-time description of a CompPattern
 type CmpPtnGraph struct {
@@ -73,6 +73,7 @@ func (cpge *CmpPtnGraphEdge) EdgeStr() string {
 
 type ExtCmpPtnGraphEdge struct {
 	SrcCP string
+	DstCP string
 	CPGE  CmpPtnGraphEdge
 }
 
@@ -167,7 +168,7 @@ func createCmpPtnGraphNode(label string) *CmpPtnGraphNode {
 
 // buildCmpPtns goes through every CompPattern in the input CompPatternDict,
 // and creates a run-time CmpPtnInst representation for it.
-func buildCmpPtns(cpd *CompPatternDict, cpid *CPInitListDict, ssgl *SharedStateGroupList) error {
+func buildCmpPtns(cpd *CompPatternDict, cpid *CPInitListDict, ssgl *SharedCfgGroupList) error {
 
 	errList := []error{}
 	// CompPatterns are arranged in a map that is indexed by the CompPattern name
@@ -210,17 +211,17 @@ func buildFuncExecTimeTbl(fel *FuncExecList) map[string]map[string]map[int]float
 		// given the function class, the associated mapList is a list of
 		// structs that associate attribute information (cpu type, packet len) with the execution time
 		for _, funcExecDesc := range mapList {
-			hardware := funcExecDesc.Hardware
+			cpumodel := funcExecDesc.CPUModel
 			pcktLen := funcExecDesc.PcktLen
 			execTime := funcExecDesc.ExecTime
 
 			// use the cpuType and pckLen attributes to flesh out the execution time table
-			_, present := et[operation][hardware]
+			_, present := et[operation][cpumodel]
 			if !present {
-				et[operation][hardware] = make(map[int]float64)
+				et[operation][cpumodel] = make(map[int]float64)
 			}
 
-			et[operation][hardware][pcktLen] = execTime
+			et[operation][cpumodel][pcktLen] = execTime
 		}
 	}
 	return et
@@ -257,7 +258,7 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm Tr
 		panic("empty dictionary")
 	}
 
-	// N.B. ssgl may be empty if there are no functions with shared state
+	// N.B. ssgl may be empty if there are no functions with shared cfg
 	NumIDs = idCounter
 	traceMgr = tm
 
@@ -267,15 +268,15 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm Tr
 	// build the tables used to look up the execution time of comp pattern functions, and device operations
 	funcExecTimeTbl = buildFuncExecTimeTbl(fel)
 
-	buildSharedStateMaps(ssgl, useYAML)
+	buildSharedCfgMaps(ssgl, useYAML)
 
 	// create the run-time representation of comp patterns, and initialize them
 	CreateClassMethods()
 	err := buildCmpPtns(cpd, cpid, ssgl)
 
-	// check the coherence of the shared state groups
+	// check the coherence of the shared cfg groups
 	if ssgl != nil {
-		checkSharedStateAssignment(ssgl)
+		checkSharedCfgAssignment(ssgl)
 	}
 
 	// schedule the initiating events on self-initiating funcs
@@ -295,13 +296,13 @@ func nxtID() int {
 // GetExperimentCPDicts accepts a map that holds the names of the input files used to define an experiment,
 // creates internal representations of the information they hold, and returns those structs.
 func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListDict,
-	*SharedStateGroupList, *FuncExecList, *CompPatternMapDict) {
+	*SharedCfgGroupList, *FuncExecList, *CompPatternMapDict) {
 
 	var cpd *CompPatternDict
 	var cpid *CPInitListDict
 	var fel *FuncExecList
 	var cpmd *CompPatternMapDict
-	var ssgl *SharedStateGroupList
+	var scgl *SharedCfgGroupList
 
 	empty := make([]byte, 0)
 
@@ -331,12 +332,12 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 	cpid, err = ReadCPInitListDict(syn["cpInitInput"], useYAML, empty)
 	errs = append(errs, err)
 
-	ssgl = nil
-	if len(syn["sharedState"]) > 0 {
-		ext = path.Ext(syn["sharedState"])
+	scgl = nil
+	if len(syn["sharedCfg"]) > 0 {
+		ext = path.Ext(syn["sharedCfg"])
 		useYAML = (ext == ".yaml") || (ext == ".yml")
 
-		ssgl, err = ReadSharedStateGroupList(syn["sharedState"], useYAML, empty)
+		scgl, err = ReadSharedCfgGroupList(syn["sharedCfg"], useYAML, empty)
 		errs = append(errs, err)
 	}
 
@@ -357,54 +358,54 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 		panic(err)
 	}
 
-	return cpd, cpid, ssgl, fel, cpmd
+	return cpd, cpid, scgl, fel, cpmd
 }
 
-// buildSharedStateMaps fills out two maps used to initialize funcs with shared state.
-// The read-in list of shared state groups (if any) are examined
-// to create the initial set up of the shared state, create one map that, given the name of the
-// shared state group returns a pointer to that state, and another which given the (cmpPtnName, label)
-// of a function that has shared state, a pointer to that state.
-func buildSharedStateMaps(ssgl *SharedStateGroupList, useYAML bool) {
+// buildSharedCfgMaps fills out two maps used to initialize funcs with shared cfg.
+// The read-in list of shared cfg groups (if any) are examined
+// to create the initial set up of the shared cfg, create one map that, given the name of the
+// shared cfg group returns a pointer to that state, and another which given the (cmpPtnName, label)
+// of a function that has shared cfg, a pointer to that state.
+func buildSharedCfgMaps(ssgl *SharedCfgGroupList, useYAML bool) {
 
-	// map index is the shared state group identity
-	nameToSharedState = make(map[string]any)
+	// map index is the shared cfg group identity
+	nameToSharedCfg = make(map[string]any)
 
 	// map index is struct whose first member is name of a comp pattern, and the second one is the label within
-	funcInstToSharedState = make(map[GlobalFuncInstID]any)
+	funcInstToSharedCfg = make(map[GlobalFuncID]any)
 
-	// if there are no shared state groups we can leave now that the maps above are initialized to be empty
+	// if there are no shared cfg groups we can leave now that the maps above are initialized to be empty
 	if ssgl == nil {
 		return
 	}
 
-	// the shared state groups are simply listed
+	// the shared cfg groups are simply listed
 	for _, ssg := range ssgl.Groups {
 
 		// get a pointer to the class
 		fc := FuncClasses[ssg.class]
 
 		// create the state for this group, what the maps will point to
-		state := fc.CreateState(ssg.stateStr, useYAML)
+		cfg := fc.CreateCfg(ssg.cfgStr, useYAML)
 
 		// given the group name, get a pointer to the state structure
-		nameToSharedState[ssg.name] = state
+		nameToSharedCfg[ssg.name] = cfg
 
 		for _, gfid := range ssg.instances {
 			// given the (cmpPtnName, label) identity, get a pointer to the state structure
-			funcInstToSharedState[gfid] = state
+			funcInstToSharedCfg[gfid] = cfg
 		}
 	}
 }
 
-// checkSharedStateAssignment ensures that every function instance in a
-// shared state group has the same class
-func checkSharedStateAssignment(ssgl *SharedStateGroupList) {
+// checkSharedCfgAssignment ensures that every function instance in a
+// shared cfg group has the same class
+func checkSharedCfgAssignment(ssgl *SharedCfgGroupList) {
 
-	// shared state groups in *ssgl are listed in unordered sequence
+	// shared cfg groups in *ssgl are listed in unordered sequence
 	for _, ssg := range ssgl.Groups {
 
-		// check all the functions with shared state in the same group
+		// check all the functions with shared cfg in the same group
 		for _, gfid := range ssg.instances {
 
 			// pull out the function's comp pattern label
@@ -414,18 +415,18 @@ func checkSharedStateAssignment(ssgl *SharedStateGroupList) {
 			// find representation of the comp pattern instance
 			cpInst, present := CmpPtnInstByName[ptnName]
 			if !present {
-				panic(fmt.Errorf("comp pattern name %s from shared state group %s not found", ptnName, ssg.name))
+				panic(fmt.Errorf("comp pattern name %s from shared cfg group %s not found", ptnName, ssg.name))
 			}
 
 			// find representation of the comp pattern's function
 			cpf, present := cpInst.funcs[label]
 			if !present {
-				panic(fmt.Errorf("function label %s from shared state group %s not found", label, ssg.name))
+				panic(fmt.Errorf("function label %s from shared cfg group %s not found", label, ssg.name))
 			}
 
-			// the class of the func instance needs to be the class of the shared state group
+			// the class of the func instance needs to be the class of the shared cfg group
 			if cpf.class != ssg.class {
-				panic(fmt.Errorf("(%s,%s) from shared state group %s suffers class mismatch", ptnName, label, ssg.name))
+				panic(fmt.Errorf("(%s,%s) from shared cfg group %s suffers class mismatch", ptnName, label, ssg.name))
 			}
 		}
 	}

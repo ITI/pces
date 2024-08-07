@@ -70,8 +70,7 @@ func (cp *CompPattern) DeepCopy() *CompPattern {
 		for idx, xe := range xelist {
 			ncp.ExtEdges[key][idx] = 
 				XCPEdge{SrcCP: xe.SrcCP,
-					EndCP: xe.EndCP,
-					NxtCP: xe.NxtCP,
+					DstCP: xe.DstCP,
 					SrcLabel: xe.SrcLabel,
 					DstLabel: xe.DstLabel,
 					MsgType: xe.MsgType,	
@@ -187,8 +186,7 @@ func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType strin
 // limits one XCPEdge per chgCP instance per target CP.
 type XCPEdge struct {
 	SrcCP      string
-	EndCP      string
-	NxtCP      string
+	DstCP      string
 	SrcLabel   string
 	DstLabel   string
 	MsgType    string
@@ -198,24 +196,24 @@ type XCPEdge struct {
 // AddExtEdge creates an edge that describes message flow from one Func to another in
 // a different computational pattern and adds it to the CompPattern's list of external edges.
 // Perform some sanity checks before commiting the edge
-func (cpt *CompPattern) AddExtEdge(srcCP, endCP, nxtCP, srcLabel, dstLabel string, msgType string, methodCode string,
+func (cpt *CompPattern) AddExtEdge(srcCP, dstCP, srcLabel, dstLabel string, msgType string, methodCode string,
 	srcMsgs *[]CompPatternMsg, dstMsgs *[]CompPatternMsg) {
 
 	// create the edge we'll commit if it passes sanity checks
-	pxe := XCPEdge{SrcCP: srcCP, EndCP: endCP, NxtCP: nxtCP, SrcLabel: srcLabel, DstLabel: dstLabel, MsgType: msgType, MethodCode: methodCode}
+	pxe := XCPEdge{SrcCP: srcCP, DstCP: dstCP, SrcLabel: srcLabel, DstLabel: dstLabel, MsgType: msgType, MethodCode: methodCode}
 
 	// N.B. when AddExtEdge is called the model is being built and we do not yet have
 	// instances of the CmpPtn, so index on the string name rather than the instance id
 	// look for duplicated edge
-	_, present := cpt.ExtEdges[endCP]
+	_, present := cpt.ExtEdges[dstCP]
 
 	if present {
 		// a list of external edges from cpt aimed at dstCPName exists, so
 		// check each for exact duplication
-		for _, xedge := range cpt.ExtEdges[endCP] {
+		for _, xedge := range cpt.ExtEdges[dstCP] {
 			if pxe == xedge {
 				fmt.Printf("Warning: duplicated declaration of external edge from %s for destination CP %s through %s\n",
-					cpt.Name, endCP, srcLabel)
+					cpt.Name, dstCP, srcLabel)
 				return
 			}
 
@@ -229,7 +227,7 @@ func (cpt *CompPattern) AddExtEdge(srcCP, endCP, nxtCP, srcLabel, dstLabel strin
 	}
 
 	if !present {
-		cpt.ExtEdges[endCP] = []XCPEdge{}
+		cpt.ExtEdges[dstCP] = []XCPEdge{}
 	}
 
 	// make sure the msgType is in the message lists of both CmpPtn cpInit dictionary lists
@@ -252,7 +250,7 @@ func (cpt *CompPattern) AddExtEdge(srcCP, endCP, nxtCP, srcLabel, dstLabel strin
 	}
 
 	// include the edge
-	cpt.ExtEdges[endCP] = append(cpt.ExtEdges[endCP], pxe)
+	cpt.ExtEdges[dstCP] = append(cpt.ExtEdges[dstCP], pxe)
 }
 
 // SetName copies the given name to be the CmpPtn's attribute and
@@ -371,82 +369,82 @@ func (cpd *CompPatternDict) WriteToFile(filename string) error {
 	return nil
 }
 
-// GlobalFuncInstID is a global identifier for a function,
+// GlobalFuncID is a global identifier for a function,
 // naming the CmpPtn that holds it and its label within that CmpPtn
-type GlobalFuncInstID struct {
+type GlobalFuncID struct {
 	CmpPtnName string
 	Label      string
 }
 
-// SharedStateGroup gathers descriptions of functions that share
-// the same state information, even across CmpPtn boundaries
-type SharedStateGroup struct {
-	name      string             // give a name to this shared state group
+// SharedCfgGroup gathers descriptions of functions that share
+// the same cfg information, even across CmpPtn boundaries
+type SharedCfgGroup struct {
+	name      string             // give a name to this shared cfg group
 	class     string             // all members have to be in the same class
-	instances []GlobalFuncInstID // slice identifying the representations that share state
-	stateStr  string             // the state they share, used at initialization
+	instances []GlobalFuncID // slice identifying the representations that share cfg
+	cfgStr  string               // the configuration they share, used at initialization
 }
 
-// CreateSharedStateGroup is a constructor
-func CreateSharedStateGroup(name string, class string) *SharedStateGroup {
-	ssg := new(SharedStateGroup)
+// CreateSharedCfgGroup is a constructor
+func CreateSharedCfgGroup(name string, class string) *SharedCfgGroup {
+	ssg := new(SharedCfgGroup)
 	ssg.name = name
 	ssg.class = class
-	ssg.instances = make([]GlobalFuncInstID, 0)
+	ssg.instances = make([]GlobalFuncID, 0)
 	return ssg
 }
 
 // AddInstance appends a global function description to
-// a shared state group, but makes sure that it does not exist
+// a shared cfg group, but makes sure that it does not exist
 // already in that group
-func (ssg *SharedStateGroup) AddInstance(cmpPtnName, label string) {
+func (ssg *SharedCfgGroup) AddInstance(cmpPtnName, label string) {
 
 	for _, gfid := range ssg.instances {
 		if cmpPtnName == gfid.CmpPtnName && label == gfid.Label {
-			fmt.Printf("Warning, attempt to add duplicated global function id to shared state group %s\n", ssg.name)
+			fmt.Printf("Warning, attempt to add duplicated global function id to shared cfg group %s\n", ssg.name)
 			return
 		}
 	}
-	gfid := GlobalFuncInstID{CmpPtnName: cmpPtnName, Label: label}
+	gfid := GlobalFuncID{CmpPtnName: cmpPtnName, Label: label}
 	ssg.instances = append(ssg.instances, gfid)
 }
 
-// AddState gives a shared state group a serialized common state
-func (ssg *SharedStateGroup) AddState(stateStr string) {
-	ssg.stateStr = stateStr
+// AddCfg gives a shared cfg group a serialized common cfg
+func (ssg *SharedCfgGroup) AddCfg(cfgStr string) {
+	ssg.cfgStr = cfgStr
 }
 
-// SharedStateGroupList holds all the shared state groups defined,
-// for inclusion in a shared state description file
-type SharedStateGroupList struct {
-	// UseYAML flags whether to interpret the seriaized state using json or yaml
+// SharedCfgGroupList holds all the shared cfg groups defined,
+// for inclusion in a shared cfg description file
+type SharedCfgGroupList struct {
+	// UseYAML flags whether to interpret the seriaized cfg using json or yaml
 	UseYAML bool               `json:"useyaml" yaml:"useyaml"`
-	Groups  []SharedStateGroup `json:"groups" yaml:"groups"`
+	Groups  []SharedCfgGroup `json:"groups" yaml:"groups"`
 }
 
-// CreateSharedStateGroupList is a constructor
-func CreateSharedStateGroupList(yaml bool) *SharedStateGroupList {
-	ssgl := new(SharedStateGroupList)
-	ssgl.UseYAML = yaml
-	ssgl.Groups = make([]SharedStateGroup, 0)
-	return ssgl
+// CreateSharedCfgGroupList is a constructor
+func CreateSharedCfgGroupList(yaml bool) *SharedCfgGroupList {
+	scgl := new(SharedCfgGroupList)
+	scgl.UseYAML = yaml
+	scgl.Groups = make([]SharedCfgGroup, 0)
+	return scgl
 }
 
-// AddSharedStateGroup includes an offered state group the the list,
+// AddSharedCfgGroup includes an offered cfg group the the list,
 // but checks that there is not already one there with the same name and class
-func (ssgl *SharedStateGroupList) AddSharedStateGroup(ssg *SharedStateGroup) {
-	for _, ssgrp := range ssgl.Groups {
+func (scgl *SharedCfgGroupList) AddSharedCfgGroup(ssg *SharedCfgGroup) {
+	for _, ssgrp := range scgl.Groups {
 		if ssgrp.name == ssg.name && ssgrp.class == ssg.class {
-			panic(fmt.Errorf("attempt to include shared state class with same name %s and class	%s as previously included",
+			panic(fmt.Errorf("attempt to include shared cfg class with same name %s and class	%s as previously included",
 				ssg.name, ssg.class))
 		}
 	}
-	ssgl.Groups = append(ssgl.Groups, *ssg)
+	scgl.Groups = append(scgl.Groups, *ssg)
 }
 
-// ReadSharedStateGroupList returns a deserialized slice of bytes into a SharedStateGroupList.  Bytes are either provided, or are
+// ReadSharedCfgGroupList returns a deserialized slice of bytes into a SharedCfgGroupList.  Bytes are either provided, or are
 // read from a file whose name is given.
-func ReadSharedStateGroupList(filename string, useYAML bool, dict []byte) (*SharedStateGroupList, error) {
+func ReadSharedCfgGroupList(filename string, useYAML bool, dict []byte) (*SharedCfgGroupList, error) {
 	var err error
 
 	// empty slice of bytes means we get those bytes from the named file
@@ -454,7 +452,7 @@ func ReadSharedStateGroupList(filename string, useYAML bool, dict []byte) (*Shar
 		// validate input file name
 		fileInfo, err := os.Stat(filename)
 		if os.IsNotExist(err) || fileInfo.IsDir() {
-			msg := fmt.Sprintf("shared state group list file %s does not exist or cannot be read", filename)
+			msg := fmt.Sprintf("shared cfg group list file %s does not exist or cannot be read", filename)
 			fmt.Println(msg)
 			return nil, fmt.Errorf(msg)
 		}
@@ -464,7 +462,7 @@ func ReadSharedStateGroupList(filename string, useYAML bool, dict []byte) (*Shar
 		}
 	}
 
-	example := SharedStateGroupList{}
+	example := SharedCfgGroupList{}
 
 	if useYAML {
 		err = yaml.Unmarshal(dict, &example)
@@ -480,17 +478,17 @@ func ReadSharedStateGroupList(filename string, useYAML bool, dict []byte) (*Shar
 	return &example, nil
 }
 
-// WriteToFile serializes the SharedStateGroupList and writes it to a file.  Output file
+// WriteToFile serializes the SharedCfgGroupList and writes it to a file.  Output file
 // extension identifies whether serialization is to json or to yaml
-func (ssgl *SharedStateGroupList) WriteToFile(filename string) error {
+func (scgl *SharedCfgGroupList) WriteToFile(filename string) error {
 	pathExt := path.Ext(filename)
 	var bytes []byte
 	var merr error = nil
 
 	if pathExt == ".yaml" || pathExt == ".YAML" || pathExt == ".yml" {
-		bytes, merr = yaml.Marshal(*ssgl)
+		bytes, merr = yaml.Marshal(*scgl)
 	} else if pathExt == ".json" || pathExt == ".JSON" {
-		bytes, merr = json.MarshalIndent(*ssgl, "", "\t")
+		bytes, merr = json.MarshalIndent(*scgl, "", "\t")
 	}
 
 	if merr != nil {
@@ -520,8 +518,8 @@ type CPInitList struct {
 	// UseYAML flags whether to interpret the seriaized initialization structure using json or yaml
 	UseYAML bool `json:"useyaml" yaml:"useyaml"`
 
-	// State is indexed by Func label, mapping to a serialized representation of a struct
-	State map[string]string `json:"state" yaml:"state"`
+	// Cfg is indexed by Func label, mapping to a serialized representation of a struct
+	Cfg map[string]string `json:"cfg" yaml:"cfg"`
 
 	// Msgs holds a list of CompPatternMsgs used between Funcs in a CompPattern
 	Msgs []CompPatternMsg `json:"msgs" yaml:"msgs"`
@@ -534,7 +532,7 @@ func CreateCPInitList(name string, cptype string, useYAML bool) *CPInitList {
 	cpil.Name = name
 	cpil.CPType = cptype
 	cpil.UseYAML = useYAML
-	cpil.State = make(map[string]string)
+	cpil.Cfg = make(map[string]string)
 
 	cpil.Msgs = make([]CompPatternMsg, 0)
 	return cpil
@@ -546,24 +544,22 @@ func (cpil *CPInitList) DeepCopy() *CPInitList {
 	nl.Name = cpil.Name
 	nl.CPType = cpil.CPType
 	nl.UseYAML = cpil.UseYAML
-	nl.State = make(map[string]string)
-	for k,v := range cpil.State {
-		nl.State[k] = v
+	nl.Cfg = make(map[string]string)
+	for k,v := range cpil.Cfg {
+		nl.Cfg[k] = v
 	}
 	nl.Msgs = make([]CompPatternMsg, len(cpil.Msgs))
 	for idx, msg := range cpil.Msgs {
 		nl.Msgs[idx] = CompPatternMsg{MsgType: msg.MsgType,
-			IsPckt: msg.IsPckt,
-			PcktLen: msg.PcktLen, 
-			MsgLen: msg.MsgLen}
+			IsPckt: msg.IsPckt}
 	}
 	return nl
 }
 
 
-// AddState puts a serialized initialization struct in the dictionary indexed by Func label
-func (cpil *CPInitList) AddState(cp *CompPattern, fnc *Func, state string) {
-	// make sure that the function to which the state is attached has been defined for the given CmpPtn
+// AddCfg puts a serialized initialization struct in the dictionary indexed by Func label
+func (cpil *CPInitList) AddCfg(cp *CompPattern, fnc *Func, cfg string) {
+	// make sure that the function to which the cfg is attached has been defined for the given CmpPtn
 	foundFunc := false
 	for _, cpFunc := range cp.Funcs {
 		if cpFunc.Label == fnc.Label {
@@ -572,9 +568,9 @@ func (cpil *CPInitList) AddState(cp *CompPattern, fnc *Func, state string) {
 		}
 	}
 	if !foundFunc {
-		panic(fmt.Errorf("attempt to add state to CmpPtn %s for a function %s not defined", cp.Name, fnc.Label))
+		panic(fmt.Errorf("attempt to add cfg to CmpPtn %s for a function %s not defined", cp.Name, fnc.Label))
 	}
-	cpil.State[fnc.Label] = state
+	cpil.Cfg[fnc.Label] = cfg
 }
 
 // AddMsg appends description of a ComPatternMsg to the CPInitList's slice of messages used by the CompPattern.
@@ -766,23 +762,13 @@ type CompPatternMsg struct {
 	// a message may be a packet or a flow
 	IsPckt bool `json:"ispckt" yaml:"ispckt"`
 
-	// PcktLen is a parameter used by some functions to select their execution time.
-	// Not the same as the length of the message carrying the packet
-	PcktLen int `json:"pcktlen" yaml:"pcktlen"`
-
-	// MsgLen is the total length of the message c
-	MsgLen int `json:"msglen" yaml:"msglen"`
 }
 
 // CreateCompPatternMsg is a constructer.
-func CreateCompPatternMsg(msgType string, pcktLen int, msgLen int) *CompPatternMsg {
+func CreateCompPatternMsg(msgType string, isPckt bool) *CompPatternMsg {
 	cpm := new(CompPatternMsg)
 	cpm.MsgType = msgType
-	cpm.PcktLen = pcktLen
-	cpm.MsgLen = msgLen
-
-	// zero args for pcktlen or msgLen mean this is a flow, not a packet
-	cpm.IsPckt = (pcktLen > 0 && msgLen > 0)
+	cpm.IsPckt = isPckt
 	return cpm
 }
 

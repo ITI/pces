@@ -16,12 +16,12 @@ import (
 //
 //	 Identifier - a unique name for this func call
 //	 Param - additional information, e.g., key length for crypto
-//		Hardware - the CPU,
-//		PcktLen - number of bytes in data packet being operated on
+//		CPUModel - the CPU,
+//		PcktLen  - number of bytes in data packet being operated on
 type FuncExecDesc struct {
 	Identifier string  `json:"identifier" yaml:"identifier"`
 	Param      string  `json:"param" yaml:"param"`
-	Hardware   string  `json:"processortype" yaml:"processortype"`
+	CPUModel   string  `json:"CPUModel" yaml:"CPUModel"`
 	PcktLen    int     `json:"pcktlen" yaml:"pcktlen"`
 	ExecTime   float64 `json:"exectime" yaml:"exectime"`
 }
@@ -108,13 +108,13 @@ func ReadFuncExecList(filename string, useYAML bool, dict []byte) (*FuncExecList
 }
 
 // AddTiming takes the parameters of a FuncExecDesc, creates one, and adds it to the FuncExecList
-func (fel *FuncExecList) AddTiming(identifier, param, hardware string,
+func (fel *FuncExecList) AddTiming(identifier, param, cpumodel string,
 	pcktLen int, execTime float64) {
 	_, present := fel.Times[identifier]
 	if !present {
 		fel.Times[identifier] = make([]FuncExecDesc, 0)
 	}
 	fel.Times[identifier] = append(fel.Times[identifier],
-		FuncExecDesc{Param: param, Hardware: hardware,
+		FuncExecDesc{Param: param, CPUModel: cpumodel,
 			PcktLen: pcktLen, ExecTime: execTime, Identifier: identifier})
 }

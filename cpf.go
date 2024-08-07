@@ -32,7 +32,8 @@ type CmpPtnFuncInst struct {
 	ID               int                       // integer identity which is unique among all objects in the pces model
 	active           bool                      // flag whether function is actively processing inputs
 	trace            bool                      // indicate whether this function should record its enter/exit in the trace
-	State            any                       // holds string-coded state for string-code state variable names
+	cfg				 any                       // holds string-coded state for string-code configuratin variable names
+	state            any                       // holds string-coded state for string-code state variable names
 	InterarrivalDist string
 	InterarrivalMean float64
 
@@ -52,7 +53,7 @@ type CmpPtnFuncInst struct {
 
 // createDestFuncInst== is a constructor that builds an instance of CmpPtnFunctInst from a Func description and
 // a serialized representation of a StaticParameters struct.
-func createFuncInst(cpInstName string, cpID int, fnc *Func, stateStr string, useYAML bool) *CmpPtnFuncInst {
+func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYAML bool) *CmpPtnFuncInst {
 	cpfi := new(CmpPtnFuncInst)
 	cpfi.ID = nxtID()         // get an integer id that is unique across all objects in the simulation model
 	cpfi.Label = fnc.Label    // remember a label given to this function instance as part of building a CompPattern graph
@@ -90,21 +91,14 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, stateStr string, use
 	// get a pointer to the function's class
 	fc := FuncClasses[fnc.Class]
 
-	/*
-		params, err := DecodeFuncParameters(paramStr, useYAML)
-		if err != nil {
-			panic(err)
-		}
-	*/
-
-	// if the function is not shared we initialize its state from the stateStr string.
+	// if the function is not shared we initialize its state from the cfgStr string.
 	// otherwise we have already created the state and just recover it
 	// FINDME N.B. revisit notion/use of shared function
 	if len(cpfi.sharedGroup) == 0 {
-		fc.InitState(cpfi, stateStr, useYAML)
+		fc.InitCfg(cpfi, cfgStr, useYAML)
 	} else {
-		gfid := GlobalFuncInstID{CmpPtnName: cpfi.PtnName, Label: cpfi.Label}
-		cpfi.State = funcInstToSharedState[gfid]
+		gfid := GlobalFuncID{CmpPtnName: cpfi.PtnName, Label: cpfi.Label}
+		cpfi.cfg = funcInstToSharedCfg[gfid]
 	}
 
 	if cpfi.funcTrace() {
@@ -147,9 +141,7 @@ func (cpfi *CmpPtnFuncInst) isInitiating() bool {
 }
 
 func (cpfi *CmpPtnFuncInst) InitMsgParams(msgType string, msgLen, pcktLen int, rate float64) {
-	edge := CreateCmpPtnGraphEdge(cpfi.Label, "initiate", cpfi.Label, "")
-	cpm := CreateCmpPtnMsg(*edge, cpfi.Label, cpfi.Label, msgType, msgLen, pcktLen, rate, cpfi.PtnName, cpfi.PtnName, nil, 0)
-	cpfi.InitMsg = &cpm
+	cpfi.InitMsg = &CmpPtnMsg{MsgType: msgType, MsgLen: msgLen, PcktLen: pcktLen, Rate: rate}
 }
 
 // funcActive indicates whether the function is processing messages
