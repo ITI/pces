@@ -52,6 +52,7 @@ func RegisterFuncClass(fc FuncClassCfg) bool {
 		panic(fmt.Errorf("attempt to register function class %s after that name already registered", fc.FuncClassName()))
 	}
 	FuncClasses[className] = fc
+	FuncClassNames[className] = true
 	return true
 }
 
@@ -114,9 +115,9 @@ func advanceMsg(cpfi *CmpPtnFuncInst, task *mrnes.Task, omi map[string]int, nxtM
 
 	eeidx := omi[mc]
 
-	msgType := cpfi.outEdges[eeidx].MsgType
-	nxtCP   := cpfi.outEdges[eeidx].CPID	
-	nxtLabel := cpfi.outEdges[eeidx].FuncLabel
+	msgType := cpfi.OutEdges[eeidx].MsgType
+	nxtCP   := cpfi.OutEdges[eeidx].CPID	
+	nxtLabel := cpfi.OutEdges[eeidx].FuncLabel
 	UpdateMsg(msg, nxtCP, nxtLabel, msgType, nxtMC)
 
 	// put the response where ExitFunc will find it
@@ -313,7 +314,7 @@ func connSrcEnterStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCo
 	genTime := FuncExecTime(cpfi, csc.TimingCode[methodCode], msg)
 
 	// call the host's scheduler.
-	mrnes.TaskSchedulerByHostName[cpfi.host].Schedule(evtMgr,
+	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
 		methodCode, genTime, math.MaxFloat64, cpfi, msg, connSrcExitStart)
 }
 
@@ -339,7 +340,7 @@ func connSrcEnterReflect(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, method
 	genTime := FuncExecTime(cpfi, csc.TimingCode[methodCode], msg)
 
 	// N.B. perhaps we can schedule ExitFunc here rather than
-	mrnes.TaskSchedulerByHostName[cpfi.host].Schedule(evtMgr,
+	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
 		methodCode, genTime, math.MaxFloat64, cpfi, msg, connSrcExitReflect)
 }
 
@@ -613,7 +614,7 @@ func cycleDstEnterStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodC
 	genTime := FuncExecTime(cpfi, cdc.TimingCode[methodCode], msg)
 
 	// call the host's scheduler.
-	mrnes.TaskSchedulerByHostName[cpfi.host].Schedule(evtMgr,
+	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
 		methodCode, genTime, math.MaxFloat64, cpfi, msg, cycleDstExitStart)
 }
 
@@ -641,7 +642,7 @@ func cycleDstEnterReflect(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, metho
 	genTime := FuncExecTime(cpfi, cdc.TimingCode[methodCode], msg)
 
 	// call the host's scheduler.
-	mrnes.TaskSchedulerByHostName[cpfi.host].Schedule(evtMgr,
+	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
 		methodCode, genTime, math.MaxFloat64, cpfi, msg, cycleDstExitReflect)
 }
 
@@ -653,7 +654,7 @@ func cycleDstExitReflect(evtMgr *evtm.EventManager, context any, data any) any {
 
 	msg := advanceMsg(cpfi, task, cds.outMsgIdx, "")
 
-	cpfi.msgResp[msg.ExecID] = []*CmpPtnMsg{msg}
+	cpfi.MsgResp[msg.ExecID] = []*CmpPtnMsg{msg}
 
 	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
 	return nil
@@ -695,7 +696,7 @@ func validateMCDicts(cpfi *CmpPtnFuncInst, rt, tc map[string]string) map[string]
 		found := 0
 		emt := rt[mc] 
 
-		for idx, edge := range cpfi.outEdges {
+		for idx, edge := range cpfi.OutEdges {
 			if emt == edge.MsgType {
 				omi[mc] = idx
 				found += 1
@@ -831,7 +832,7 @@ func processPcktEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCod
 	genTime := FuncExecTime(cpfi, ppc.TimingCode[methodCode], msg)
 
 	// call the host's scheduler.
-	mrnes.TaskSchedulerByHostName[cpfi.host].Schedule(evtMgr,
+	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
 		methodCode, genTime, math.MaxFloat64, cpfi, msg, processPcktExit)
 }
 
@@ -962,7 +963,7 @@ func finishEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode str
 	fns := cpfi.State.(*finishState)
 	fns.calls += 1
 
-	endptName := cpfi.host
+	endptName := cpfi.Host
 	endpt := mrnes.EndptDevByName[endptName]
 	traceMgr.AddTrace(evtMgr.CurrentTime(), msg.ExecID, 0, endpt.DevID(), "exit", msg.CarriesPckt(), msg.Rate)
 	EndRecExec(msg.ExecID, evtMgr.CurrentSeconds())

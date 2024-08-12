@@ -383,15 +383,15 @@ func buildSharedCfgMaps(ssgl *SharedCfgGroupList, useYAML bool) {
 	for _, ssg := range ssgl.Groups {
 
 		// get a pointer to the class
-		fc := FuncClasses[ssg.class]
+		fc := FuncClasses[ssg.Class]
 
 		// create the state for this group, what the maps will point to
-		cfg := fc.CreateCfg(ssg.cfgStr, useYAML)
+		cfg := fc.CreateCfg(ssg.CfgStr, useYAML)
 
 		// given the group name, get a pointer to the state structure
-		nameToSharedCfg[ssg.name] = cfg
+		nameToSharedCfg[ssg.Name] = cfg
 
-		for _, gfid := range ssg.instances {
+		for _, gfid := range ssg.Instances {
 			// given the (cmpPtnName, label) identity, get a pointer to the state structure
 			funcInstToSharedCfg[gfid] = cfg
 		}
@@ -406,7 +406,7 @@ func checkSharedCfgAssignment(ssgl *SharedCfgGroupList) {
 	for _, ssg := range ssgl.Groups {
 
 		// check all the functions with shared cfg in the same group
-		for _, gfid := range ssg.instances {
+		for _, gfid := range ssg.Instances {
 
 			// pull out the function's comp pattern label
 			ptnName := gfid.CmpPtnName
@@ -415,18 +415,18 @@ func checkSharedCfgAssignment(ssgl *SharedCfgGroupList) {
 			// find representation of the comp pattern instance
 			cpInst, present := CmpPtnInstByName[ptnName]
 			if !present {
-				panic(fmt.Errorf("comp pattern name %s from shared cfg group %s not found", ptnName, ssg.name))
+				panic(fmt.Errorf("comp pattern name %s from shared cfg group %s not found", ptnName, ssg.Name))
 			}
 
 			// find representation of the comp pattern's function
-			cpf, present := cpInst.funcs[label]
+			cpf, present := cpInst.Funcs[label]
 			if !present {
-				panic(fmt.Errorf("function label %s from shared cfg group %s not found", label, ssg.name))
+				panic(fmt.Errorf("function label %s from shared cfg group %s not found", label, ssg.Name))
 			}
 
 			// the class of the func instance needs to be the class of the shared cfg group
-			if cpf.class != ssg.class {
-				panic(fmt.Errorf("(%s,%s) from shared cfg group %s suffers class mismatch", ptnName, label, ssg.name))
+			if cpf.Class != ssg.Class {
+				panic(fmt.Errorf("(%s,%s) from shared cfg group %s suffers class mismatch", ptnName, label, ssg.Name))
 			}
 		}
 	}
@@ -442,7 +442,7 @@ func ReportStatistics() {
 			tgData[tgName] = make([]float64, 0)
 		}
 
-		rec := tg.finished
+		rec := tg.Finished
 		if rec.n > 0 {
 			tgData[tgName] = append(tgData[tgName], rec.samples...)
 		}

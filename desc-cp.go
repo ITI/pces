@@ -379,18 +379,18 @@ type GlobalFuncID struct {
 // SharedCfgGroup gathers descriptions of functions that share
 // the same cfg information, even across CmpPtn boundaries
 type SharedCfgGroup struct {
-	name      string             // give a name to this shared cfg group
-	class     string             // all members have to be in the same class
-	instances []GlobalFuncID // slice identifying the representations that share cfg
-	cfgStr  string               // the configuration they share, used at initialization
+	Name      string             // give a name to this shared cfg group
+	Class     string             // all members have to be in the same class
+	Instances []GlobalFuncID // slice identifying the representations that share cfg
+	CfgStr  string               // the configuration they share, used at initialization
 }
 
 // CreateSharedCfgGroup is a constructor
 func CreateSharedCfgGroup(name string, class string) *SharedCfgGroup {
 	ssg := new(SharedCfgGroup)
-	ssg.name = name
-	ssg.class = class
-	ssg.instances = make([]GlobalFuncID, 0)
+	ssg.Name = name
+	ssg.Class = class
+	ssg.Instances = make([]GlobalFuncID, 0)
 	return ssg
 }
 
@@ -399,19 +399,19 @@ func CreateSharedCfgGroup(name string, class string) *SharedCfgGroup {
 // already in that group
 func (ssg *SharedCfgGroup) AddInstance(cmpPtnName, label string) {
 
-	for _, gfid := range ssg.instances {
+	for _, gfid := range ssg.Instances {
 		if cmpPtnName == gfid.CmpPtnName && label == gfid.Label {
-			fmt.Printf("Warning, attempt to add duplicated global function id to shared cfg group %s\n", ssg.name)
+			fmt.Printf("Warning, attempt to add duplicated global function id to shared cfg group %s\n", ssg.Name)
 			return
 		}
 	}
 	gfid := GlobalFuncID{CmpPtnName: cmpPtnName, Label: label}
-	ssg.instances = append(ssg.instances, gfid)
+	ssg.Instances = append(ssg.Instances, gfid)
 }
 
 // AddCfg gives a shared cfg group a serialized common cfg
 func (ssg *SharedCfgGroup) AddCfg(cfgStr string) {
-	ssg.cfgStr = cfgStr
+	ssg.CfgStr = cfgStr
 }
 
 // SharedCfgGroupList holds all the shared cfg groups defined,
@@ -434,9 +434,9 @@ func CreateSharedCfgGroupList(yaml bool) *SharedCfgGroupList {
 // but checks that there is not already one there with the same name and class
 func (scgl *SharedCfgGroupList) AddSharedCfgGroup(ssg *SharedCfgGroup) {
 	for _, ssgrp := range scgl.Groups {
-		if ssgrp.name == ssg.name && ssgrp.class == ssg.class {
+		if ssgrp.Name == ssg.Name && ssgrp.Class == ssg.Class {
 			panic(fmt.Errorf("attempt to include shared cfg class with same name %s and class	%s as previously included",
-				ssg.name, ssg.class))
+				ssg.Name, ssg.Class))
 		}
 	}
 	scgl.Groups = append(scgl.Groups, *ssg)

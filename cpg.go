@@ -40,17 +40,17 @@ type execSummary struct {
 // CmpPtnInst describes a particular instance of a CompPattern,
 // built from information read in from CompPatternDesc struct and used at runtime
 type CmpPtnInst struct {
-	name      string // this instance's particular name
-	cpType    string
+	Name      string // this instance's particular name
+	CpType    string
 	ID        int                        // unique id
-	funcs     map[string]*CmpPtnFuncInst // use func label to get to func in that pattern with that label
-	msgs      map[string]CompPatternMsg  // MsgType indexes msgs
+	Funcs     map[string]*CmpPtnFuncInst // use func label to get to func in that pattern with that label
+	Msgs      map[string]CompPatternMsg  // MsgType indexes msgs
 	Rngs      *rngstream.RngStream
 	Graph     *CmpPtnGraph                      // graph describing structure of funcs and edges
-	active    map[int]execRecord                // executions that are active now
-	activeCnt map[int]int                       // number of instances of executions with common execID (>1 by branching)
-	lostExec  map[int]evtm.EventHandlerFunction // call this handler when a packet for a given execID is lost
-	finished  map[string]execSummary            // summary of completed executions
+	Active    map[int]execRecord                // executions that are active now
+	ActiveCnt map[int]int                       // number of instances of executions with common execID (>1 by branching)
+	LostExec  map[int]evtm.EventHandlerFunction // call this handler when a packet for a given execID is lost
+	Finished  map[string]execSummary            // summary of completed executions
 }
 
 // createCmpPtnInst is a constructor.  Inputs given by two structs from desc package.
@@ -66,25 +66,25 @@ func createCmpPtnInst(ptnInstName string, cpd CompPattern, cpid CPInitList) (*Cm
 	// CPI and the DstLabel (and MethodCode) belong to the CPI whose name is the index
 
 	// the instance gets name on the input list
-	cpi.name = ptnInstName
+	cpi.Name = ptnInstName
 
 	// get assuredly unique id
 	cpi.ID = nxtID()
 
 	// initialize slice of the func instances that make up the cpmPtnInst
-	cpi.funcs = make(map[string]*CmpPtnFuncInst)
+	cpi.Funcs = make(map[string]*CmpPtnFuncInst)
 
 	// initialize map that carries information about active execution threads
-	cpi.active = make(map[int]execRecord)
+	cpi.Active = make(map[int]execRecord)
 
 	// initialize map that carries number of active execs with same execid
-	cpi.activeCnt = make(map[int]int)
+	cpi.ActiveCnt = make(map[int]int)
 
 	// initialize map that carries event scheduler to call if packet on execID is lost
-	cpi.lostExec = make(map[int]evtm.EventHandlerFunction)
+	cpi.LostExec = make(map[int]evtm.EventHandlerFunction)
 
 	// initialize map that carries information about completed executions
-	cpi.finished = make(map[string]execSummary)
+	cpi.Finished = make(map[string]execSummary)
 
 	// make a representation of the CmpPtnFuncInst where funcs are nodes and edges are
 	// labeled with message type
@@ -92,7 +92,7 @@ func createCmpPtnInst(ptnInstName string, cpd CompPattern, cpid CPInitList) (*Cm
 	cpi.Graph, gerr = createCmpPtnGraph(&cpd)
 
 	// enable access to this struct through its name, and through its id
-	CmpPtnInstByName[cpi.name] = cpi
+	CmpPtnInstByName[cpi.Name] = cpi
 	CmpPtnInstByID[cpi.ID] = cpi
 
 	// The cpd structure has a list of desc descriptions of functions.
@@ -104,17 +104,17 @@ func createCmpPtnInst(ptnInstName string, cpd CompPattern, cpid CPInitList) (*Cm
 		}
 
 		df := createFuncInst(ptnInstName, cpi.ID, &funcDesc, cpid.Cfg[funcDesc.Label], cpid.UseYAML)
-		cpi.funcs[df.Label] = df
+		cpi.Funcs[df.Label] = df
 	}
 
 	// save copies of all the messages for this CompPattern found in the initialization struct's list of messages
-	cpi.msgs = make(map[string]CompPatternMsg)
+	cpi.Msgs = make(map[string]CompPatternMsg)
 	for _, msg := range cpid.Msgs {
-		cpi.msgs[msg.MsgType] = msg
+		cpi.Msgs[msg.MsgType] = msg
 	}
 
 	// create and save an rng
-	cpi.Rngs = rngstream.New(cpi.name)
+	cpi.Rngs = rngstream.New(cpi.Name)
 
 	return cpi, gerr
 }
@@ -129,7 +129,7 @@ func buildAllEdgeTables(cpd *CompPatternDict) {
 		cmpPtnEdges[cpName] = make(map[string]map[string][]*ExtCmpPtnGraphEdge)
 		cpi := CmpPtnInstByName[cpName]
 
-		for funcLabel := range cpi.funcs {
+		for funcLabel := range cpi.Funcs {
 			cmpPtnEdges[cpName][funcLabel] = make(map[string][]*ExtCmpPtnGraphEdge)
 			cmpPtnEdges[cpName][funcLabel]["InEdge"] = []*ExtCmpPtnGraphEdge{}
 			cmpPtnEdges[cpName][funcLabel]["OutEdge"] = []*ExtCmpPtnGraphEdge{}
@@ -181,27 +181,27 @@ func buildAllEdgeTables(cpd *CompPatternDict) {
 	// created
 	for cpName := range cpd.Patterns {
 		cpi := CmpPtnInstByName[cpName]
-		for fLabel, cpfi := range cpi.funcs {
+		for fLabel, cpfi := range cpi.Funcs {
 			for _, edge := range cmpPtnEdges[cpName][fLabel]["InEdge"] {
 				es := createEdgeStruct(cpfi.CPID, edge.CPGE.SrcLabel, edge.CPGE.MsgType)
-				cpfi.inEdgeMethodCode[es] = edge.CPGE.MethodCode
+				cpfi.InEdgeMethodCode[es] = edge.CPGE.MethodCode
 			}
 
 			for _, edge := range cmpPtnEdges[cpName][fLabel]["OutEdge"] {
 				es := createEdgeStruct(cpfi.CPID, edge.CPGE.DstLabel, edge.CPGE.MsgType)
-				cpfi.outEdges = append(cpfi.outEdges, es)
+				cpfi.OutEdges = append(cpfi.OutEdges, es)
 			}
 
 			for _, edge := range cmpPtnEdges[cpName][fLabel]["ExtOutEdge"] {
 				dstCPID := CmpPtnInstByName[edge.DstCP].ID
 				es := createEdgeStruct(dstCPID, edge.CPGE.DstLabel, edge.CPGE.MsgType)
-				cpfi.outEdges = append(cpfi.outEdges, es)
+				cpfi.OutEdges = append(cpfi.OutEdges, es)
 			}
 
 			for _, edge := range cmpPtnEdges[cpName][fLabel]["ExtInEdge"] {
 				srcCPID := CmpPtnInstByName[edge.SrcCP].ID
 				es := createEdgeStruct(srcCPID, edge.CPGE.SrcLabel, edge.CPGE.MsgType)
-				cpfi.inEdgeMethodCode[es] = edge.CPGE.MethodCode
+				cpfi.InEdgeMethodCode[es] = edge.CPGE.MethodCode
 			}
 		}
 	}
@@ -209,18 +209,18 @@ func buildAllEdgeTables(cpd *CompPatternDict) {
 	// validate the configurations (some of which depend on these edges)
 	for cpName := range cpd.Patterns {
 		cpi := CmpPtnInstByName[cpName]
-		for _, cpfi := range cpi.funcs {
-			fc := FuncClasses[cpfi.class]
+		for _, cpfi := range cpi.Funcs {
+			fc := FuncClasses[cpfi.Class]
 			fc.ValidateCfg(cpfi)
 		}
 	}
 }
 
 type trackingGroup struct {
-	name      string
-	active    map[int]execRecord
-	finished  execSummary
-	activeCnt int
+	Name      string
+	Active    map[int]execRecord
+	Finished  execSummary
+	ActiveCnt int
 }
 
 var allTrackingGroups map[string]*trackingGroup = make(map[string]*trackingGroup)
@@ -228,9 +228,9 @@ var execIDToTG map[int]*trackingGroup = make(map[int]*trackingGroup)
 
 func createTrackingGroup(name string) *trackingGroup {
 	tg := new(trackingGroup)
-	tg.name = name
-	tg.active = make(map[int]execRecord)
-	tg.finished.samples = []float64{}
+	tg.Name = name
+	tg.Active = make(map[int]execRecord)
+	tg.Finished.samples = []float64{}
 	allTrackingGroups[name] = tg
 	return tg
 }
@@ -252,7 +252,7 @@ func startRecExec(tgName string, execID, cpID int, funcName string, time float64
 	execIDToTG[execID] = tg
 
 	activeRec := execRecord{cpID: cpID, src: funcName, start: time}
-	tg.active[execID] = activeRec
+	tg.Active[execID] = activeRec
 }
 
 // EndRecExec computes the completed execution time of the execution identified,
@@ -265,24 +265,24 @@ func EndRecExec(execID int, time float64) float64 {
 		panic(fmt.Errorf("failure to find tracking group defined for execID %d", execID))
 	}
 
-	rtn := time - tg.active[execID].start
-	delete(tg.active, execID)
+	rtn := time - tg.Active[execID].start
+	delete(tg.Active, execID)
 
-	tg.finished.n += 1
-	tg.finished.samples = append(tg.finished.samples, rtn)
+	tg.Finished.n += 1
+	tg.Finished.samples = append(tg.Finished.samples, rtn)
 
-	tg.finished.completed += 1
-	tg.finished.sum += rtn
-	tg.finished.sum2 += rtn * rtn
-	tg.finished.maxv = math.Max(tg.finished.maxv, rtn)
-	tg.finished.minv = math.Min(tg.finished.minv, rtn)
+	tg.Finished.completed += 1
+	tg.Finished.sum += rtn
+	tg.Finished.sum2 += rtn * rtn
+	tg.Finished.maxv = math.Max(tg.Finished.maxv, rtn)
+	tg.Finished.minv = math.Min(tg.Finished.minv, rtn)
 
 	return rtn
 }
 
 func (cpi *CmpPtnInst) cleanUp() {
-	for execID := range cpi.active {
-		delete(cpi.active, execID)
+	for execID := range cpi.Active {
+		delete(cpi.Active, execID)
 	}
 }
 
@@ -290,7 +290,7 @@ func (cpi *CmpPtnInst) cleanUp() {
 func (cpi *CmpPtnInst) ExecReport() []float64 {
 	cpi.cleanUp()
 
-	for _, rec := range cpi.finished {
+	for _, rec := range cpi.Finished {
 		if rec.n > 0 {
 			return rec.samples
 		} else {
@@ -446,7 +446,7 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 		cpm = cpMsg.(*CmpPtnMsg)
 	}
 
-	endptName := cpfi.host
+	endptName := cpfi.Host
 	endpt := mrnes.EndptDevByName[endptName]
 
 	// need to create an initial message?
@@ -486,7 +486,7 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 	if cpm.Start {
 		traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, endpt.DevID(), "enter", cpm.CarriesPckt(), cpm.Rate)
 		cpi := CmpPtnInstByName[cpfi.funcCmpPtn()]
-		traceName := cpi.name + ":" + cpfi.funcLabel()
+		traceName := cpi.Name + ":" + cpfi.funcLabel()
 		startRecExec(traceName, cpm.ExecID, cpfi.CPID, cpfi.funcLabel(), evtMgr.CurrentSeconds())
 		cpm.Start = false
 		cpm.StartTime = evtMgr.CurrentSeconds()
@@ -498,7 +498,7 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 	// if empty we need to look it up based on incoming edge information
 	if len(methodCode) > 0 {
 		es := edgeStruct{CPID: cpm.PrevCPID, FuncLabel: cpm.PrevLabel, MsgType: cpm.MsgType}
-		mc, present := cpfi.inEdgeMethodCode[es]
+		mc, present := cpfi.InEdgeMethodCode[es]
 		if !present {
 			fmt.Printf("function %s receives unrecognized input message type %s, ignored\n",
 				cpfi.funcLabel(), cpm.MsgType)
@@ -507,7 +507,7 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 		methodCode = mc
 	}
 	// get the functions that start, and stop the function execution
-	methods, present := cpfi.respMethods[methodCode]
+	methods, present := cpfi.RespMethods[methodCode]
 	if !present {
 		fmt.Printf("function %s receives unrecognized method code in message %s, ignored\n",
 			cpfi.funcLabel(), cpm.NxtMC)
@@ -576,17 +576,17 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 		// notice that if the destination CP is different from the source, we
 		// expect that the code which recreated msg put in the the edge the label
 		// within the destination CP of the target
-		nxtf, present := xcpi.funcs[msg.NxtLabel]
+		nxtf, present := xcpi.Funcs[msg.NxtLabel]
 		if present {
-			dstHost := CmpPtnMapDict.Map[xcpi.name].FuncMap[nxtf.Label]
+			dstHost := CmpPtnMapDict.Map[xcpi.Name].FuncMap[nxtf.Label]
 
 			// Staying on the host means scheduling w/o delay the arrival at the next func
-			if cpfi.host == dstHost {
+			if cpfi.Host == dstHost {
 				evtMgr.Schedule(nxtf, msg, EnterFunc, vrtime.SecondsToTime(0.0))
 			} else {
 				// to get to the dstHost we need to go through the network
 				isPckt := msg.CarriesPckt()
-				netportal.EnterNetwork(evtMgr, cpfi.host, dstHost, msg.MsgLen, cpm.ExecID, isPckt, msg.Rate, msg,
+				netportal.EnterNetwork(evtMgr, cpfi.Host, dstHost, msg.MsgLen, cpm.ExecID, isPckt, msg.Rate, msg,
 					nxtf, ReEnter, xcpi, LostCmpPtnMsg)
 			}
 		} else {
@@ -621,11 +621,11 @@ func LostCmpPtnMsg(evtMgr *evtm.EventManager, context any, msg any) any {
 	// look up a description of the comp pattern
 	cpi := CmpPtnInstByID[EndCPID]
 
-	cpi.activeCnt[execID] -= 1
+	cpi.ActiveCnt[execID] -= 1
 
 	// if no other msgs active for this execID report loss
-	if cpi.activeCnt[execID] == 0 {
-		fmt.Printf("Comp Pattern %s lost message for execution id %d\n", cpi.name, execID)
+	if cpi.ActiveCnt[execID] == 0 {
+		fmt.Printf("Comp Pattern %s lost message for execution id %d\n", cpi.Name, execID)
 		return nil
 	}
 	return nil
@@ -640,7 +640,7 @@ func schedInitEvts(evtMgr *evtm.EventManager) {
 	// loop over all comp pattern instances
 	for _, cpi := range CmpPtnInstByName {
 		// loop over all of its funcs
-		for _, cpFunc := range cpi.funcs {
+		for _, cpFunc := range cpi.Funcs {
 			// see if this function calls for an initialization function and
 			// schedule it if so
 			if cpFunc.funcInitEvtHdlr() != nil {
