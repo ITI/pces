@@ -22,6 +22,7 @@ func createEdgeStruct(cpID int, label, msgType string) edgeStruct {
 // The CmpPtnFuncInst struct represents an instantiated instance of a function
 type CmpPtnFuncInst struct {
 	InitFunc         evtm.EventHandlerFunction // if not 'emptyInitFunc' call this to initialize the function
+	AuxFunc          evtm.EventHandlerFunction  
 	InitMsg          *CmpPtnMsg                // message that is copied when this instance is used to initiate a chain of func evaluations
 	class            string                    // specifier leading to specific state, entrance, and exit functions
 	Label            string                    // an identifier for this func, unique within the instance of CompPattern holding it.
@@ -31,9 +32,9 @@ type CmpPtnFuncInst struct {
 	CPID             int                       // id of the comp pattern this func is attached to
 	ID               int                       // integer identity which is unique among all objects in the pces model
 	active           bool                      // flag whether function is actively processing inputs
-	trace            bool                      // indicate whether this function should record its enter/exit in the trace
-	cfg				 any                       // holds string-coded state for string-code configuratin variable names
-	state            any                       // holds string-coded state for string-code state variable names
+	Trace            bool                      // indicate whether this function should record its enter/exit in the trace
+	Cfg				 any                       // holds string-coded state for string-code configuratin variable names
+	State            any                       // holds string-coded state for string-code state variable names
 	InterarrivalDist string
 	InterarrivalMean float64
 
@@ -62,7 +63,7 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYA
 	cpfi.InitFunc = nil       // will be over-ridden if there is an initialization event scheduled later
 	cpfi.InitMsg = nil        // will be over-ridden if the initialization block indicates initiation possible
 	cpfi.active = true
-	cpfi.trace = false
+	cpfi.Trace = false
 	cpfi.class = fnc.Class
 	cpfi.msgResp = make(map[int][]*CmpPtnMsg)
 
@@ -98,7 +99,7 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYA
 		fc.InitCfg(cpfi, cfgStr, useYAML)
 	} else {
 		gfid := GlobalFuncID{CmpPtnName: cpfi.PtnName, Label: cpfi.Label}
-		cpfi.cfg = funcInstToSharedCfg[gfid]
+		cpfi.Cfg = funcInstToSharedCfg[gfid]
 	}
 
 	if cpfi.funcTrace() {
@@ -171,7 +172,7 @@ func (cpfi *CmpPtnFuncInst) funcCmpPtn() string {
 
 // funcTrace returns the value of the trace attribute
 func (cpfi *CmpPtnFuncInst) funcTrace() bool {
-	return cpfi.trace
+	return cpfi.Trace
 }
 
 // funcDevice returns the name of the topological Host upon which this CmpPtnFunc executes

@@ -88,15 +88,16 @@ func CreateClassMethods() bool {
 	return true
 }
 
-// updateMsg copies the pattern, label coordinates of the message's current
+// UpdateMsg copies the pattern, label coordinates of the message's current
 // position to be the previous one and labels the next coordinates with
 // the values given as arguments
-func updateMsg(msg *CmpPtnMsg, nxtCPID int, nxtLabel, msgType string) {
+func UpdateMsg(msg *CmpPtnMsg, nxtCPID int, nxtLabel, msgType, nxtMC string) {
 	msg.MsgType = msgType
-	msg.prevCPID = msg.nxtCPID
-	msg.nxtCPID =  nxtCPID
-	msg.prevLabel = msg.nxtLabel
-	msg.nxtLabel = nxtLabel	
+	msg.PrevCPID = msg.NxtCPID
+	msg.NxtCPID =  nxtCPID
+	msg.NxtMC = nxtMC
+	msg.PrevLabel = msg.NxtLabel
+	msg.NxtLabel = nxtLabel	
 }
 
 func validFuncClass(class string) bool {
@@ -107,7 +108,7 @@ func validFuncClass(class string) bool {
 // advanceMsg acquires the method code of a just-completed operation, looks up the output edge
 // associated with that method, and updates the message coordinates to
 // direct it to the nxt location
-func advanceMsg(cpfi *CmpPtnFuncInst, task *mrnes.Task, omi map[string]int) *CmpPtnMsg {
+func advanceMsg(cpfi *CmpPtnFuncInst, task *mrnes.Task, omi map[string]int, nxtMC string) *CmpPtnMsg {
 	msg  := task.Msg.(*CmpPtnMsg)
 	mc   := task.OpType
 
@@ -116,7 +117,7 @@ func advanceMsg(cpfi *CmpPtnFuncInst, task *mrnes.Task, omi map[string]int) *Cmp
 	msgType := cpfi.outEdges[eeidx].MsgType
 	nxtCP   := cpfi.outEdges[eeidx].CPID	
 	nxtLabel := cpfi.outEdges[eeidx].FuncLabel
-	updateMsg(msg, nxtCP, nxtLabel, msgType)
+	UpdateMsg(msg, nxtCP, nxtLabel, msgType, nxtMC)
 
 	// put the response where ExitFunc will find it
 	cpfi.AddResponse(msg.ExecID, []*CmpPtnMsg{msg})
@@ -202,11 +203,11 @@ func (cs *connSrcCfg) CreateCfg(cfgStr string, useYAML bool) any {
 func (cs *connSrcCfg) InitCfg(cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
 	csVarAny := cs.CreateCfg(cfgStr, useYAML)
 	csv := csVarAny.(*connSrcCfg)
-	cpfi.cfg = csv
+	cpfi.Cfg = csv
 
-	cpfi.state = createConnSrcState()
+	cpfi.State = createConnSrcState()
 
-	cpfi.trace = csv.Trace
+	cpfi.Trace = csv.Trace
 	cpfi.InitFunc = connSrcSchedule
 	cpfi.InitMsgParams(csv.InitMsgType, csv.InitMsgLen, csv.InitPcktLen, 0.0)
 	cpfi.InterarrivalDist = csv.InterarrivalDist
@@ -215,8 +216,8 @@ func (cs *connSrcCfg) InitCfg(cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool)
 }
 
 func (csc *connSrcCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
-	state := cpfi.state.(*connSrcState)
-	cfg := cpfi.cfg.(*connSrcCfg)
+	state := cpfi.State.(*connSrcState)
+	cfg := cpfi.Cfg.(*connSrcCfg)
 	state.outMsgIdx = validateMCDicts(cpfi, cfg.Route, cfg.TimingCode)
 	return nil
 }
@@ -225,8 +226,8 @@ func (csc *connSrcCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
 // by the context, and samples the next arrival time
 func connSrcSchedule(evtMgr *evtm.EventManager, context any, data any) any {
 	cpfi := context.(*CmpPtnFuncInst)
-	csc := cpfi.cfg.(*connSrcCfg)
-	css := cpfi.state.(*connSrcState)
+	csc := cpfi.Cfg.(*connSrcCfg)
+	css := cpfi.State.(*connSrcState)
 	cpi := CmpPtnInstByName[cpfi.PtnName]
 
 	// if we do initiate messages from the implicitly named cpfi, see whether
@@ -304,8 +305,8 @@ func (csc *connSrcCfg) Deserialize(fss string, useYAML bool) (any, error) {
 func connSrcEnterStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string,
 	msg *CmpPtnMsg) {
 
-	csc := cpfi.cfg.(*connSrcCfg)
-	css := cpfi.state.(*connSrcState)
+	csc := cpfi.Cfg.(*connSrcCfg)
+	css := cpfi.State.(*connSrcState)
 	css.calls += 1
 
 	// look up the generation service requirement
@@ -319,10 +320,10 @@ func connSrcEnterStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCo
 // connSrcExitStart executes at the time when the initiating connSrc activation completes
 func connSrcExitStart(evtMgr *evtm.EventManager, context any, data any) any {
 	cpfi := context.(*CmpPtnFuncInst)
-	css := cpfi.state.(*connSrcState)
+	css := cpfi.State.(*connSrcState)
 	task := data.(*mrnes.Task)
 
-	msg := advanceMsg(cpfi, task, css.outMsgIdx)
+	msg := advanceMsg(cpfi, task, css.outMsgIdx, "")
 
 	// schedule the exitFunc handler
 	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
@@ -332,7 +333,7 @@ func connSrcExitStart(evtMgr *evtm.EventManager, context any, data any) any {
 // connSrcEnterReflect deals with the arrival of a return from the original message
 func connSrcEnterReflect(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
 
-	csc := cpfi.cfg.(*connSrcCfg)
+	csc := cpfi.Cfg.(*connSrcCfg)
 
 	// look up the generation service requirement
 	genTime := FuncExecTime(cpfi, csc.TimingCode[methodCode], msg)
@@ -346,10 +347,10 @@ func connSrcEnterReflect(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, method
 // Do we need to make the output message slice available here?
 func connSrcExitReflect(evtMgr *evtm.EventManager, context any, data any) any {
 	cpfi := context.(*CmpPtnFuncInst)
-	css := cpfi.state.(*connSrcState)
+	css := cpfi.State.(*connSrcState)
 	task := data.(*mrnes.Task)
 
-	msg := advanceMsg(cpfi, task, css.outMsgIdx)
+	msg := advanceMsg(cpfi, task, css.outMsgIdx, "")
 
 	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
 	return nil
@@ -449,19 +450,19 @@ func (cdc *cycleDstCfg) CreateCfg(cfgStr string, useYAML bool) any {
 func (cdc *cycleDstCfg) InitCfg(cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
 	cdVarAny := cdc.CreateCfg(cfgStr, useYAML)
 	cdv := cdVarAny.(*cycleDstCfg)
-	cpfi.cfg = cdv
+	cpfi.Cfg = cdv
 
-	cpfi.state = createCycleDstState()
+	cpfi.State = createCycleDstState()
 
-	cpfi.trace = cdv.Trace
+	cpfi.Trace = cdv.Trace
 	cpfi.InitFunc = cycleDstSchedule
 
 	cpfi.InitMsgParams(cdv.InitMsgType, cdv.InitMsgLen, cdv.InitPcktLen, 0.0)
 }
 
 func (cdc *cycleDstCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
-	state := cpfi.state.(*cycleDstState)
-	cfg := cpfi.cfg.(*cycleDstCfg)
+	state := cpfi.State.(*cycleDstState)
+	cfg := cpfi.Cfg.(*cycleDstCfg)
 	state.outMsgIdx = validateMCDicts(cpfi, cfg.Route, cfg.TimingCode)
 	return nil
 }
@@ -469,7 +470,7 @@ func (cdc *cycleDstCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
 // scheduleBurst schedules the immediate generation of as many
 // packts for the target EUD as are configured.
 func scheduleBurst(evtMgr *evtm.EventManager, cpi *CmpPtnInst, cpfi *CmpPtnFuncInst, cpm *CmpPtnMsg, after float64) {
-	cdc := cpfi.cfg.(*cycleDstCfg)
+	cdc := cpfi.Cfg.(*cycleDstCfg)
 	advance := after
 	for idx := 0; idx < cdc.BurstLen; idx++ {
 		newMsg := cpm
@@ -498,8 +499,8 @@ func scheduleBurst(evtMgr *evtm.EventManager, cpi *CmpPtnInst, cpfi *CmpPtnFuncI
 // cycleDstSchedule schedules the next burst.
 func cycleDstSchedule(evtMgr *evtm.EventManager, context any, data any) any {
 	cpfi := context.(*CmpPtnFuncInst)
-	cdc := cpfi.cfg.(*cycleDstCfg)
-	cds := cpfi.state.(*cycleDstState)
+	cdc := cpfi.Cfg.(*cycleDstCfg)
+	cds := cpfi.State.(*cycleDstState)
 	cpi := CmpPtnInstByName[cpfi.PtnName]
 
 	// default interarrival time for bursts, if one is not otherwise chosen
@@ -526,12 +527,12 @@ func cycleDstSchedule(evtMgr *evtm.EventManager, context any, data any) any {
 	cpm.MsgType = "initiate"
 	numExecThreads += 1
 
-	cpm.prevCPID = cpi.ID
-	cpm.prevLabel = cpfi.Label
+	cpm.PrevCPID = cpi.ID
+	cpm.PrevLabel = cpfi.Label
 
 	// for initiation only
-	cpm.nxtCPID = cpi.ID
-	cpm.nxtLabel = cpfi.Label
+	cpm.NxtCPID = cpi.ID
+	cpm.NxtLabel = cpfi.Label
 
 	numDsts := len(cdc.Dsts)
 	cpi = CmpPtnInstByName[ cdc.Dsts[ cds.burstID%numDsts ] ]
@@ -604,8 +605,8 @@ func (cdc *cycleDstCfg) Deserialize(fss string, useYAML bool) (any, error) {
 func cycleDstEnterStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string,
 	msg *CmpPtnMsg) {
 
-	cdc := cpfi.cfg.(*cycleDstCfg)
-	cds := cpfi.state.(*cycleDstState)
+	cdc := cpfi.Cfg.(*cycleDstCfg)
+	cds := cpfi.State.(*cycleDstState)
 	cds.calls += 1
 
 	// look up the generation service requirement
@@ -619,10 +620,10 @@ func cycleDstEnterStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodC
 // cycleDstExitStart executes at the time when the initiating cycleDst activation completes
 func cycleDstExitStart(evtMgr *evtm.EventManager, context any, data any) any {
 	cpfi := context.(*CmpPtnFuncInst)
-	cds := cpfi.state.(*cycleDstState)
+	cds := cpfi.State.(*cycleDstState)
 	task := data.(*mrnes.Task)
 
-	msg := advanceMsg(cpfi, task, cds.outMsgIdx)
+	msg := advanceMsg(cpfi, task, cds.outMsgIdx, "")
 
 	// schedule the exitFunc handler
 	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
@@ -632,8 +633,8 @@ func cycleDstExitStart(evtMgr *evtm.EventManager, context any, data any) any {
 // cycleDstEnterReflect deals with the arrival of a return from the original message
 func cycleDstEnterReflect(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
 
-	cds := cpfi.state.(*cycleDstState)
-	cdc := cpfi.cfg.(*cycleDstCfg)
+	cds := cpfi.State.(*cycleDstState)
+	cdc := cpfi.Cfg.(*cycleDstCfg)
 	cds.returns += 1
 
 	// look up the generation service requirement
@@ -647,10 +648,10 @@ func cycleDstEnterReflect(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, metho
 // cycleDstEnd executes at the completion of packet generation
 func cycleDstExitReflect(evtMgr *evtm.EventManager, context any, data any) any {
 	cpfi := context.(*CmpPtnFuncInst)
-	cds := cpfi.state.(*cycleDstState)
+	cds := cpfi.State.(*cycleDstState)
 	task := data.(*mrnes.Task)
 
-	msg := advanceMsg(cpfi, task, cds.outMsgIdx)
+	msg := advanceMsg(cpfi, task, cds.outMsgIdx, "")
 
 	cpfi.msgResp[msg.ExecID] = []*CmpPtnMsg{msg}
 
@@ -762,14 +763,14 @@ func (pp *processPcktCfg) CreateCfg(cfgStr string, useYAML bool) any {
 func (pp *processPcktCfg) InitCfg(cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
 	ppVarAny := pp.CreateCfg(cfgStr, useYAML)
 	ppv := ppVarAny.(*processPcktCfg)
-	cpfi.cfg = ppv
-	cpfi.state = createProcessPcktState()
-	cpfi.trace = ppv.Trace
+	cpfi.Cfg = ppv
+	cpfi.State = createProcessPcktState()
+	cpfi.Trace = ppv.Trace
 }
 
 func (pp *processPcktCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
-	state := cpfi.state.(*processPcktState)
-	cfg := cpfi.cfg.(*processPcktCfg)
+	state := cpfi.State.(*processPcktState)
+	cfg := cpfi.Cfg.(*processPcktCfg)
 	state.outMsgIdx = validateMCDicts(cpfi, cfg.Route, cfg.TimingCode)
 	return nil
 }
@@ -822,8 +823,8 @@ func (pp *processPcktCfg) Deserialize(fss string, useYAML bool) (any, error) {
 // processPcktEnter schedules the simulation of processing one packet
 func processPcktEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
 
-	pps := cpfi.state.(*processPcktState)
-	ppc := cpfi.cfg.(*processPcktCfg)
+	pps := cpfi.State.(*processPcktState)
+	ppc := cpfi.Cfg.(*processPcktCfg)
 	pps.calls += 1
 
 	// look up the generation service requirement.
@@ -839,10 +840,10 @@ func processPcktEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCod
 func processPcktExit(evtMgr *evtm.EventManager, context any, data any) any {
 	cpfi := context.(*CmpPtnFuncInst)
 	task := data.(*mrnes.Task)
-	pps := cpfi.state.(*processPcktState)
-	ppg := cpfi.cfg.(*processPcktCfg)
+	pps := cpfi.State.(*processPcktState)
+	ppg := cpfi.Cfg.(*processPcktCfg)
 
-	msg := advanceMsg(cpfi, task, pps.outMsgIdx)
+	msg := advanceMsg(cpfi, task, pps.outMsgIdx, "")
 
 	// if the associated method code has an entry in the Func's globalDst dictionary
 	// change the global destination CP and label
@@ -863,6 +864,7 @@ func processPcktExit(evtMgr *evtm.EventManager, context any, data any) any {
 	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
 	return nil
 }
+
 
 //-------- methods and state for function class finish
 
@@ -904,9 +906,9 @@ func (fnsh *finishCfg) CreateCfg(cfgStr string, useYAML bool) any {
 func (fnsh *finishCfg) InitCfg(cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
 	fnshVarAny := fnsh.CreateCfg(cfgStr, useYAML)
 	fnshv := fnshVarAny.(*finishCfg)
-	cpfi.cfg = fnshv
-	cpfi.state = createFinishState()
-	cpfi.trace = fnshv.Trace
+	cpfi.Cfg = fnshv
+	cpfi.State = createFinishState()
+	cpfi.Trace = fnshv.Trace
 }
 
 func (fnsh *finishCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
@@ -957,11 +959,11 @@ func (fnsh *finishCfg) Deserialize(fss string, useYAML bool) (any, error) {
 // finishEnter flags
 func finishEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
 
-	fns := cpfi.state.(*finishState)
+	fns := cpfi.State.(*finishState)
 	fns.calls += 1
 
 	endptName := cpfi.host
 	endpt := mrnes.EndptDevByName[endptName]
-	traceMgr.AddTrace(evtMgr.CurrentTime(), msg.ExecID, 0, endpt.DevID(), "exit", msg.carriesPckt(), msg.Rate)
+	traceMgr.AddTrace(evtMgr.CurrentTime(), msg.ExecID, 0, endpt.DevID(), "exit", msg.CarriesPckt(), msg.Rate)
 	EndRecExec(msg.ExecID, evtMgr.CurrentSeconds())
 }

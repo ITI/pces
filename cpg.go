@@ -313,10 +313,12 @@ type EndPtFuncs struct {
 // It carries ancillary information about the message that is included for referencing.
 type CmpPtnMsg struct {
 	ExecID   int     // initialize when with an initating comp pattern message.  Carried by every resulting message.
-	prevCPID int     // ID of the comp pattern through which the message most recently passed
-	prevLabel string // label of the func through which the message most recently passed
-	nxtCPID int
-	nxtLabel string
+	PrevCPID int     // ID of the comp pattern through which the message most recently passed
+	PrevLabel string // label of the func through which the message most recently passed
+
+	NxtCPID int		 // integer ID of the next CP the message next visits
+	NxtLabel string	 // string label of the function the message next visits
+	NxtMC string	 // when non-empty, the method code at the function the message next visits
 
 	CmpHdr EndPtFuncs
 
@@ -325,11 +327,15 @@ type CmpPtnMsg struct {
 	PcktLen int     // parameter impacting execution time
 	Rate    float64 // when non-zero, a rate limiting attribute that might used, e.g., in modeling IO
 	Start   bool    // start the timer
+	StartTime float64 // when the timer started
+	NetLatency float64
+	NetBndwdth float64
+	NetPrLoss float64
 	Payload any     // free for "something else" to carry along and be used in decision logic
 }
 
-// carriesPckt indicates whether the message conveys information about a packet or a flow
-func (cpm *CmpPtnMsg) carriesPckt() bool {
+// CarriesPckt indicates whether the message conveys information about a packet or a flow
+func (cpm *CmpPtnMsg) CarriesPckt() bool {
 	return (cpm.MsgLen > 0 && cpm.PcktLen > 0)
 }
 
@@ -452,13 +458,13 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 		// leave destination information off 
 		cpm.CmpHdr.SrtCPID = cpfi.CPID
 		cpm.CmpHdr.SrtLabel = cpfi.Label
-		cpm.prevCPID = cpfi.CPID
-		cpm.prevLabel = cpfi.Label
+		cpm.PrevCPID = cpfi.CPID
+		cpm.PrevLabel = cpfi.Label
 
 		// the 'nxt' fields prepared for the copy of 'nxt' back to 'prev'
 		// when the message is updated
-		cpm.nxtCPID  = cpfi.CPID
-		cpm.nxtLabel = cpfi.Label
+		cpm.NxtCPID  = cpfi.CPID
+		cpm.NxtLabel = cpfi.Label
 
 		// flag to start the timer on this execution thread
 		cpm.Start = true
@@ -469,34 +475,45 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 
 		if cpfi.funcTrace() {
 			// work out the endpoint device and log the entry there
-			traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, endpt.DevID(), "enter", cpm.carriesPckt(), cpm.Rate)
-			traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, cpfi.ID, "enter", cpm.carriesPckt(), cpm.Rate)
+			traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, endpt.DevID(), "enter", cpm.CarriesPckt(), cpm.Rate)
+			traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, cpfi.ID, "enter", cpm.CarriesPckt(), cpm.Rate)
 		}
 	} else if cpfi.funcTrace() {
-		traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, cpfi.ID, "enter", cpm.carriesPckt(), cpm.Rate)
+		traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, cpfi.ID, "enter", cpm.CarriesPckt(), cpm.Rate)
 	}
 
 	// start the timer if required
 	if cpm.Start {
-		traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, endpt.DevID(), "enter", cpm.carriesPckt(), cpm.Rate)
+		traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, endpt.DevID(), "enter", cpm.CarriesPckt(), cpm.Rate)
 		cpi := CmpPtnInstByName[cpfi.funcCmpPtn()]
 		traceName := cpi.name + ":" + cpfi.funcLabel()
 		startRecExec(traceName, cpm.ExecID, cpfi.CPID, cpfi.funcLabel(), evtMgr.CurrentSeconds())
 		cpm.Start = false
+		cpm.StartTime = evtMgr.CurrentSeconds()
 	}
 
 	// get the method code associated with the message arrival from the named source
-	es := edgeStruct{CPID: cpm.prevCPID, FuncLabel: cpm.prevLabel, MsgType: cpm.MsgType}
-	methodCode, present := cpfi.inEdgeMethodCode[es]
+	methodCode := cpm.NxtMC
+
+	// if empty we need to look it up based on incoming edge information
+	if len(methodCode) > 0 {
+		es := edgeStruct{CPID: cpm.PrevCPID, FuncLabel: cpm.PrevLabel, MsgType: cpm.MsgType}
+		mc, present := cpfi.inEdgeMethodCode[es]
+		if !present {
+			fmt.Printf("function %s receives unrecognized input message type %s, ignored\n",
+				cpfi.funcLabel(), cpm.MsgType)
+			return nil
+		}
+		methodCode = mc
+	}
+	// get the functions that start, and stop the function execution
+	methods, present := cpfi.respMethods[methodCode]
 	if !present {
-		fmt.Printf("function %s receives unrecognized input message type %s, ignored\n",
-			cpfi.funcLabel(), cpm.MsgType)
+		fmt.Printf("function %s receives unrecognized method code in message %s, ignored\n",
+			cpfi.funcLabel(), cpm.NxtMC)
 		return nil
 	}
-
-	// get the functions that start, and stop the function execution
-	methods := cpfi.respMethods[methodCode]
-
+	cpm.NxtMC = ""
 	methods.Start(evtMgr, cpfi, methodCode, cpm)
 
 	// if function not now active stop the collection of information about the execution thread
@@ -529,13 +546,13 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 
 	// note exit from function
 	if cpfi.funcTrace() {
-		traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, cpfi.ID, "exit", cpm.carriesPckt(), cpm.Rate)
+		traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, cpfi.ID, "exit", cpm.CarriesPckt(), cpm.Rate)
 	}
 
 	// done if no-where to go
-	if len(msgs) == 0 || len(cpm.nxtLabel) == 0 {
+	if len(msgs) == 0 || len(cpm.NxtLabel) == 0 {
 		// this is unexpected if len(cpm.Edge.DstLabel) == 0
-		if len(cpm.nxtLabel) == 0 {
+		if len(cpm.NxtLabel) == 0 {
 			print("unexpected ExitFunc call with zero-ed destination label")
 		}
 		return nil
@@ -552,14 +569,14 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 
 		// allow for possibility that the next comp pattern is different
 		xcpi := cpi
-		if msg.prevCPID != msg.nxtCPID {
-			xcpi = CmpPtnInstByID[msg.nxtCPID]
+		if msg.PrevCPID != msg.NxtCPID {
+			xcpi = CmpPtnInstByID[msg.NxtCPID]
 		}
 
 		// notice that if the destination CP is different from the source, we
 		// expect that the code which recreated msg put in the the edge the label
 		// within the destination CP of the target
-		nxtf, present := xcpi.funcs[msg.nxtLabel]
+		nxtf, present := xcpi.funcs[msg.NxtLabel]
 		if present {
 			dstHost := CmpPtnMapDict.Map[xcpi.name].FuncMap[nxtf.Label]
 
@@ -568,7 +585,7 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 				evtMgr.Schedule(nxtf, msg, EnterFunc, vrtime.SecondsToTime(0.0))
 			} else {
 				// to get to the dstHost we need to go through the network
-				isPckt := msg.carriesPckt()
+				isPckt := msg.CarriesPckt()
 				netportal.EnterNetwork(evtMgr, cpfi.host, dstHost, msg.MsgLen, cpm.ExecID, isPckt, msg.Rate, msg,
 					nxtf, ReEnter, xcpi, LostCmpPtnMsg)
 			}
@@ -580,7 +597,15 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 	return nil
 }
 
-func ReEnter(evtMgr *evtm.EventManager, cpFunc any, msg any) any {
+func ReEnter(evtMgr *evtm.EventManager, cpFunc any, rtnmsg any) any {
+
+	// msg is of type *mrnes.RtnMsgStruct
+	rtnMsg := rtnmsg.(*mrnes.RtnMsgStruct)
+	msg := rtnMsg.Msg.(*CmpPtnMsg)
+	msg.NetLatency = rtnMsg.Latency
+	msg.NetBndwdth = rtnMsg.Bndwdth
+	msg.NetPrLoss = rtnMsg.PrLoss
+
 	evtMgr.Schedule(cpFunc, msg, EnterFunc, vrtime.SecondsToTime(0.0))
 	return nil
 }
