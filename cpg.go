@@ -496,7 +496,7 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 	methodCode := cpm.NxtMC
 
 	// if empty we need to look it up based on incoming edge information
-	if len(methodCode) > 0 {
+	if len(methodCode) == 0 {
 		es := edgeStruct{CPID: cpm.PrevCPID, FuncLabel: cpm.PrevLabel, MsgType: cpm.MsgType}
 		mc, present := cpfi.InEdgeMethodCode[es]
 		if !present {
