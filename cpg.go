@@ -326,6 +326,7 @@ type CmpPtnMsg struct {
 	MsgLen  int     // number of bytes
 	PcktLen int     // parameter impacting execution time
 	Rate    float64 // when non-zero, a rate limiting attribute that might used, e.g., in modeling IO
+	FlowState string // "srt", "end", "chg"
 	Start   bool    // start the timer
 	StartTime float64 // when the timer started
 	NetLatency float64
@@ -513,7 +514,7 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 			cpfi.funcLabel(), cpm.NxtMC)
 		return nil
 	}
-	cpm.NxtMC = ""
+	
 	methods.Start(evtMgr, cpfi, methodCode, cpm)
 
 	// if function not now active stop the collection of information about the execution thread
@@ -586,12 +587,11 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 			} else {
 				// to get to the dstHost we need to go through the network
 				isPckt := msg.CarriesPckt()
-				netportal.EnterNetwork(evtMgr, cpfi.Host, dstHost, msg.MsgLen, cpm.ExecID, isPckt, msg.Rate, msg,
-					nxtf, ReEnter, xcpi, LostCmpPtnMsg)
+				netportal.EnterNetwork(evtMgr, cpfi.Host, dstHost, msg.MsgLen, cpm.ExecID, isPckt, 
+					msg.FlowState, msg.Rate, msg,
+					nxtf, ReEnter, cpfi, LostCmpPtnMsg)
+				}
 			}
-		} else {
-			panic("missing dstLabel in CmpPtnInst description")
-		}
 	}
 
 	return nil

@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/iti/evt/evtm v0.1.4
 	github.com/iti/evt/vrtime v0.1.5
-	github.com/iti/mrnes v0.0.5
+	github.com/iti/mrnes v0.0.7
 	github.com/iti/rngstream v0.2.2
 	gopkg.in/yaml.v3 v3.0.1
 )
