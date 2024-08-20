@@ -3,7 +3,18 @@ package pces
 import (
 	"fmt"
 	"golang.org/x/exp/maps"
+	"gopkg.in/yaml.v3"
+	"io"
+	"os"
 )
+
+// SrdCfgStruct holds all the shared cfg groups defined,
+// for inclusion in a shared cfg description file
+type SrdCfgStruct struct {
+	// UseYAML flags whether to interpret the seriaized cfg using json or yaml
+	UseYAML bool             `json:"useyaml" yaml:"useyaml"`
+	Groups  []SharedCfgGroup `json:"groups" yaml:"groups"`
+}
 
 func CheckFileFormats(fullpathmap map[string]string) (bool, error) {
 	return CheckFormats(fullpathmap)
@@ -14,7 +25,14 @@ func CheckFormats(fullpathmap map[string]string) (bool, error) {
 	for _, n := range maps.Keys(fullpathmap) {
 		var err error
 		filepath := fullpathmap[n]
+		f, err := os.Open(filepath)
+		var r io.Reader
+		r = f
 		fmt.Println(n, fullpathmap[n])
+
+		dec := yaml.NewDecoder(r)
+		dec.KnownFields(true)
+
 		switch n {
 		case "cp":
 			var cp *CompPatternDict
@@ -31,9 +49,12 @@ func CheckFormats(fullpathmap map[string]string) (bool, error) {
 		case "devExec":
 			// mrnes's problem
 		case "srdCfg":
-			var srdcfg *SharedCfgGroupList
-			srdcfg, err = ReadSharedCfgGroupList(filepath, true, empty)
-			srdcfg = srdcfg
+			//var srdcfg *SharedCfgGroupList
+			temp := SrdCfgStruct{}
+			err = dec.Decode(&temp)
+			fmt.Println(temp)
+			//srdcfg, err = ReadSharedCfgGroupList(filepath, true, empty)
+			//srdcfg = srdcfg
 		case "exp":
 			// mrnes's problem
 		case "topo":
