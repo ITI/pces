@@ -14,6 +14,7 @@ func CheckFileFormats(fullpathmap map[string]string) (bool, error) {
 	return CheckFormats(fullpathmap)
 }
 
+// TODO add more detail into panic messages. e.g. what file threw the error and what CPNAME it failed on
 func CheckFormats(fullpathmap map[string]string) (bool, error) {
 	var cp CompPatternDict
 	var cpinit CPInitListDict
@@ -63,6 +64,8 @@ func CheckFormats(fullpathmap map[string]string) (bool, error) {
 	}
 	funcMap := ValidateCP(&cp)
 	ValidateCPInit(&cpinit, funcMap)
+	ValidateMap(&m, funcMap)
+	ValidateFuncExec(&funcexec)
 	return true, nil
 }
 
@@ -112,6 +115,7 @@ func ValidateCP(dict *CompPatternDict) map[string][]string {
 				}
 				// dstlabel
 				// TODO in order to check dstlabel, we need to store the functions for every declared CPNAME in cp.yaml
+				// TODO this would have to occur in a separate loop just to fill the funcLabels slice
 
 				// msgtype has no restrictions listed in docs
 
@@ -136,10 +140,51 @@ func ValidateCPInit(dict *CPInitListDict, funcMap map[string][]string) {
 		}
 		// Validate function declarations in cfg
 		for funcname, _ := range v.Cfg {
+			// Validate that the FUNCNAME exists for the current CPNAME
 			if !slices.Contains(funcMap[cpname], funcname) {
 				panic("FUNCNAME must be a valid function for CPNAME")
 			}
+			// TODO validate SERIALCFG
 		}
 		// TODO validate msgtype, this may have to be tracked from cp.yaml too
 	}
 }
+
+// ValidateMap iterates through the passed CompPatternMapDict to verify the data contents
+func ValidateMap(dict *CompPatternMapDict, funcMap map[string][]string) {
+	for k, v := range dict.Map {
+		cpname := k
+		if cpname != v.PatternName {
+			panic("patternname should match CPNAME")
+		}
+		for funcname, _ := range v.FuncMap {
+			// Validate that the FUNCNAME exists for the current CPNAME
+			if !slices.Contains(funcMap[cpname], funcname) {
+				panic("funcname must be a valid function for CPNAME")
+			}
+			// TODO validate ENDPTNAME
+		}
+	}
+}
+
+// ValidateFuncExec iterates through the passed FuncExecList to verify the data contents
+func ValidateFuncExec(l *FuncExecList) {
+	for k, v := range l.Times {
+		timingcode := k
+		timingcode = timingcode
+		for _, feDesc := range v {
+			// TODO below checks
+			// identifier
+			if feDesc.Identifier != timingcode {
+				panic("identifier should match the TIMINGCODE")
+			}
+			// feDesc.param has no restrictions
+			// feDesc.cpumodel has no restrictions (unless we have a database of every CPU ever)
+			// feDesc.pcktlen has no restrictions
+			// feDesc.exectime has no restrictions
+		}
+	}
+}
+
+// ValidateSrdCfg iterates through the passed SharedCfgGroupList to verify the data contents
+func ValidateSrdCfg(l *SharedCfgGroupList) {}
