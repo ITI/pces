@@ -15,6 +15,11 @@ func CheckFileFormats(fullpathmap map[string]string) (bool, error) {
 }
 
 func CheckFormats(fullpathmap map[string]string) (bool, error) {
+	var cp CompPatternDict
+	var cpinit CPInitListDict
+	var funcexec FuncExecList
+	var srdcfg SharedCfgGroupList
+	var m CompPatternMapDict
 	for _, n := range maps.Keys(fullpathmap) {
 		var err error
 		filepath := fullpathmap[n]
@@ -33,42 +38,39 @@ func CheckFormats(fullpathmap map[string]string) (bool, error) {
 
 		switch n {
 		case "cp":
-			var cp CompPatternDict
 			err = dec.Decode(&cp)
-			ValidateCP(&cp)
 		case "cpInit":
-			var cpinit CPInitListDict
 			err = dec.Decode(&cpinit)
 		case "funcExec":
-			var funcexec FuncExecList
 			err = dec.Decode(&funcexec)
 		case "devExec":
 			// mrnes's problem
 		case "srdCfg":
-			var srdcfg SharedCfgGroupList
 			err = dec.Decode(&srdcfg)
 		case "exp":
 			// mrnes's problem
 		case "topo":
 			// mrnes's problem
 		case "map":
-			var m CompPatternMapDict
 			err = dec.Decode(&m)
 		default:
 			// Optional config files
 			err = nil
 		}
 		if err != nil {
-			panic(err)
+			return false, err
 		}
 	}
+	funcMap := ValidateCP(&cp)
+	ValidateCPInit(&cpinit, funcMap)
 	return true, nil
 }
 
-func ValidateCP(dict *CompPatternDict) {
-
+// ValidateCP iterates through the passed CompPatternDict to verify the data contents
+// Returns a mapping from each CPNAME to its declared Functions. This is needed to validate other files.
+func ValidateCP(dict *CompPatternDict) map[string][]string {
+	funcMap := make(map[string][]string)
 	for k, v := range dict.Patterns {
-		//fmt.Println(k, v)
 		cpname := k
 		cptype := v.CPType
 		if !strings.Contains(cpname, cptype) {
@@ -116,5 +118,28 @@ func ValidateCP(dict *CompPatternDict) {
 				// TODO check if methodcode is valid according to the "Method Codes" section of documentation
 			}
 		}
+		funcMap[cpname] = funcLabels
+	}
+	return funcMap
+}
+
+// ValidateCPInit iterates through the passed CPInitListDict to verify the data contents
+func ValidateCPInit(dict *CPInitListDict, funcMap map[string][]string) {
+	for k, v := range dict.InitList {
+		cpname := k
+		cptype := v.CPType
+		if !strings.Contains(cpname, cptype) {
+			panic("cpname should contain the cptype")
+		}
+		if cpname != v.Name {
+			panic("name should match CPNAME header")
+		}
+		// Validate function declarations in cfg
+		for funcname, _ := range v.Cfg {
+			if !slices.Contains(funcMap[cpname], funcname) {
+				panic("FUNCNAME must be a valid function for CPNAME")
+			}
+		}
+		// TODO validate msgtype, this may have to be tracked from cp.yaml too
 	}
 }
