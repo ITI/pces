@@ -72,26 +72,25 @@ func CheckFormats(fullpathmap map[string]string) (bool, error) {
 			return false, err
 		}
 	}
-	funcMap, funcClassMap := ValidateCP(&cp)
-	ValidateCPExtEdges(&cp, funcMap)
+	funcMap, funcMethodMap := ValidateCP(&cp)
+	ValidateCPEdges(&cp, funcMap, funcMethodMap)
 	ValidateCPInit(&cpinit, funcMap)
+	ValidateSrdCfg(&srdcfg, funcMethodMap)
+	ValidateExp(&exp)
 	cpumodels := ValidateFuncExec(&funcexec)
 	devmodels := ValidateDevExec(&devexec)
-	ValidateSrdCfg(&srdcfg, funcClassMap)
 	endpoints := ValidateTopo(&topo, cpumodels, devmodels)
 	ValidateMap(&m, funcMap, endpoints)
-
-	ValidateExp(&exp)
 
 	return true, nil
 }
 
 // ValidateCP iterates through the passed CompPatternDict to verify the data contents
-// Returns a mapping from each CPNAME to its declared Functions. This is needed to validate other files.
-// The second mapping tracks the CPNAME and FUNCLABEL for each FUNCLASS, for the purposes of validating SrdCft
+// map[string][]string funcMap is a mapping from each CPNAME to its declared FUNCLABELs. This is needed to validate other files.
+// map[string][][]string funcMethodMap tracks a FUNCLABEL and FUNCLASS for each CPNAME, so that edges can validate their methodcodes
 func ValidateCP(dict *CompPatternDict) (map[string][]string, map[string][][]string) {
-	funcMap := make(map[string][]string)
-	funcClassMap := make(map[string][][]string)
+	funcMap := make(map[string][]string)         // Keys = cpname, Vals = [FUNCLABEL, ...]
+	funcMethodMap := make(map[string][][]string) // Keys = cpname, Vals = [[FUNCLABEL, FUNCLASS], ...]
 	for cpname, v := range dict.Patterns {
 		if !strings.Contains(cpname, v.CPType) {
 			ParsePanic("cp", "CPNAME", cpname, "cptype", v.CPType, "cpname should contain the cptype")
@@ -111,31 +110,46 @@ func ValidateCP(dict *CompPatternDict) (map[string][]string, map[string][][]stri
 				ParsePanic("cp", "CPNAME", cpname, "func label", f.Label, "func labels must be unique for each CPTYPE")
 			}
 			funcLabels = append(funcLabels, f.Label)
-			funcClassMap[f.Class] = append(funcClassMap[f.Class], []string{cpname, f.Label})
-		}
-		// Validate Edge Connections
-		for _, e := range v.Edges {
-			if !slices.Contains(funcLabels, e.SrcLabel) {
-				ParsePanic("cp", "CPNAME", cpname, "edges srclabel", e.SrcLabel, "srclabel must a valid FUNCLABEL")
-			}
-			if !slices.Contains(funcLabels, e.DstLabel) {
-				ParsePanic("cp", "CPNAME", cpname, "edges dstlabel", e.DstLabel, "dstlabel must a valid FUNCLABEL")
-			}
-			// TODO check if methodcode is valid according to the "Method Codes" section of documentation
+			funcMethodMap[cpname] = append(funcMethodMap[cpname], []string{f.Label, f.Class})
 		}
 		funcMap[cpname] = funcLabels
 	}
-	return funcMap, funcClassMap
+	return funcMap, funcMethodMap
 }
 
-// ValidateCPExtEdges iterates through the passed CompPatternDict to verify the ExtEdges specifically
+// ValidateCPEdges iterates through the passed CompPatternDict to verify the ExtEdges specifically
 // This is part of the validation for the cp file, but requires a full funcMap to verify that the
 // external edge connections are valid
-func ValidateCPExtEdges(dict *CompPatternDict, funcMap map[string][]string) {
+func ValidateCPEdges(dict *CompPatternDict, funcMap map[string][]string, funcMethodMap map[string][][]string) {
+	CreateClassMethods()
 	for cpname, v := range dict.Patterns {
+		// Validate Edge Connections
+		for _, e := range v.Edges {
+			// For internal edges, srcLabel and dstLabel should exist under the same cpname
+			if !slices.Contains(funcMap[cpname], e.SrcLabel) {
+				ParsePanic("cp", "CPNAME", cpname, "edges srclabel", e.SrcLabel, "srclabel must a valid FUNCLABEL")
+			}
+			if !slices.Contains(funcMap[cpname], e.DstLabel) {
+				ParsePanic("cp", "CPNAME", cpname, "edges dstlabel", e.DstLabel, "dstlabel must a valid FUNCLABEL")
+			}
+
+			// Find the class label for the current cpname and dstLabel
+			var classLabel string
+			for _, pair := range funcMethodMap[cpname] {
+				if pair[0] == e.DstLabel {
+					classLabel = pair[1]
+					break
+				}
+			}
+			// Check if the given methodcode is valid for the dstLabel's assigned class
+			if !slices.Contains(maps.Keys(ClassMethods[classLabel]), e.MethodCode) {
+				ParsePanic("cp", "CPNAME", cpname, "edges methodcode", e.MethodCode, "methodcode must be defined in the destination function")
+			}
+		}
 		// Validate EXTEdges
 		for _, ee := range v.ExtEdges {
 			for _, connection := range ee {
+				// Check that srccp and dstcp are valid CPNAMEs
 				// srccp
 				if connection.SrcCP != cpname {
 					ParsePanic("cp", "CPNAME", cpname, "extedges srccp", connection.SrcCP, "srccp should be the current CPNAME")
@@ -144,6 +158,8 @@ func ValidateCPExtEdges(dict *CompPatternDict, funcMap map[string][]string) {
 				if !slices.Contains(maps.Keys(dict.Patterns), connection.DstCP) {
 					ParsePanic("cp", "CPNAME", cpname, "extedges dstcp", connection.DstCP, "dstcp should be a valid CPTYPE contained under 'patterns'")
 				}
+
+				// Check that srclabel and dstlabel exist under their respective CPNAMEs
 				// srclabel
 				if !slices.Contains(funcMap[connection.SrcCP], connection.SrcLabel) {
 					ParsePanic("cp", "CPNAME", cpname, "extedges srclabel", connection.SrcLabel, "srclabel must be a valid FUNCLABEL declared under 'srccp'")
@@ -153,9 +169,18 @@ func ValidateCPExtEdges(dict *CompPatternDict, funcMap map[string][]string) {
 					ParsePanic("cp", "CPNAME", cpname, "extedges dstlabel", connection.DstLabel, "dstlabel must be a valid FUNCLABEL declared under 'dstcp'")
 				}
 
-				// msgtype has no restrictions listed in docs
-
-				// TODO check if methodcode is valid according to the "Method Codes" section of documentation
+				// Find the class label for the current cpname and srcLabel
+				var classLabel string
+				for _, pair := range funcMethodMap[cpname] {
+					if pair[0] == connection.SrcLabel {
+						classLabel = pair[1]
+						break
+					}
+				}
+				// Check if the given methodcode is valid for the srcLabel's assigned class
+				if !slices.Contains(maps.Keys(ClassMethods[classLabel]), connection.MethodCode) {
+					ParsePanic("cp", "CPNAME", cpname, "extedges methodcode", connection.MethodCode, "methodcode must be defined in the source function")
+				}
 			}
 		}
 	}
@@ -170,12 +195,14 @@ func ValidateCPInit(dict *CPInitListDict, funcMap map[string][]string) {
 		if cpname != v.Name {
 			ParsePanic("cpInit", "CPNAME", cpname, "name", v.Name, "name should match CPNAME header")
 		}
+
 		// Validate function declarations in cfg
 		for funcname, _ := range v.Cfg {
-			// Validate that the FUNCNAME exists for the current CPNAME
+			// Validate that the expected FUNCNAME exists for the current CPNAME
 			if !slices.Contains(funcMap[cpname], funcname) {
 				ParsePanic("cpInit", "CPNAME", cpname, "funcname", funcname, "funcname must be a valid function for CPNAME")
 			}
+
 			// TODO validate SERIALCFG
 		}
 		// TODO validate msgtype, this may have to be tracked from cp.yaml too
@@ -189,7 +216,7 @@ func ValidateMap(dict *CompPatternMapDict, funcMap map[string][]string, endpoint
 			ParsePanic("map", "CPNAME", cpname, "patternname", v.PatternName, "patternname should match CPNAME")
 		}
 		for funclabel, endptname := range v.FuncMap {
-			// Validate that the FUNCLABEL exists for the current CPNAME
+			// Validate that the expected FUNCLABEL exists for the current CPNAME
 			if !slices.Contains(funcMap[cpname], funclabel) {
 				ParsePanic("map", "CPNAME", cpname, "funcname", funclabel, "funcname must be a valid function for CPNAME")
 			}
@@ -219,17 +246,15 @@ func ValidateFuncExec(l *FuncExecList) []string {
 }
 
 // ValidateSrdCfg iterates through the passed SharedCfgGroupList to verify the data contents
-// Returns []string groups, which contains the names of declared groups to check against topo.yaml
-func ValidateSrdCfg(l *SharedCfgGroupList, funcClassMap map[string][][]string) {
-	//var groups []string
+func ValidateSrdCfg(l *SharedCfgGroupList, funcMethodMap map[string][][]string) {
 	// Loop through SharedStateGroupList's
 	for _, v := range l.Groups {
-		//groups = append(groups, v.Name)
 		// Loop through GlobalFuncInstId's
 		for _, val := range v.Instances {
 			// Check if a CPNAME/FUNCLABEL pair is present under a FUNCLASS
-			compareSlice := []string{val.CmpPtnName, val.Label}
-			for i, s := range funcClassMap[v.Class] {
+			compareSlice := []string{val.Label, v.Class}
+			// Element-wise check that funcMethodMap[CPNAME] matches the expected compareSlice
+			for i, s := range funcMethodMap[val.CmpPtnName] {
 				if s[i] != compareSlice[i] {
 					ParsePanic("srdCfg", "GROUP NAME", v.Name, "label", val.Label, "invalid cpname/funclabel present")
 				}
@@ -237,9 +262,9 @@ func ValidateSrdCfg(l *SharedCfgGroupList, funcClassMap map[string][][]string) {
 		}
 		// TODO does the content of cfgstr need to be validated somehow?
 	}
-	//return groups
 }
 
+// ParsePanic is a helper function for printing out formatted error messages
 func ParsePanic(filename string, container string, containerValue string, field string, fieldValue string, message string) {
 	str := fmt.Errorf("[%v file parse error] PANIC in %v '%v' for %v '%v'\n%v", filename, container, containerValue, field, fieldValue, message)
 	panic(str)
