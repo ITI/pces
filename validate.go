@@ -34,7 +34,6 @@ func CheckFormats(fullpathmap map[string]string) (bool, error) {
 		f, err := os.Open(filepath)
 		var reader io.Reader
 		reader = f
-		fmt.Println(n, fullpathmap[n])
 
 		// Using Decode instead of Unmarshal is much stricter. https://pkg.go.dev/gopkg.in/yaml.v3#Decoder
 		// Decode checks that:
@@ -76,13 +75,14 @@ func CheckFormats(fullpathmap map[string]string) (bool, error) {
 	funcMap, funcClassMap := ValidateCP(&cp)
 	ValidateCPExtEdges(&cp, funcMap)
 	ValidateCPInit(&cpinit, funcMap)
-	ValidateMap(&m, funcMap)
-	ValidateFuncExec(&funcexec)
+	cpumodels := ValidateFuncExec(&funcexec)
+	devmodels, endpoints := ValidateTopo(&topo, cpumodels)
+	ValidateMap(&m, funcMap, endpoints)
 	ValidateSrdCfg(&srdcfg, funcClassMap)
 
-	ValidateDevExec(&devexec)
+	ValidateDevExec(&devexec, devmodels)
 	ValidateExp(&exp)
-	ValidateTopo(&topo)
+
 	return true, nil
 }
 
@@ -94,20 +94,21 @@ func ValidateCP(dict *CompPatternDict) (map[string][]string, map[string][][]stri
 	funcClassMap := make(map[string][][]string)
 	for cpname, v := range dict.Patterns {
 		if !strings.Contains(cpname, v.CPType) {
-			PrintParseError("cp", "CPNAME", cpname, "cptype", v.CPType)
-			panic("cpname should contain the cptype")
+			ParsePanic("cp", "CPNAME", cpname, "cptype", v.CPType, "cpname should contain the cptype")
 		}
 		if cpname != v.Name {
-			PrintParseError("cp", "CPNAME", cpname, "name", v.Name)
-			panic("name should match CPNAME header")
+			ParsePanic("cp", "CPNAME", cpname, "name", v.Name, "name should match CPNAME header")
 		}
 		var funcLabels []string
 		// Validate Function Declarations
 		for _, f := range v.Funcs {
-			// TODO check if class is valid according to the "Func Classes" section of documentation
+			// Validate class (pces builtin)
+			if !validFuncClass(f.Class) {
+				ParsePanic("cp", "CPNAME", cpname, "func class", f.Class, "func class must be declared and supported by the pces code base as a recognized class")
+			}
+			// Check for duplicate labels
 			if slices.Contains(funcLabels, f.Label) {
-				PrintParseError("cp", "CPNAME", cpname, "func label", f.Label)
-				panic("func labels must be unique for each CPTYPE")
+				ParsePanic("cp", "CPNAME", cpname, "func label", f.Label, "func labels must be unique for each CPTYPE")
 			}
 			funcLabels = append(funcLabels, f.Label)
 			funcClassMap[f.Class] = append(funcClassMap[f.Class], []string{cpname, f.Label})
@@ -115,12 +116,10 @@ func ValidateCP(dict *CompPatternDict) (map[string][]string, map[string][][]stri
 		// Validate Edge Connections
 		for _, e := range v.Edges {
 			if !slices.Contains(funcLabels, e.SrcLabel) {
-				PrintParseError("cp", "CPNAME", cpname, "edges srclabel", e.SrcLabel)
-				panic("srclabel must a valid FUNCLABEL")
+				ParsePanic("cp", "CPNAME", cpname, "edges srclabel", e.SrcLabel, "srclabel must a valid FUNCLABEL")
 			}
 			if !slices.Contains(funcLabels, e.DstLabel) {
-				PrintParseError("cp", "CPNAME", cpname, "edges dstlabel", e.DstLabel)
-				panic("dstlabel must a valid FUNCLABEL")
+				ParsePanic("cp", "CPNAME", cpname, "edges dstlabel", e.DstLabel, "dstlabel must a valid FUNCLABEL")
 			}
 			// TODO check if methodcode is valid according to the "Method Codes" section of documentation
 		}
@@ -139,23 +138,19 @@ func ValidateCPExtEdges(dict *CompPatternDict, funcMap map[string][]string) {
 			for _, connection := range ee {
 				// srccp
 				if connection.SrcCP != cpname {
-					PrintParseError("cp", "CPNAME", cpname, "extedges srccp", connection.SrcCP)
-					panic("srccp should be the current CPNAME")
+					ParsePanic("cp", "CPNAME", cpname, "extedges srccp", connection.SrcCP, "srccp should be the current CPNAME")
 				}
 				// dstcp
 				if !slices.Contains(maps.Keys(dict.Patterns), connection.DstCP) {
-					PrintParseError("cp", "CPNAME", cpname, "extedges dstcp", connection.DstCP)
-					panic("dstcp should be a valid CPTYPE contained under 'patterns'")
+					ParsePanic("cp", "CPNAME", cpname, "extedges dstcp", connection.DstCP, "dstcp should be a valid CPTYPE contained under 'patterns'")
 				}
 				// srclabel
 				if !slices.Contains(funcMap[connection.SrcCP], connection.SrcLabel) {
-					PrintParseError("cp", "CPNAME", cpname, "extedges srclabel", connection.SrcLabel)
-					panic("srclabel must be a valid FUNCLABEL declared under 'srccp'")
+					ParsePanic("cp", "CPNAME", cpname, "extedges srclabel", connection.SrcLabel, "srclabel must be a valid FUNCLABEL declared under 'srccp'")
 				}
 				// dstlabel
 				if !slices.Contains(funcMap[connection.DstCP], connection.DstLabel) {
-					PrintParseError("cp", "CPNAME", cpname, "extedges dstlabel", connection.DstLabel)
-					panic("dstlabel must be a valid FUNCLABEL declared under 'dstcp'")
+					ParsePanic("cp", "CPNAME", cpname, "extedges dstlabel", connection.DstLabel, "dstlabel must be a valid FUNCLABEL declared under 'dstcp'")
 				}
 
 				// msgtype has no restrictions listed in docs
@@ -170,19 +165,16 @@ func ValidateCPExtEdges(dict *CompPatternDict, funcMap map[string][]string) {
 func ValidateCPInit(dict *CPInitListDict, funcMap map[string][]string) {
 	for cpname, v := range dict.InitList {
 		if !strings.Contains(cpname, v.CPType) {
-			PrintParseError("cpInit", "CPNAME", cpname, "cptype", v.CPType)
-			panic("cpname should contain the cptype")
+			ParsePanic("cpInit", "CPNAME", cpname, "cptype", v.CPType, "cpname should contain the cptype")
 		}
 		if cpname != v.Name {
-			PrintParseError("cpInit", "CPNAME", cpname, "name", v.Name)
-			panic("name should match CPNAME header")
+			ParsePanic("cpInit", "CPNAME", cpname, "name", v.Name, "name should match CPNAME header")
 		}
 		// Validate function declarations in cfg
 		for funcname, _ := range v.Cfg {
 			// Validate that the FUNCNAME exists for the current CPNAME
 			if !slices.Contains(funcMap[cpname], funcname) {
-				PrintParseError("cpInit", "CPNAME", cpname, "funcname", funcname)
-				panic("funcname must be a valid function for CPNAME")
+				ParsePanic("cpInit", "CPNAME", cpname, "funcname", funcname, "funcname must be a valid function for CPNAME")
 			}
 			// TODO validate SERIALCFG
 		}
@@ -191,36 +183,39 @@ func ValidateCPInit(dict *CPInitListDict, funcMap map[string][]string) {
 }
 
 // ValidateMap iterates through the passed CompPatternMapDict to verify the data contents
-func ValidateMap(dict *CompPatternMapDict, funcMap map[string][]string) {
+func ValidateMap(dict *CompPatternMapDict, funcMap map[string][]string, endpoints []string) {
 	for cpname, v := range dict.Map {
 		if cpname != v.PatternName {
-			PrintParseError("map", "CPNAME", cpname, "patternname", v.PatternName)
-			panic("patternname should match CPNAME")
+			ParsePanic("map", "CPNAME", cpname, "patternname", v.PatternName, "patternname should match CPNAME")
 		}
-		for funcname, _ := range v.FuncMap {
-			// Validate that the FUNCNAME exists for the current CPNAME
-			if !slices.Contains(funcMap[cpname], funcname) {
-				PrintParseError("map", "CPNAME", cpname, "funcname", funcname)
-				panic("funcname must be a valid function for CPNAME")
+		for funclabel, endptname := range v.FuncMap {
+			// Validate that the FUNCLABEL exists for the current CPNAME
+			if !slices.Contains(funcMap[cpname], funclabel) {
+				ParsePanic("map", "CPNAME", cpname, "funcname", funclabel, "funcname must be a valid function for CPNAME")
 			}
-			// TODO validate ENDPTNAME
+			// Validate ENDPTNAME from endpoints declared in topo.yaml
+			if !slices.Contains(endpoints, endptname) {
+				ParsePanic("map", "CPNAME", cpname, "endptname", endptname, "endptname must match a valid endpoint declared in topo.yaml")
+			}
 		}
 	}
 }
 
 // ValidateFuncExec iterates through the passed FuncExecList to verify the data contents
-func ValidateFuncExec(l *FuncExecList) {
+// Returns []string cpumodels to check against those in the network in topo.yaml
+func ValidateFuncExec(l *FuncExecList) []string {
+	var cpumodels []string
 	for timingcode, v := range l.Times {
 		for _, feDesc := range v {
 			// identifier
 			if feDesc.Identifier != timingcode {
-				PrintParseError("funcExec", "TIMINGCODE", timingcode, "identifier", feDesc.Identifier)
-				panic("identifier should match the TIMINGCODE")
+				ParsePanic("funcExec", "TIMINGCODE", timingcode, "identifier", feDesc.Identifier, "identifier should match the TIMINGCODE")
 			}
 			// feDesc.param has no restrictions
-			// feDesc.cpumodel has no restrictions (unless we have a database of every CPU ever)
+			cpumodels = append(cpumodels, feDesc.CPUModel)
 		}
 	}
+	return cpumodels
 }
 
 // ValidateSrdCfg iterates through the passed SharedCfgGroupList to verify the data contents
@@ -233,8 +228,7 @@ func ValidateSrdCfg(l *SharedCfgGroupList, funcClassMap map[string][][]string) {
 			compareSlice := []string{val.CmpPtnName, val.Label}
 			for i, s := range funcClassMap[v.Class] {
 				if s[i] != compareSlice[i] {
-					PrintParseError("srdCfg", "GROUP NAME", v.Name, "label", val.Label)
-					panic("CPNAME and FUNCLABEL not present under FUNCLASS")
+					ParsePanic("srdCfg", "GROUP NAME", v.Name, "label", val.Label, "invalid cpname/funclabel present")
 				}
 			}
 		}
@@ -242,17 +236,18 @@ func ValidateSrdCfg(l *SharedCfgGroupList, funcClassMap map[string][][]string) {
 	}
 }
 
-func PrintParseError(filename string, container string, containerValue string, field string, fieldValue string) {
-	fmt.Printf("[%v file parse error] PANIC in %v '%v' for %v '%v'\n", filename, container, containerValue, field, fieldValue)
+func ParsePanic(filename string, container string, containerValue string, field string, fieldValue string, message string) {
+	str := fmt.Errorf("[%v file parse error] PANIC in %v '%v' for %v '%v'\n%v", filename, container, containerValue, field, fieldValue, message)
+	panic(str)
 }
 
 // TODO Move these functions to a file under the mrnes project when done testing
 
 // ValidateDevExec iterates through the passed mrnes.DevExecList to verify the data contents
-func ValidateDevExec(l *mrnes.DevExecList) {
+func ValidateDevExec(l *mrnes.DevExecList, devmodels []string) {
 	/*for _, v := range l.Times {
 		for _, val := range v {
-			// TODO is there a way to validate val.Model? Otherwise there may be nothing to validate here
+			// TODO DEVMODEL is the union of SWITCHMODEL and ROUTERMODEL from topo.yaml
 		}
 	}*/
 }
@@ -263,47 +258,64 @@ func ValidateExp(cfg *mrnes.ExpCfg) {
 	for _, v := range cfg.Parameters {
 		// Validate paramobj
 		if !slices.Contains(mrnes.ExpParamObjs, v.ParamObj) {
-			PrintParseError("exp", "Name", cfg.Name, "paramobj", v.ParamObj)
-			panic("paramobj must be a valid ParamObj")
+			ParsePanic("exp", "Name", cfg.Name, "paramobj", v.ParamObj, "paramobj must be a valid ParamObj")
 		}
 		// Validate attributes
 		for _, attr := range v.Attributes {
 			if !slices.Contains(mrnes.ExpAttributes[v.ParamObj], attr.AttrbName) && attr.AttrbName != "device" {
-				PrintParseError("exp", "Name", cfg.Name, "attribute", attr.AttrbName)
-				panic("attribute must be present in mrnes.ExpAttributes")
+				ParsePanic("exp", "Name", cfg.Name, "attribute", attr.AttrbName, "attribute must be present in mrnes.ExpAttributes")
 			}
 		}
 		// Validate param
 		if !slices.Contains(mrnes.ExpParams[v.ParamObj], v.Param) {
-			PrintParseError("exp", "Name", cfg.Name, "param", v.Param)
-			panic("param must be present in mrnes.ExpParams")
+			ParsePanic("exp", "Name", cfg.Name, "param", v.Param, "param must be present in mrnes.ExpParams")
 		}
-		// Validation of value cannot be easily done
+		// Validation of value can be easily done if we figure out the 'device' error
+		//err := mrnes.ValidateParameter(v.ParamObj, v.Attributes, v.Param)
+		//if err != nil {
+		//	panic("ruh roh")
+		//}
 	}
 }
 
 // ValidateTopo iterates through the passed mrnes.TopoCfg to verify the data contents
-func ValidateTopo(cfg *mrnes.TopoCfg) {
+// Returns []string devmodels, which is the Union of switchmodels and routermodels
+// Returns []string endpoints, which is a slice containing the names of all defined endpoints
+func ValidateTopo(cfg *mrnes.TopoCfg, cpumodels []string) ([]string, []string) {
 	// Collect data from the defined routers to check them against network definitions
-	routers := make([][]string, len(cfg.Routers))
+	var routers [][]string
+	var routermodels []string
 	for _, r := range cfg.Routers {
+		routermodels = append(routermodels, r.Model)
 		for _, i := range r.Interfaces {
 			routers = append(routers, []string{r.Name, i.MediaType, i.Faces})
 			ValidateInterfaceDesc(&i, r.Name)
 		}
 	}
 	// Collect data from the defined switches to check them against network definitions
-	switches := make([][]string, len(cfg.Switches))
+	var switches [][]string
+	var switchmodels []string
 	for _, s := range cfg.Switches {
+		switchmodels = append(switchmodels, s.Model)
 		for _, i := range s.Interfaces {
 			switches = append(switches, []string{s.Name, i.MediaType, i.Faces})
 			ValidateInterfaceDesc(&i, s.Name)
 		}
 	}
+	var devmodels []string
+	devmodels = append(routermodels, switchmodels...)
+	// Remove duplicates from devmodels, resulting in the Union of routermodels and switchmodels
+	// (not that there should really be any)
+	slices.Sort(devmodels)
+	slices.Compact(devmodels)
 	// Collect data from the defined endpoints to check them against network definitions
-	endpoints := make([]string, len(cfg.Endpts)-1)
+	var endpoints []string
 	for _, e := range cfg.Endpts {
 		endpoints = append(endpoints, e.Name)
+		// Validate that the CPUMODEL is declared in FuncExec
+		if !slices.Contains(cpumodels, e.Model) {
+			ParsePanic("topo", "Endpoint Name", e.Name, "model", e.Model, "Endpoint model must be a valid CPUMODEL declared in FuncExec")
+		}
 		for _, i := range e.Interfaces {
 			ValidateInterfaceDesc(&i, e.Name)
 		}
@@ -315,15 +327,13 @@ func ValidateTopo(cfg *mrnes.TopoCfg) {
 	for _, n := range cfg.Networks {
 		// Validate network.netscale
 		if !slices.Contains(netscales, n.NetScale) {
-			PrintParseError("topo", "Name", n.Name, "netscale", n.NetScale)
-			panic("netscale must be either LAN, WAN, T3, T2, T1, or GeneralNet")
+			ParsePanic("topo", "Name", n.Name, "netscale", n.NetScale, "netscale must be either LAN, WAN, T3, T2, T1, or GeneralNet")
 		}
 		// Validate network.mediatype
 		// We use strings.ToLower() because switch statements in mrnes/net.go will accept
 		// either 'wired'/'Wired' and 'wireless'/'Wireless'
 		if !slices.Contains(mediatypes, strings.ToLower(n.MediaType)) {
-			PrintParseError("topo", "Name", n.Name, "mediatype", n.MediaType)
-			panic("mediatype must be either 'wired' or 'wireless'")
+			ParsePanic("topo", "Name", n.Name, "mediatype", n.MediaType, "mediatype must be either 'wired' or 'wireless'")
 		}
 		// TODO check groups are defined in SrdCfg
 		// Make sure that all routers under 'network/routers' have been defined under the general 'routers' label
@@ -339,8 +349,7 @@ func ValidateTopo(cfg *mrnes.TopoCfg) {
 				}
 			}
 			if !found {
-				PrintParseError("topo", "Network", n.Name, "Router name, router, and mediatype", "")
-				panic("Router name, router, and mediatype don't match for a network")
+				ParsePanic("topo", "Network", n.Name, "Router name, router, and mediatype", "", "Router name, router, and mediatype don't match for a network")
 			}
 		}
 		// Make sure that all switches under 'network/switches' have been defined under the general 'switches' label
@@ -356,18 +365,17 @@ func ValidateTopo(cfg *mrnes.TopoCfg) {
 				}
 			}
 			if !found {
-				PrintParseError("topo", "Network", n.Name, "Switch name, switch, and mediatype", "")
-				panic("Switch name, switch, and mediatype don't match for a network")
+				ParsePanic("topo", "Network", n.Name, "Switch name, switch, and mediatype", "", "Switch name, switch, and mediatype don't match for a network")
 			}
 		}
 		// Make sure that all endpoints under 'network/endpts' have been defined under the general 'endpts' label
 		for _, e := range n.Endpts {
 			if !slices.Contains(endpoints, e) {
-				PrintParseError("topo", "Network", n.Name, "endpoint", e)
-				panic("network endpoint not declared under the general NetworkDesc endpts")
+				ParsePanic("topo", "Network", n.Name, "endpoint", e, "network endpoint not declared under the general NetworkDesc endpts")
 			}
 		}
 	}
+	return devmodels, endpoints
 }
 
 // ValidateInterfaceDesc is a helper function to verify a passed mrnes.IntrfcDesc object
@@ -376,17 +384,14 @@ func ValidateInterfaceDesc(int *mrnes.IntrfcDesc, attachedDevice string) {
 	if !((!(int.Cable == "") && (int.Carry == "") && (len(int.Wireless) == 0)) ||
 		((int.Cable == "") && !(int.Carry == "") && (len(int.Wireless) == 0)) ||
 		((int.Cable == "") && (int.Carry == "") && !(len(int.Wireless) == 0))) {
-		PrintParseError("topo IntrfcDesc", "Name", int.Name, "cable, carry, wireless", "")
-		panic("Exactly one of the values of keys cable, carry, and wireless attributes should be non-empty")
+		ParsePanic("topo IntrfcDesc", "Name", int.Name, "cable, carry, wireless", "", "Exactly one of the values of keys cable, carry, and wireless attributes should be non-empty")
 	}
 	// devtype should be either "Switch", "Router", or "Endpt"
 	if !slices.Contains([]string{"Switch", "Router", "Endpt"}, int.DevType) {
-		PrintParseError("topo IntrfcDesc", "Name", int.Name, "devtype", int.DevType)
-		panic("devtype should be either 'Switch', 'Router', or 'Endpt'")
+		ParsePanic("topo IntrfcDesc", "Name", int.Name, "devtype", int.DevType, "devtype should be either 'Switch', 'Router', or 'Endpt'")
 	}
 	// device should be the same name of its parent Router/Switch
 	if int.Device != attachedDevice {
-		PrintParseError("topo IntrfcDesc", "Name", int.Name, "device", int.Device)
-		panic("device should match the name of its parent Router/Switch")
+		ParsePanic("topo IntrfcDesc", "Name", int.Name, "device", int.Device, "device should match the name of its parent Router/Switch")
 	}
 }
