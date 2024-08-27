@@ -76,11 +76,11 @@ func CheckFormats(fullpathmap map[string]string) (bool, error) {
 	ValidateCPExtEdges(&cp, funcMap)
 	ValidateCPInit(&cpinit, funcMap)
 	cpumodels := ValidateFuncExec(&funcexec)
-	devmodels, endpoints := ValidateTopo(&topo, cpumodels)
-	ValidateMap(&m, funcMap, endpoints)
+	devmodels := ValidateDevExec(&devexec)
 	ValidateSrdCfg(&srdcfg, funcClassMap)
+	endpoints := ValidateTopo(&topo, cpumodels, devmodels)
+	ValidateMap(&m, funcMap, endpoints)
 
-	ValidateDevExec(&devexec, devmodels)
 	ValidateExp(&exp)
 
 	return true, nil
@@ -219,9 +219,12 @@ func ValidateFuncExec(l *FuncExecList) []string {
 }
 
 // ValidateSrdCfg iterates through the passed SharedCfgGroupList to verify the data contents
+// Returns []string groups, which contains the names of declared groups to check against topo.yaml
 func ValidateSrdCfg(l *SharedCfgGroupList, funcClassMap map[string][][]string) {
+	//var groups []string
 	// Loop through SharedStateGroupList's
 	for _, v := range l.Groups {
+		//groups = append(groups, v.Name)
 		// Loop through GlobalFuncInstId's
 		for _, val := range v.Instances {
 			// Check if a CPNAME/FUNCLABEL pair is present under a FUNCLASS
@@ -234,6 +237,7 @@ func ValidateSrdCfg(l *SharedCfgGroupList, funcClassMap map[string][][]string) {
 		}
 		// TODO does the content of cfgstr need to be validated somehow?
 	}
+	//return groups
 }
 
 func ParsePanic(filename string, container string, containerValue string, field string, fieldValue string, message string) {
@@ -244,12 +248,16 @@ func ParsePanic(filename string, container string, containerValue string, field 
 // TODO Move these functions to a file under the mrnes project when done testing
 
 // ValidateDevExec iterates through the passed mrnes.DevExecList to verify the data contents
-func ValidateDevExec(l *mrnes.DevExecList, devmodels []string) {
-	/*for _, v := range l.Times {
+// Return []string devmodels, which contains all router and switch models to check against topo.yaml
+func ValidateDevExec(l *mrnes.DevExecList) []string {
+	var devmodels []string
+	for _, v := range l.Times {
 		for _, val := range v {
-			// TODO DEVMODEL is the union of SWITCHMODEL and ROUTERMODEL from topo.yaml
+			// DEVMODEL is the union of all SWITCHMODEL and ROUTERMODEL to validate topo.yaml
+			devmodels = append(devmodels, val.Model)
 		}
-	}*/
+	}
+	return devmodels
 }
 
 // ValidateExp iterates through the passed mrnes.ExpCfg to verify the data contents
@@ -279,14 +287,15 @@ func ValidateExp(cfg *mrnes.ExpCfg) {
 }
 
 // ValidateTopo iterates through the passed mrnes.TopoCfg to verify the data contents
-// Returns []string devmodels, which is the Union of switchmodels and routermodels
 // Returns []string endpoints, which is a slice containing the names of all defined endpoints
-func ValidateTopo(cfg *mrnes.TopoCfg, cpumodels []string) ([]string, []string) {
+func ValidateTopo(cfg *mrnes.TopoCfg, cpumodels []string, devmodels []string) []string {
 	// Collect data from the defined routers to check them against network definitions
 	var routers [][]string
-	var routermodels []string
 	for _, r := range cfg.Routers {
-		routermodels = append(routermodels, r.Model)
+		// Validate ROUTERMODEL
+		if !slices.Contains(devmodels, r.Model) {
+			ParsePanic("topo", "Router", r.Name, "model", r.Model, "Router model must be a valid ROUTERMODEL declared in topo.yaml")
+		}
 		for _, i := range r.Interfaces {
 			routers = append(routers, []string{r.Name, i.MediaType, i.Faces})
 			ValidateInterfaceDesc(&i, r.Name)
@@ -294,20 +303,16 @@ func ValidateTopo(cfg *mrnes.TopoCfg, cpumodels []string) ([]string, []string) {
 	}
 	// Collect data from the defined switches to check them against network definitions
 	var switches [][]string
-	var switchmodels []string
 	for _, s := range cfg.Switches {
-		switchmodels = append(switchmodels, s.Model)
+		// Validate SWITCHMODEL
+		if !slices.Contains(devmodels, s.Model) {
+			ParsePanic("topo", "Switch", s.Name, "model", s.Model, "Switch model must be a valid SWITCHMODEL declared in topo.yaml")
+		}
 		for _, i := range s.Interfaces {
 			switches = append(switches, []string{s.Name, i.MediaType, i.Faces})
 			ValidateInterfaceDesc(&i, s.Name)
 		}
 	}
-	var devmodels []string
-	devmodels = append(routermodels, switchmodels...)
-	// Remove duplicates from devmodels, resulting in the Union of routermodels and switchmodels
-	// (not that there should really be any)
-	slices.Sort(devmodels)
-	slices.Compact(devmodels)
 	// Collect data from the defined endpoints to check them against network definitions
 	var endpoints []string
 	for _, e := range cfg.Endpts {
@@ -335,7 +340,6 @@ func ValidateTopo(cfg *mrnes.TopoCfg, cpumodels []string) ([]string, []string) {
 		if !slices.Contains(mediatypes, strings.ToLower(n.MediaType)) {
 			ParsePanic("topo", "Name", n.Name, "mediatype", n.MediaType, "mediatype must be either 'wired' or 'wireless'")
 		}
-		// TODO check groups are defined in SrdCfg
 		// Make sure that all routers under 'network/routers' have been defined under the general 'routers' label
 		for _, r := range n.Routers {
 			found := false
@@ -375,7 +379,7 @@ func ValidateTopo(cfg *mrnes.TopoCfg, cpumodels []string) ([]string, []string) {
 			}
 		}
 	}
-	return devmodels, endpoints
+	return endpoints
 }
 
 // ValidateInterfaceDesc is a helper function to verify a passed mrnes.IntrfcDesc object
