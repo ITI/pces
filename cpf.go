@@ -50,6 +50,13 @@ type CmpPtnFuncInst struct {
 
 	// save messages created as result of processing function
 	MsgResp map[int][]*CmpPtnMsg
+
+	// save ids of connections launched from this function
+	SendConnectID map[int]bool
+
+	// save ids of connections launched from this function
+	RecvConnectID map[int]bool
+
 }
 
 // createDestFuncInst== is a constructor that builds an instance of CmpPtnFunctInst from a Func description and
@@ -106,6 +113,9 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYA
 		traceMgr.AddName(cpfi.ID, cpfi.GlobalName(), "application")
 	}
 
+	cpfi.SendConnectID = make(map[int]bool)
+	cpfi.RecvConnectID = make(map[int]bool)
+
 	return cpfi
 }
 
@@ -142,7 +152,12 @@ func (cpfi *CmpPtnFuncInst) isInitiating() bool {
 }
 
 func (cpfi *CmpPtnFuncInst) InitMsgParams(msgType string, msgLen, pcktLen int, rate float64) {
-	cpfi.InitMsg = &CmpPtnMsg{MsgType: msgType, MsgLen: msgLen, PcktLen: pcktLen, Rate: rate}
+	if !(msgLen>0 && pcktLen>0) {
+		panic(fmt.Errorf("zero lengths msg %d, pckt %d", msgLen, pcktLen))
+	}
+
+	cpfi.InitMsg = &CmpPtnMsg{MsgType: msgType, MsgLen: msgLen, PcktLen: pcktLen, Rate: rate, 
+		MrnesConnDesc: DefaultConnDesc(), MrnesRprts: DefaultRprts(), MIN: NxtMIN()}
 }
 
 // funcActive indicates whether the function is processing messages
