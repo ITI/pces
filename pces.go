@@ -5,6 +5,7 @@ package pces
 import (
 	"fmt"
 	"github.com/iti/evt/evtm"
+	"github.com/iti/evt/vrtime"
 	"github.com/iti/mrnes"
 	"path"
 	"sort"
@@ -17,15 +18,30 @@ import (
 // to a structure that satisfies the NetSimPortal interface.
 type NetSimPortal interface {
 	HostCPU(string) string
-	EnterNetwork(*evtm.EventManager, string, string, int, *mrnes.ConnDesc, 
-		int, int, int, float64, 
-			*mrnes.RtnDesc, *mrnes.RtnDesc, *mrnes.RtnDesc, *mrnes.RtnDesc) any
-
-	SetQkNetSim(bool)
+	EnterNetwork(*evtm.EventManager, string, string, int, int, float64, any,
+		any, evtm.EventHandlerFunction, any, evtm.EventHandlerFunction) any
 }
 
-// pces pointers to mrnes implemenations of the NetworkPortal interface
+// The TraceManager interface helps integrate use of the mrnes functionality for managing
+// traces in the pces package
+type TraceManager interface {
+
+	// at creation a flag is set indicating whether the trace manager will be active
+	Active() bool
+
+	// add a trace event to the manager
+	AddTrace(vrtime.Time, int, int, int, string, bool, float64)
+
+	// include an id -> (name, type) pair in the trace manager dictionary
+	AddName(int, string, string)
+
+	// save the trace to file (if active) and return flag indicating whether file creatation actually happened
+	WriteToFile(string) bool
+}
+
+// pces pointers to mrnes implemenations of the NetworkPortal and TraceManager interfaces
 var netportal *mrnes.NetworkPortal
+var traceMgr TraceManager
 
 var CmpPtnMapDict *CompPatternMapDict
 var funcExecTimeTbl map[string]map[string]map[int]float64
@@ -216,7 +232,7 @@ func buildFuncExecTimeTbl(fel *FuncExecList) map[string]map[string]map[int]float
 // uses to assemble and initialize the model (and experiment) data structures.
 // It returns a pointer to an EventManager data structure used to coordinate the
 // execution of events in the simulation.
-func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm *mrnes.TraceManager) (*evtm.EventManager, error) {
+func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm TraceManager) (*evtm.EventManager, error) {
 	// syn is a map that binds pre-defined keys referring to input file types with file names
 	// The keys are
 	//	"cpInput"		- file describing comp patterns and functions
@@ -231,22 +247,16 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm *m
 	// we'll use to re-represent this information in structures optimized for run-time use
 	cpd, cpid, ssgl, fel, cpmd := GetExperimentCPDicts(syn)
 
+	// get a pointer to a mrns NetworkPortal
+
+	netportal = mrnes.CreateNetworkPortal()
+	_, use := syn["qksim"]
+	netportal.SetQkNetSim(use)
 
 	// panic if any one of these dictionaries could not be built
 	if (cpd == nil) || (cpid == nil) || (fel == nil) || (cpmd == nil) {
 		panic("empty dictionary")
 	}
-	return ContinueBuildExperimentCP(cpd, cpid, ssgl, fel, cpmd, syn, useYAML, idCounter, tm)
-}
-
-func ContinueBuildExperimentCP(cpd *CompPatternDict, cpid *CPInitListDict, ssgl *SharedCfgGroupList, 
-		fel *FuncExecList, cpmd *CompPatternMapDict, 
-		syn map[string]string, useYAML bool, idCounter int, tm *mrnes.TraceManager) (*evtm.EventManager, error) {
-
-	// get a pointer to a mrns NetworkPortal
-	netportal = mrnes.CreateNetworkPortal()
-	_, use := syn["qksim"]
-	netportal.SetQkNetSim(use)
 
 	// N.B. ssgl may be empty if there are no functions with shared cfg
 	NumIDs = idCounter

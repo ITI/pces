@@ -477,9 +477,10 @@ func scheduleBurst(evtMgr *evtm.EventManager, cpi *CmpPtnInst, cpfi *CmpPtnFuncI
 		newMsg := cpm
 		newMsg.Start = true // when this message first processed, start the timer
 		if idx > 0 {
-			newMsg = cpm.Replicate()
-			newMsg.ExecID = NxtExecID()
-			newMsg.MrnesIDs.ExecID = newMsg.ExecID
+			newMsg = new(CmpPtnMsg)
+			*newMsg = *cpm
+			newMsg.ExecID = numExecThreads
+			numExecThreads += 1
 		}
 		if cpfi == nil {
 			panic(fmt.Errorf("empty cpfi"))
@@ -521,9 +522,8 @@ func cycleDstSchedule(evtMgr *evtm.EventManager, context any, data any) any {
 		}
 	}
 
-	//cpm := new(CmpPtnMsg)
-	// *cpm = *cpfi.InitMsg
-	cpm := cpfi.InitMsg.Replicate()
+	cpm := new(CmpPtnMsg)
+	*cpm = *cpfi.InitMsg
 	cpm.ExecID = numExecThreads
 	cpm.MsgType = "initiate"
 	numExecThreads += 1
@@ -965,6 +965,6 @@ func finishEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode str
 
 	endptName := cpfi.Host
 	endpt := mrnes.EndptDevByName[endptName]
-	AddCPTrace(traceMgr, evtMgr.CurrentTime(), msg, endpt.DevID(), "exit")
+	traceMgr.AddTrace(evtMgr.CurrentTime(), msg.ExecID, 0, endpt.DevID(), "exit", msg.CarriesPckt(), msg.Rate)
 	EndRecExec(msg.ExecID, evtMgr.CurrentSeconds())
 }

@@ -239,9 +239,6 @@ func createTrackingGroup(name string) *trackingGroup {
 // time of an execution trace in the named tracking group
 func startRecExec(tgName string, execID, cpID int, funcName string, time float64) {
 	// ensure we don't start the same execID more than once
-	if execID==0 {
-		fmt.Println("ping")
-	}
 	_, present := execIDToTG[execID]
 	if present {
 		panic(fmt.Errorf("attempt to start already started tracking on execID %d", execID))
@@ -312,22 +309,6 @@ type EndPtFuncs struct {
 	EndCPID int
 }
 
-func DefaultConnDesc() mrnes.ConnDesc {
-	return mrnes.ConnDesc{Type: mrnes.DiscreteConn, Latency: mrnes.Simulate, Action: mrnes.None}
-}
-
-func DefaultRprts() mrnes.RtnDescs {
-	rtn := new(mrnes.RtnDesc)
-	rtn.EvtHdlr = ReEnter
-	return mrnes.RtnDescs{Rtn: rtn, Src: nil, Dst: nil, Loss: nil}
-}
-
-var MIN int = 0
-func NxtMIN() int {
-	MIN += 1
-	return MIN
-}
-
 // A CmpPtnMsg struct describes a message going from one CompPattern function to another.
 // It carries ancillary information about the message that is included for referencing.
 type CmpPtnMsg struct {
@@ -341,10 +322,6 @@ type CmpPtnMsg struct {
 
 	CmpHdr EndPtFuncs
 
-	MrnesConnDesc mrnes.ConnDesc 
-	MrnesRprts mrnes.RtnDescs
-	MrnesIDs mrnes.NetMsgIDs
-
 	MsgType string  // describes function of message
 	MsgLen  int     // number of bytes
 	PcktLen int     // parameter impacting execution time
@@ -356,49 +333,7 @@ type CmpPtnMsg struct {
 	NetBndwdth float64
 	NetPrLoss float64
 	Payload any     // free for "something else" to carry along and be used in decision logic
-	MIN int			// Message Information Number
 }
-
-func CompareCmpPtnMsgs(cpm1, cpm2 *CmpPtnMsg) (bool, int) {
-	if cpm1.ExecID != cpm2.ExecID {
-		return false,0
-	}
-	if cpm1.PrevCPID != cpm2.PrevCPID {
-		return false,1
-	}
-	if cpm1.PrevLabel != cpm2.PrevLabel {
-		return false,2
-	}
-	if cpm1.NxtCPID != cpm2.NxtCPID {
-		return false,3
-	}
-	if cpm1.NxtLabel != cpm2.NxtLabel {
-		return false,4
-	}
-	if cpm1.NxtMC != cpm2.NxtMC {
-		return false,5
-	}
-	return false,6
-}
-
-func (cpm *CmpPtnMsg) Replicate() *CmpPtnMsg {
-	ncpm := new(CmpPtnMsg)
-	*ncpm = *cpm
-	ncpm.MIN = NxtMIN()
-	return ncpm
-}
-
-func CreateCmpPtnMsg() *CmpPtnMsg {
-	cpm := new(CmpPtnMsg)
-	cpm.MrnesConnDesc = DefaultConnDesc()
-	cpm.MrnesRprts.Rtn = new(mrnes.RtnDesc)
-	cpm.MrnesRprts.Rtn.EvtHdlr = ReEnter
-	cpm.PcktLen = 1500 
-	cpm.MsgLen = 1500
-	cpm.MIN = NxtMIN()
-	return cpm
-}
-
 
 // CarriesPckt indicates whether the message conveys information about a packet or a flow
 func (cpm *CmpPtnMsg) CarriesPckt() bool {
@@ -517,7 +452,8 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 
 	// need to create an initial message?
 	if initiating && cpm == nil {
-		cpm := cpfi.InitMsg.Replicate()
+		cpm = new(CmpPtnMsg)
+		*cpm = *cpfi.InitMsg
 
 		// make the source information reflect this function.
 		// leave destination information off 
@@ -534,22 +470,22 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 		// flag to start the timer on this execution thread
 		cpm.Start = true
 
-		cpm.ExecID = NxtExecID()
-		cpm.MrnesIDs.ExecID = cpm.ExecID
+		cpm.ExecID = numExecThreads
 		cpm.MsgType = "initiate"
+		numExecThreads += 1
 
 		if cpfi.funcTrace() {
 			// work out the endpoint device and log the entry there
-			AddCPTrace(traceMgr, evtMgr.CurrentTime(), cpm, endpt.DevID(), "enter")
-			AddCPTrace(traceMgr, evtMgr.CurrentTime(), cpm, cpfi.ID, "enter")
+			traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, endpt.DevID(), "enter", cpm.CarriesPckt(), cpm.Rate)
+			traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, cpfi.ID, "enter", cpm.CarriesPckt(), cpm.Rate)
 		}
 	} else if cpfi.funcTrace() {
-		AddCPTrace(traceMgr, evtMgr.CurrentTime(), cpm, cpfi.ID, "enter")
+		traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, cpfi.ID, "enter", cpm.CarriesPckt(), cpm.Rate)
 	}
 
 	// start the timer if required
 	if cpm.Start {
-		AddCPTrace(traceMgr, evtMgr.CurrentTime(), cpm, endpt.DevID(), "enter")
+		traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, endpt.DevID(), "enter", cpm.CarriesPckt(), cpm.Rate)
 		cpi := CmpPtnInstByName[cpfi.funcCmpPtn()]
 		traceName := cpi.Name + ":" + cpfi.funcLabel()
 		startRecExec(traceName, cpm.ExecID, cpfi.CPID, cpfi.funcLabel(), evtMgr.CurrentSeconds())
@@ -565,8 +501,8 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 		es := edgeStruct{CPID: cpm.PrevCPID, FuncLabel: cpm.PrevLabel, MsgType: cpm.MsgType}
 		mc, present := cpfi.InEdgeMethodCode[es]
 		if !present {
-			fmt.Printf("function %s receives unrecognized input message type %s, ignored [%v]\n",
-				cpfi.funcLabel(), cpm.MsgType, es)
+			fmt.Printf("function %s receives unrecognized input message type %s, ignored\n",
+				cpfi.funcLabel(), cpm.MsgType)
 			return nil
 		}
 		methodCode = mc
@@ -574,8 +510,8 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 	// get the functions that start, and stop the function execution
 	methods, present := cpfi.RespMethods[methodCode]
 	if !present {
-		fmt.Printf("function %s receives unrecognized method code %s in message %s, ignored\n",
-			cpfi.funcLabel(), methodCode, cpm.NxtMC)
+		fmt.Printf("function %s receives unrecognized method code in message %s, ignored\n",
+			cpfi.funcLabel(), cpm.NxtMC)
 		return nil
 	}
 	
@@ -611,7 +547,7 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 
 	// note exit from function
 	if cpfi.funcTrace() {
-		AddCPTrace(traceMgr, evtMgr.CurrentTime(), cpm, cpfi.ID, "exit")
+		traceMgr.AddTrace(evtMgr.CurrentTime(), cpm.ExecID, 0, cpfi.ID, "exit", cpm.CarriesPckt(), cpm.Rate)
 	}
 
 	// done if no-where to go
@@ -649,53 +585,30 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 			if cpfi.Host == dstHost {
 				evtMgr.Schedule(nxtf, msg, EnterFunc, vrtime.SecondsToTime(0.0))
 			} else {
-
-				// we know the identity of the function to receive the return.
-				// However the event handler to call has had to been set up at the application level
-				msg.MrnesRprts.Rtn.Cxt = nxtf
-
-				connectID, _, OK := netportal.EnterNetwork(evtMgr, cpfi.Host, dstHost, msg.MsgLen, 
-					&msg.MrnesConnDesc, msg.MrnesIDs, msg.MrnesRprts, msg.Rate, msg)
-
-				if OK {
-					cpfi.SendConnectID[connectID] = true
-					nxtf.RecvConnectID[connectID] = true
+				// to get to the dstHost we need to go through the network
+				isPckt := msg.CarriesPckt()
+				netportal.EnterNetwork(evtMgr, cpfi.Host, dstHost, msg.MsgLen, cpm.ExecID, isPckt, 
+					msg.FlowState, msg.Rate, msg,
+					nxtf, ReEnter, cpfi, LostCmpPtnMsg)
 				}
-			}	
-		}
+			}
 	}
 
 	return nil
 }
 
 func ReEnter(evtMgr *evtm.EventManager, cpFunc any, rtnmsg any) any {
+
 	// msg is of type *mrnes.RtnMsgStruct
 	rtnMsg := rtnmsg.(*mrnes.RtnMsgStruct)
 	msg := rtnMsg.Msg.(*CmpPtnMsg)
 	msg.NetLatency = rtnMsg.Latency
-	msg.NetBndwdth = rtnMsg.Rate
-	msg.Rate       = rtnMsg.Rate
+	msg.NetBndwdth = rtnMsg.Bndwdth
 	msg.NetPrLoss = rtnMsg.PrLoss
 
 	evtMgr.Schedule(cpFunc, msg, EnterFunc, vrtime.SecondsToTime(0.0))
 	return nil
 }
-
-type flowOrigin struct {
-	execID int
-	cpfiID int
-}
-
-type ReturnStruct struct {
-	
-	rprtCxt *CmpPtnFuncInst
-	rprtFunc evtm.EventHandlerFunction
-	lossCxt *CmpPtnFuncInst
-	lossFunc evtm.EventHandlerFunction
-}
-
-// used by ExitFunc to look up what to tell EnterNetwork about report and loss returns
-var returnControl map[flowOrigin]ReturnStruct = make(map[flowOrigin]ReturnStruct)
 
 // LostCmpPtnMsg is scheduled from the mrnes side to report the loss of a comp pattern message
 func LostCmpPtnMsg(evtMgr *evtm.EventManager, context any, msg any) any {
@@ -718,6 +631,9 @@ func LostCmpPtnMsg(evtMgr *evtm.EventManager, context any, msg any) any {
 	return nil
 }
 
+// numExecThreads is used to place a unique integer code on every newly created initiation message
+var numExecThreads int = 1
+
 // scheduleInitEvts goes through all CmpPtnInsts and for every self-initiating CmpPtnFuncInst
 // on it schedules the initiation event handler
 func schedInitEvts(evtMgr *evtm.EventManager) {
@@ -733,10 +649,3 @@ func schedInitEvts(evtMgr *evtm.EventManager) {
 		}
 	}
 }
-
-var numExecThreads int = 0
-func NxtExecID() int {
-	numExecThreads += 1
-	return numExecThreads
-}
-  
