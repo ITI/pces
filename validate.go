@@ -24,7 +24,6 @@ func CheckFormats(fullpathmap map[string]string) (bool, error) {
 
 	// mrnes structs
 	var devexec mrnes.DevExecList
-	// TODO Check if the file is either a dict or just a cfg
 	var exp mrnes.ExpCfg
 	var topo mrnes.TopoCfg
 
@@ -197,15 +196,50 @@ func ValidateCPInit(dict *CPInitListDict, funcMap map[string][]string) {
 		}
 
 		// Validate function declarations in cfg
-		for funcname, _ := range v.Cfg {
+		for funcname, serialcfg := range v.Cfg {
 			// Validate that the expected FUNCNAME exists for the current CPNAME
 			if !slices.Contains(funcMap[cpname], funcname) {
 				ParsePanic("cpInit", "CPNAME", cpname, "funcname", funcname, "funcname must be a valid function for CPNAME")
 			}
 
-			// TODO validate SERIALCFG
+			// Validate SERIALCFG
+			var reader = io.Reader(strings.NewReader(serialcfg))
+			dec := yaml.NewDecoder(reader)
+			var err error
+			// Validate builtin functions connSrc, processPckt, cycleDst, and finish
+			if slices.Contains(maps.Keys(FuncClassNames), funcname) {
+				dec.KnownFields(true)
+
+				switch funcname {
+				case "connSrc":
+					var cs connSrcCfg
+					err = dec.Decode(&cs)
+				case "processPckt":
+					var pp processPcktCfg
+					err = dec.Decode(&pp)
+				case "cycleDst":
+					var cd cycleDstCfg
+					err = dec.Decode(&cd)
+				case "finish":
+					var f finishCfg
+					err = dec.Decode(&f)
+				}
+				if err != nil {
+					ParsePanic("cpinit", "CPNAME", cpname, "funcname", funcname, "invalid function config")
+				}
+			} else {
+				// Partial validation for custom functions, doesn't enforce known fields and uses the broad "CmpPtnFuncInst"
+				dec.KnownFields(false)
+
+				var c CmpPtnFuncInst
+				err = dec.Decode(&c)
+				if err != nil {
+					ParsePanic("cpinit", "CPNAME", cpname, "funcname", funcname, "invalid function config")
+				}
+			}
 		}
 		// TODO validate msgtype, this may have to be tracked from cp.yaml too
+
 	}
 }
 
@@ -260,7 +294,18 @@ func ValidateSrdCfg(l *SharedCfgGroupList, funcMethodMap map[string][][]string) 
 				}
 			}
 		}
-		// TODO does the content of cfgstr need to be validated somehow?
+		// TODO This needs to be tested still, making sure FuncClasses is registered before this runs
+		fc := FuncClasses[v.Class]
+		var reader = io.Reader(strings.NewReader(v.CfgStr))
+		var c CmpPtnFuncInst
+		var err error
+
+		dec := yaml.NewDecoder(reader)
+		err = dec.Decode(&c)
+		err = fc.ValidateCfg(&c)
+		if err != nil {
+			ParsePanic("srdCfg", "GROUP NAME", v.Name, "cfgstr", v.CfgStr, "invalid cfgstr")
+		}
 	}
 }
 
