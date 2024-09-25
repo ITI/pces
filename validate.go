@@ -72,8 +72,8 @@ func CheckFormats(fullpathmap map[string]string) (bool, error) {
 		}
 	}
 	funcMap, funcMethodMap := ValidateCP(&cp)
-	ValidateCPEdges(&cp, funcMap, funcMethodMap)
-	ValidateCPInit(&cpinit, funcMap)
+	msgtypes := ValidateCPEdges(&cp, funcMap, funcMethodMap)
+	ValidateCPInit(&cpinit, funcMap, msgtypes)
 	ValidateSrdCfg(&srdcfg, funcMethodMap)
 	ValidateExp(&exp)
 	cpumodels := ValidateFuncExec(&funcexec)
@@ -119,8 +119,10 @@ func ValidateCP(dict *CompPatternDict) (map[string][]string, map[string][][]stri
 // ValidateCPEdges iterates through the passed CompPatternDict to verify the ExtEdges specifically
 // This is part of the validation for the cp file, but requires a full funcMap to verify that the
 // external edge connections are valid
-func ValidateCPEdges(dict *CompPatternDict, funcMap map[string][]string, funcMethodMap map[string][][]string) {
+// Returns map[string][]string mapping CPNAME's to the msgtype's passed to them, to validate in cpinit
+func ValidateCPEdges(dict *CompPatternDict, funcMap map[string][]string, funcMethodMap map[string][][]string) map[string][]string {
 	CreateClassMethods()
+	var msgtypes = make(map[string][]string)
 	for cpname, v := range dict.Patterns {
 		// Validate Edge Connections
 		for _, e := range v.Edges {
@@ -139,6 +141,10 @@ func ValidateCPEdges(dict *CompPatternDict, funcMap map[string][]string, funcMet
 					classLabel = pair[1]
 					break
 				}
+			}
+			// Add current msgtype to the return "msgtypes" map for the current cpname, if it isn't present already
+			if !slices.Contains(msgtypes[cpname], e.MsgType) {
+				msgtypes[cpname] = append(msgtypes[cpname], e.MsgType)
 			}
 			// Check if the given methodcode is valid for the dstLabel's assigned class
 			if !slices.Contains(maps.Keys(ClassMethods[classLabel]), e.MethodCode) {
@@ -176,6 +182,10 @@ func ValidateCPEdges(dict *CompPatternDict, funcMap map[string][]string, funcMet
 						break
 					}
 				}
+				// Add current msgtype to the return "msgtypes" map for the current DstCP, if it isn't present already
+				if !slices.Contains(msgtypes[connection.DstCP], connection.MsgType) {
+					msgtypes[connection.DstCP] = append(msgtypes[connection.DstCP], connection.MsgType)
+				}
 				// Check if the given methodcode is valid for the srcLabel's assigned class
 				if !slices.Contains(maps.Keys(ClassMethods[classLabel]), connection.MethodCode) {
 					ParsePanic("cp", "CPNAME", cpname, "extedges methodcode", connection.MethodCode, "methodcode must be defined in the source function")
@@ -183,10 +193,11 @@ func ValidateCPEdges(dict *CompPatternDict, funcMap map[string][]string, funcMet
 			}
 		}
 	}
+	return msgtypes
 }
 
 // ValidateCPInit iterates through the passed CPInitListDict to verify the data contents
-func ValidateCPInit(dict *CPInitListDict, funcMap map[string][]string) {
+func ValidateCPInit(dict *CPInitListDict, funcMap map[string][]string, msgtypes map[string][]string) {
 	for cpname, v := range dict.InitList {
 		if !strings.Contains(cpname, v.CPType) {
 			ParsePanic("cpInit", "CPNAME", cpname, "cptype", v.CPType, "cpname should contain the cptype")
@@ -238,7 +249,12 @@ func ValidateCPInit(dict *CPInitListDict, funcMap map[string][]string) {
 				}
 			}
 		}
-		// TODO validate msgtype, this may have to be tracked from cp.yaml too
+		// Validate msgtypes
+		for _, msg := range v.Msgs {
+			if !slices.Contains(msgtypes[cpname], msg.MsgType) {
+				ParsePanic("cpinit", "CPNAME", cpname, "msgtype", msg.MsgType, "invalid msgtype, may be improperly declared in cp.yaml file")
+			}
+		}
 
 	}
 }
@@ -315,7 +331,7 @@ func ParsePanic(filename string, container string, containerValue string, field 
 	panic(str)
 }
 
-// TODO Move these functions to a file under the mrnes project when done testing
+// TODO Move these functions to a file under the mrnes project when done testing?
 
 // ValidateDevExec iterates through the passed mrnes.DevExecList to verify the data contents
 // Return []string devmodels, which contains all router and switch models to check against topo.yaml
@@ -348,7 +364,7 @@ func ValidateExp(cfg *mrnes.ExpCfg) {
 		if !slices.Contains(mrnes.ExpParams[v.ParamObj], v.Param) {
 			ParsePanic("exp", "Name", cfg.Name, "param", v.Param, "param must be present in mrnes.ExpParams")
 		}
-		// Validation of value can be easily done if we figure out the 'device' error
+		// TODO Validation of value can be easily done if we figure out the 'device' error
 		//err := mrnes.ValidateParameter(v.ParamObj, v.Attributes, v.Param)
 		//if err != nil {
 		//	panic("ruh roh")
