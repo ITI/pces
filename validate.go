@@ -11,11 +11,10 @@ import (
 	"strings"
 )
 
+// CheckFileFormats takes in a map of filenames to filepaths, deserializes each file into its corresponding struct,
+// and then passes the struct to its corresponding validation function
 func CheckFileFormats(fullpathmap map[string]string) (bool, error) {
-	return CheckFormats(fullpathmap)
-}
-
-func CheckFormats(fullpathmap map[string]string) (bool, error) {
+	// pces structs
 	var cp CompPatternDict
 	var cpinit CPInitListDict
 	var funcexec FuncExecList
@@ -27,6 +26,7 @@ func CheckFormats(fullpathmap map[string]string) (bool, error) {
 	var exp mrnes.ExpCfg
 	var topo mrnes.TopoCfg
 
+	// Loop through filenames
 	for _, n := range maps.Keys(fullpathmap) {
 		var err error
 		filepath := fullpathmap[n]
@@ -63,8 +63,7 @@ func CheckFormats(fullpathmap map[string]string) (bool, error) {
 		case "map":
 			err = dec.Decode(&m)
 		default:
-			// Optional config files
-			err = nil
+			// Optional config files, validation not supported
 		}
 		if err != nil {
 			fmt.Println(err)
@@ -85,7 +84,7 @@ func CheckFormats(fullpathmap map[string]string) (bool, error) {
 }
 
 // ValidateCP iterates through the passed CompPatternDict to verify the data contents
-// map[string][]string funcMap is a mapping from each CPNAME to its declared FUNCLABELs. This is needed to validate other files.
+// map[string][]string funcMap is a mapping from each CPNAME to its declared FUNCLABELs. This is needed to validate other files
 // map[string][][]string funcMethodMap tracks a FUNCLABEL and FUNCLASS for each CPNAME, so that edges can validate their methodcodes
 func ValidateCP(dict *CompPatternDict) (map[string][]string, map[string][][]string) {
 	funcMap := make(map[string][]string)         // Keys = cpname, Vals = [FUNCLABEL, ...]
@@ -119,22 +118,25 @@ func ValidateCP(dict *CompPatternDict) (map[string][]string, map[string][][]stri
 // ValidateCPEdges iterates through the passed CompPatternDict to verify the ExtEdges specifically
 // This is part of the validation for the cp file, but requires a full funcMap to verify that the
 // external edge connections are valid
-// Returns map[string][]string mapping CPNAME's to the msgtype's passed to them, to validate in cpinit
+// Returns map[string][]string msgtypes mapping CPNAME's to the msgtype's passed to them, to validate in cpinit
 func ValidateCPEdges(dict *CompPatternDict, funcMap map[string][]string, funcMethodMap map[string][][]string) map[string][]string {
 	CreateClassMethods()
 	var msgtypes = make(map[string][]string)
 	for cpname, v := range dict.Patterns {
 		// Validate Edge Connections
 		for _, e := range v.Edges {
-			// For internal edges, srcLabel and dstLabel should exist under the same cpname
+			// For internal edges, SrcLabel and DstLabel should exist under the same CPNAME
 			if !slices.Contains(funcMap[cpname], e.SrcLabel) {
 				ParsePanic("cp", "CPNAME", cpname, "edges srclabel", e.SrcLabel, "srclabel must a valid FUNCLABEL")
 			}
 			if !slices.Contains(funcMap[cpname], e.DstLabel) {
 				ParsePanic("cp", "CPNAME", cpname, "edges dstlabel", e.DstLabel, "dstlabel must a valid FUNCLABEL")
 			}
-
-			// Find the class label for the current cpname and dstLabel
+			// Add current MsgType to the return "msgtypes" map for the current CPNAME, if it isn't present already
+			if !slices.Contains(msgtypes[cpname], e.MsgType) {
+				msgtypes[cpname] = append(msgtypes[cpname], e.MsgType)
+			}
+			// Find the class label for the current CPNAME and DstLabel
 			var classLabel string
 			for _, pair := range funcMethodMap[cpname] {
 				if pair[0] == e.DstLabel {
@@ -142,11 +144,7 @@ func ValidateCPEdges(dict *CompPatternDict, funcMap map[string][]string, funcMet
 					break
 				}
 			}
-			// Add current msgtype to the return "msgtypes" map for the current cpname, if it isn't present already
-			if !slices.Contains(msgtypes[cpname], e.MsgType) {
-				msgtypes[cpname] = append(msgtypes[cpname], e.MsgType)
-			}
-			// Check if the given methodcode is valid for the dstLabel's assigned class
+			// Check if the given MethodCode is valid for the DstLabel's assigned class
 			if !slices.Contains(maps.Keys(ClassMethods[classLabel]), e.MethodCode) {
 				ParsePanic("cp", "CPNAME", cpname, "edges methodcode", e.MethodCode, "methodcode must be defined in the destination function")
 			}
@@ -154,27 +152,25 @@ func ValidateCPEdges(dict *CompPatternDict, funcMap map[string][]string, funcMet
 		// Validate EXTEdges
 		for _, ee := range v.ExtEdges {
 			for _, connection := range ee {
-				// Check that srccp and dstcp are valid CPNAMEs
-				// srccp
+				// Check that SrcCP and DstCP are valid CPNAMEs
 				if connection.SrcCP != cpname {
 					ParsePanic("cp", "CPNAME", cpname, "extedges srccp", connection.SrcCP, "srccp should be the current CPNAME")
 				}
-				// dstcp
 				if !slices.Contains(maps.Keys(dict.Patterns), connection.DstCP) {
 					ParsePanic("cp", "CPNAME", cpname, "extedges dstcp", connection.DstCP, "dstcp should be a valid CPTYPE contained under 'patterns'")
 				}
-
-				// Check that srclabel and dstlabel exist under their respective CPNAMEs
-				// srclabel
+				// Check that SrcLabel and DstLabel exist under their respective CPNAMEs
 				if !slices.Contains(funcMap[connection.SrcCP], connection.SrcLabel) {
 					ParsePanic("cp", "CPNAME", cpname, "extedges srclabel", connection.SrcLabel, "srclabel must be a valid FUNCLABEL declared under 'srccp'")
 				}
-				// dstlabel
 				if !slices.Contains(funcMap[connection.DstCP], connection.DstLabel) {
 					ParsePanic("cp", "CPNAME", cpname, "extedges dstlabel", connection.DstLabel, "dstlabel must be a valid FUNCLABEL declared under 'dstcp'")
 				}
-
-				// Find the class label for the current cpname and srcLabel
+				// Add current MsgType to the return "msgtypes" map for the current DstCP, if it isn't present already
+				if !slices.Contains(msgtypes[connection.DstCP], connection.MsgType) {
+					msgtypes[connection.DstCP] = append(msgtypes[connection.DstCP], connection.MsgType)
+				}
+				// Find the class label for the current CPNAME and SrcLabel
 				var classLabel string
 				for _, pair := range funcMethodMap[cpname] {
 					if pair[0] == connection.SrcLabel {
@@ -182,11 +178,7 @@ func ValidateCPEdges(dict *CompPatternDict, funcMap map[string][]string, funcMet
 						break
 					}
 				}
-				// Add current msgtype to the return "msgtypes" map for the current DstCP, if it isn't present already
-				if !slices.Contains(msgtypes[connection.DstCP], connection.MsgType) {
-					msgtypes[connection.DstCP] = append(msgtypes[connection.DstCP], connection.MsgType)
-				}
-				// Check if the given methodcode is valid for the srcLabel's assigned class
+				// Check if the given MethodCode is valid for the SrcLabel's assigned class
 				if !slices.Contains(maps.Keys(ClassMethods[classLabel]), connection.MethodCode) {
 					ParsePanic("cp", "CPNAME", cpname, "extedges methodcode", connection.MethodCode, "methodcode must be defined in the source function")
 				}
@@ -212,7 +204,6 @@ func ValidateCPInit(dict *CPInitListDict, funcMap map[string][]string, msgtypes 
 			if !slices.Contains(funcMap[cpname], funcname) {
 				ParsePanic("cpInit", "CPNAME", cpname, "funcname", funcname, "funcname must be a valid function for CPNAME")
 			}
-
 			// Validate SERIALCFG
 			var reader = io.Reader(strings.NewReader(serialcfg))
 			dec := yaml.NewDecoder(reader)
@@ -249,7 +240,7 @@ func ValidateCPInit(dict *CPInitListDict, funcMap map[string][]string, msgtypes 
 				}
 			}
 		}
-		// Validate msgtypes
+		// Validate Msgs
 		for _, msg := range v.Msgs {
 			if !slices.Contains(msgtypes[cpname], msg.MsgType) {
 				ParsePanic("cpinit", "CPNAME", cpname, "msgtype", msg.MsgType, "invalid msgtype, may be improperly declared in cp.yaml file")
@@ -284,7 +275,7 @@ func ValidateFuncExec(l *FuncExecList) []string {
 	var cpumodels []string
 	for timingcode, v := range l.Times {
 		for _, feDesc := range v {
-			// identifier
+			// Validate Identifier
 			if feDesc.Identifier != timingcode {
 				ParsePanic("funcExec", "TIMINGCODE", timingcode, "identifier", feDesc.Identifier, "identifier should match the TIMINGCODE")
 			}
@@ -310,7 +301,9 @@ func ValidateSrdCfg(l *SharedCfgGroupList, funcMethodMap map[string][][]string) 
 				}
 			}
 		}
-		// TODO This needs to be tested still, making sure FuncClasses is registered before this runs
+
+		// Decode any CfgStr to a CmpPtnFuncInst, with KnownFields = false, such that custom configuration
+		// strings are supported
 		fc := FuncClasses[v.Class]
 		var reader = io.Reader(strings.NewReader(v.CfgStr))
 		var c CmpPtnFuncInst
@@ -375,6 +368,13 @@ func ValidateExp(cfg *mrnes.ExpCfg) {
 // ValidateTopo iterates through the passed mrnes.TopoCfg to verify the data contents
 // Returns []string endpoints, which is a slice containing the names of all defined endpoints
 func ValidateTopo(cfg *mrnes.TopoCfg, cpumodels []string, devmodels []string) []string {
+	// Preemptively loop through networks to validate IntrfcDesc.faces for Routers, Endpoints, and Switches
+	var faces []string
+	for _, n := range cfg.Networks {
+		if !slices.Contains(faces, n.Name) {
+			faces = append(faces, n.Name)
+		}
+	}
 	// Collect data from the defined routers to check them against network definitions
 	var routers [][]string
 	for _, r := range cfg.Routers {
@@ -384,7 +384,7 @@ func ValidateTopo(cfg *mrnes.TopoCfg, cpumodels []string, devmodels []string) []
 		}
 		for _, i := range r.Interfaces {
 			routers = append(routers, []string{r.Name, i.MediaType, i.Faces})
-			ValidateInterfaceDesc(&i, r.Name)
+			ValidateInterfaceDesc(&i, r.Name, faces)
 		}
 	}
 	// Collect data from the defined switches to check them against network definitions
@@ -396,7 +396,7 @@ func ValidateTopo(cfg *mrnes.TopoCfg, cpumodels []string, devmodels []string) []
 		}
 		for _, i := range s.Interfaces {
 			switches = append(switches, []string{s.Name, i.MediaType, i.Faces})
-			ValidateInterfaceDesc(&i, s.Name)
+			ValidateInterfaceDesc(&i, s.Name, faces)
 		}
 	}
 	// Collect data from the defined endpoints to check them against network definitions
@@ -408,19 +408,19 @@ func ValidateTopo(cfg *mrnes.TopoCfg, cpumodels []string, devmodels []string) []
 			ParsePanic("topo", "Endpoint Name", e.Name, "model", e.Model, "Endpoint model must be a valid CPUMODEL declared in FuncExec")
 		}
 		for _, i := range e.Interfaces {
-			ValidateInterfaceDesc(&i, e.Name)
+			ValidateInterfaceDesc(&i, e.Name, faces)
 		}
 	}
 
-	// mrnes doesn't have an existing static list of network scales or media types
+	// mrnes doesn't have an existing static list of network scales or media types, so these lists may not be exhaustive
 	netscales := []string{"LAN", "WAN", "T3", "T2", "T1", "GeneralNet"}
 	mediatypes := []string{"wired", "wireless"}
 	for _, n := range cfg.Networks {
-		// Validate network.netscale
+		// Validate network.NetScale
 		if !slices.Contains(netscales, n.NetScale) {
 			ParsePanic("topo", "Name", n.Name, "netscale", n.NetScale, "netscale must be either LAN, WAN, T3, T2, T1, or GeneralNet")
 		}
-		// Validate network.mediatype
+		// Validate network.MediaType
 		// We use strings.ToLower() because switch statements in mrnes/net.go will accept
 		// either 'wired'/'Wired' and 'wireless'/'Wireless'
 		if !slices.Contains(mediatypes, strings.ToLower(n.MediaType)) {
@@ -469,19 +469,23 @@ func ValidateTopo(cfg *mrnes.TopoCfg, cpumodels []string, devmodels []string) []
 }
 
 // ValidateInterfaceDesc is a helper function to verify a passed mrnes.IntrfcDesc object
-func ValidateInterfaceDesc(int *mrnes.IntrfcDesc, attachedDevice string) {
-	// Exactly one of the values of keys cable, carry, and wireless attributes is non-empty
+func ValidateInterfaceDesc(int *mrnes.IntrfcDesc, attachedDevice string, faces []string) {
+	// Exactly one of the values of either int.Cable, int.Carry, or int.Wireless should be non-empty
 	if !((!(int.Cable == "") && (int.Carry == "") && (len(int.Wireless) == 0)) ||
 		((int.Cable == "") && !(int.Carry == "") && (len(int.Wireless) == 0)) ||
 		((int.Cable == "") && (int.Carry == "") && !(len(int.Wireless) == 0))) {
-		ParsePanic("topo IntrfcDesc", "Name", int.Name, "cable, carry, wireless", "", "Exactly one of the values of keys cable, carry, and wireless attributes should be non-empty")
+		ParsePanic("topo IntrfcDesc", "Name", int.Name, "cable, carry, wireless", "", "Exactly one of the values of either int.Cable, int.Carry, or int.Wireless should be non-empty")
 	}
-	// devtype should be either "Switch", "Router", or "Endpt"
+	// int.DevType should be either "Switch", "Router", or "Endpt"
 	if !slices.Contains([]string{"Switch", "Router", "Endpt"}, int.DevType) {
 		ParsePanic("topo IntrfcDesc", "Name", int.Name, "devtype", int.DevType, "devtype should be either 'Switch', 'Router', or 'Endpt'")
 	}
-	// device should be the same name of its parent Router/Switch
+	// int.Device should be the same name of its parent Router/Switch
 	if int.Device != attachedDevice {
 		ParsePanic("topo IntrfcDesc", "Name", int.Name, "device", int.Device, "device should match the name of its parent Router/Switch")
+	}
+	// int.Faces should be the name of the network that the interface touches
+	if !slices.Contains(faces, int.Faces) {
+		ParsePanic("topo IntrfcDesc", "Name", int.Name, "faces", int.Faces, "face should contain a valid network name")
 	}
 }
