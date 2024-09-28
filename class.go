@@ -49,7 +49,8 @@ func RegisterFuncClass(fc FuncClassCfg) bool {
 	className := fc.FuncClassName()
 	_, present := FuncClasses[className]
 	if present {
-		panic(fmt.Errorf("attempt to register function class %s after that name already registered", fc.FuncClassName()))
+		panic(fmt.Errorf("attempt to register function class %s after that name already registered", 
+			fc.FuncClassName()))
 	}
 	FuncClasses[className] = fc
 	FuncClassNames[className] = true
@@ -385,8 +386,8 @@ type cycleDstState struct {
 	burstID int
 	dstID   int
 	pckts	int
-	calls   int
 	returns int
+	calls   int
 	outMsgIdx  map[string]int
 }
 
