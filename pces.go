@@ -515,6 +515,6 @@ func ReportStatistics() {
 			q25 = data[0]
 			q75 = data[0]
 		}
-		fmt.Printf("Trace gathering group %s has spread %f, %f, %f %f, %f, %f\n", name, minv, q25, mean, med, q75, maxv)
+		fmt.Printf("With %d samples trace gathering group %s has spread %f, %f, %f %f, %f, %f\n", num, name, minv, q25, mean, med, q75, maxv)
 	}
 }
