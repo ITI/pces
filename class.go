@@ -39,7 +39,8 @@ type RespMethod struct {
 // FuncClassNames needs to have an indexing key for every class of function that
 // might be included in a model.
 var FuncClassNames map[string]bool = 
-	map[string]bool{"connSrc": true, "processPckt": true, "cryptoPckt": true, "cycleDst": true, "finish": true}
+	map[string]bool{"connSrc": true, "processPckt": true, "cryptoPckt": true, "cycleDst": true, 
+		"workloadGen": true, "finish": true}
 
 // RegisterFuncClass is called to tell the system that a particular
 // function class exists, and gives a point to its description.
@@ -85,6 +86,11 @@ func CreateClassMethods() bool {
 	fmap["decryptOp"] = RespMethod{Start: decryptPcktEnter, End: processPcktExit}
 	ClassMethods["processPckt"] = fmap
 
+	// build table for generateWork class
+	fmap = make(map[string]RespMethod)
+	fmap["generateOp"] = RespMethod{Start: workloadGenStart, End: ExitFunc}
+	ClassMethods["workloadGen"] = fmap
+	
 	// build table for finish class
 	fmap = make(map[string]RespMethod)
 	fmap["finishOp"] = RespMethod{Start: finishEnter, End: ExitFunc}
@@ -217,7 +223,6 @@ func (cs *connSrcCfg) InitCfg(cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool)
 	cpfi.InitMsgParams(csv.InitMsgType, csv.InitMsgLen, csv.InitPcktLen, 0.0)
 	cpfi.InterarrivalDist = csv.InterarrivalDist
 	cpfi.InterarrivalMean = csv.InterarrivalMean
-
 }
 
 func (csc *connSrcCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
@@ -362,7 +367,6 @@ func connSrcExitReflect(evtMgr *evtm.EventManager, context any, data any) any {
 }
 
 //-------- methods and state for function class cycleDst
-
 var cdstVar *cycleDstCfg = ClassCreateCycleDstCfg()
 var cycleDstLoaded bool = RegisterFuncClass(cdstVar)
 
@@ -761,7 +765,7 @@ func (pp *processPcktCfg) FuncClassName() string {
 func (pp *processPcktCfg) CreateCfg(cfgStr string, useYAML bool) any {
 	ppVarAny, err := pp.Deserialize(cfgStr, useYAML)
 	if err != nil {
-		panic(fmt.Errorf("processPckt.InitCfg sees deserialization error"))
+		panic(fmt.Errorf("processPckt.CreateCfg sees deserialization error"))
 	}
 	return ppVarAny
 }
@@ -930,7 +934,6 @@ func createFinishState() *finishState {
 	return fnsh
 }	
 
-
 func (fnsh *finishCfg) FuncClassName() string {
 	return "finish"
 }
@@ -938,7 +941,7 @@ func (fnsh *finishCfg) FuncClassName() string {
 func (fnsh *finishCfg) CreateCfg(cfgStr string, useYAML bool) any {
 	fnshVarAny, err := fnsh.Deserialize(cfgStr, useYAML)
 	if err != nil {
-		panic(fmt.Errorf("finish.InitCfg sees deserialization error"))
+		panic(fmt.Errorf("finish.CreateCfg sees deserialization error"))
 	}
 	return fnshVarAny
 }
@@ -996,14 +999,107 @@ func (fnsh *finishCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	return &example, nil
 }
 
-// finishEnter flags
 func finishEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
 
-	fns := cpfi.State.(*finishState)
-	fns.calls += 1
+}
 
+//-------- methods and state for function class finish
+var wgcVar *workloadGenCfg = ClassCreateWorkloadGenCfg()
+var wgcLoaded bool = RegisterFuncClass(wgcVar)
+
+type workloadGenCfg struct {
+	Rate float64	`yaml:rate json:rate`
+	Wgt  float64	`yaml:wgt json:wgt`
+}
+
+func ClassCreateWorkloadGenCfg() *workloadGenCfg {
+	wgc := new(workloadGenCfg)
+	return wgc
+}
+
+func (wgc *workloadGenCfg) FuncClassName() string {
+	return "workloadGen"
+}
+
+func (wgc *workloadGenCfg) CreateCfg(cfgStr string, useYAML bool) any {
+	wgVarAny, err := fnsh.Deserialize(wgc, useYAML)
+	if err != nil {
+		panic(fmt.Errorf("finish.InitCfg sees deserialization error"))
+	}
+	return wgVarAny
+}
+
+func (wgc *workloadGenCfg) InitCfg(cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
+	wgcVarAny := wgc.CreateCfg(cfgStr, useYAML)
+	wgcv := wgcVarAny.(*workloadGenCfg)
+
+	cpfi.InitFunc = workloadGenStart
+	cpfi.Cfg = wgc
+}
+
+func (wgc *workloadGenCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
+	return nil
+}
+
+// serialize transforms the finish into string form for
+// inclusion through a file
+func (wgc *workloadGenCfg) Serialize(useYAML bool) (string, error) {
+	var bytes []byte
+	var merr error
+
+	if useYAML {
+		bytes, merr = yaml.Marshal(*wg)
+	} else {
+		bytes, merr = json.Marshal(*wg)
+	}
+
+	if merr != nil {
+		return "", merr
+	}
+
+	return string(bytes[:]), nil
+}
+
+// Deserialize recovers a serialized representation of a finish structure
+func (wgc *workloadGenCfg) Deserialize(fss string, useYAML bool) (any, error) {
+	// turn the string into a slice of bytes
+	var err error
+	fsb := []byte(fss)
+
+	example := workloadGenCfg{Rate: 1.0, Wgt: 1e-3}
+
+	// Select whether we read in json or yaml
+	if useYAML {
+		err = yaml.Unmarshal(fsb, &example)
+	} else {
+		err = json.Unmarshal(fsb, &example)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return &example, nil
+}
+
+// workloadGenStart flags
+func workloadGenStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
 	endptName := cpfi.Host
 	endpt := mrnes.EndptDevByName[endptName]
-	traceMgr.AddTrace(evtMgr.CurrentTime(), msg.ExecID, 0, endpt.DevID(), "exit", msg.CarriesPckt(), msg.Rate)
-	EndRecExec(msg.ExecID, evtMgr.CurrentSeconds())
+
+	wg := cpfi.Cfg.(*workloadGen)
+	
+	// look up the generation service requirement.
+	genTime := wg.Wgt
+	nxt := 1.0/wg.Rate
+ 
+	// if not hardware assisted call the host scheduler
+	scheduler := mrnes.TaskSchedulerByHostName[cpfi.Host]
+	scheduler.Schedule(evtMgr, methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, processPcktExit)
+
+	// schedule the next workload insertion
+	evtMgr.Schedule(cpfi, nil, workloadGenStart, SecondsToTime(nxt))
+}
+
+func workloadGenEnd(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
+	return 
 }

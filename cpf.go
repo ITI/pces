@@ -127,7 +127,6 @@ func (cpfi *CmpPtnFuncInst) AddResponse(execID int, resp []*CmpPtnMsg) {
 // funcResp returns the saved list of function response messages associated
 // the the response to the input msg, and removes it from the msgResp map
 func (cpfi *CmpPtnFuncInst) funcResp(execID int) []*CmpPtnMsg {
-
 	rtn, present := cpfi.MsgResp[execID]
 	if !present {
 		panic(fmt.Errorf("unsuccessful resp recovery"))
