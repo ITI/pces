@@ -382,7 +382,7 @@ func FuncExecTime(cpfi *CmpPtnFuncInst, op string, msg *CmpPtnMsg) float64 {
 	// so long as we have that length
 	timing, present2 := lenMap[msg.PcktLen]
 	if present2 {
-		return timing // we have the length, so just return the timing
+		return timing
 	}
 
 	// length not present so estimate from data we do have about this function type and CPU.
@@ -404,7 +404,8 @@ func FuncExecTime(cpfi *CmpPtnFuncInst, op string, msg *CmpPtnMsg) float64 {
 	if len(points) == 1 {
 		timePerUnit := points[0].y / points[0].x
 
-		return float64(msg.PcktLen) * timePerUnit
+		timing := float64(msg.PcktLen) * timePerUnit
+		return timing
 	}
 
 	// do a linear regression on the others
@@ -425,7 +426,8 @@ func FuncExecTime(cpfi *CmpPtnFuncInst, op string, msg *CmpPtnMsg) float64 {
 	m := (N*sumXY - sumX*sumY) / (N*sumX2 - sumX*sumX)
 	b := (sumY - m*sumX) / N
 
-	return float64(msg.PcktLen)*m + b
+	timing = float64(msg.PcktLen)*m + b
+	return timing
 }
 
 // EnterFunc is an event-handling routine, scheduled by an evtm.EventManager to execute and simulate the results of
@@ -583,7 +585,7 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 
 			// Staying on the host means scheduling w/o delay the arrival at the next func
 			if cpfi.Host == dstHost {
-				evtMgr.Schedule(nxtf, msg, EnterFunc, vrtime.SecondsToTime(0.0))
+				evtMgr.Schedule(nxtf, msg, EnterFunc, SecondsToTime(0.0))
 			} else {
 				// to get to the dstHost we need to go through the network
 				isPckt := msg.CarriesPckt()
@@ -606,7 +608,7 @@ func ReEnter(evtMgr *evtm.EventManager, cpFunc any, rtnmsg any) any {
 	msg.NetBndwdth = rtnMsg.Bndwdth
 	msg.NetPrLoss = rtnMsg.PrLoss
 
-	evtMgr.Schedule(cpFunc, msg, EnterFunc, vrtime.SecondsToTime(0.0))
+	evtMgr.Schedule(cpFunc, msg, EnterFunc, SecondsToTime(0.0))
 	return nil
 }
 
@@ -644,8 +646,26 @@ func schedInitEvts(evtMgr *evtm.EventManager) {
 			// see if this function calls for an initialization function and
 			// schedule it if so
 			if cpFunc.funcInitEvtHdlr() != nil {
-				evtMgr.Schedule(cpFunc, nil, cpFunc.funcInitEvtHdlr(), vrtime.SecondsToTime(0.0))
+				evtMgr.Schedule(cpFunc, nil, cpFunc.funcInitEvtHdlr(), SecondsToTime(0.0))
 			}
 		}
 	}
 }
+
+var pcesPri int64 = 1
+func SecondsToTime(sec float64) vrtime.Time {
+	// convert the seconds to a Time object, but the priority will be 0
+	tm := vrtime.SecondsToTime(sec)
+
+	// alter the priority to ensure ordering of events
+	tm.Priority = pcesPri
+	pcesPri += 1
+	return tm
+}
+
+func nxtPri() int64 {
+	rtn := pcesPri
+	pcesPri += 1
+	return rtn
+}
+

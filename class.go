@@ -38,7 +38,8 @@ type RespMethod struct {
 
 // FuncClassNames needs to have an indexing key for every class of function that
 // might be included in a model.
-var FuncClassNames map[string]bool = map[string]bool{"connSrc": true, "processPckt": true, "cycleDst": true, "finish": true}
+var FuncClassNames map[string]bool = 
+	map[string]bool{"connSrc": true, "processPckt": true, "cryptoPckt": true, "cycleDst": true, "finish": true}
 
 // RegisterFuncClass is called to tell the system that a particular
 // function class exists, and gives a point to its description.
@@ -80,6 +81,8 @@ func CreateClassMethods() bool {
 	// build table for processPckt class
 	fmap = make(map[string]RespMethod)
 	fmap["processOp"] = RespMethod{Start: processPcktEnter, End: processPcktExit}
+	fmap["encryptOp"] = RespMethod{Start: encryptPcktEnter, End: processPcktExit}
+	fmap["decryptOp"] = RespMethod{Start: decryptPcktEnter, End: processPcktExit}
 	ClassMethods["processPckt"] = fmap
 
 	// build table for finish class
@@ -244,7 +247,7 @@ func connSrcSchedule(evtMgr *evtm.EventManager, context any, data any) any {
 	// introduce interarrival delay if an interarrival distribution is named
 	if csc.InterarrivalDist != "none" {
 		interarrival = csinterarrivalSample(cpi, csc.InterarrivalDist, csc.InterarrivalMean)
-		evtMgr.Schedule(cpfi, nil, EnterFunc, vrtime.SecondsToTime(interarrival))
+		evtMgr.Schedule(cpfi, nil, EnterFunc, SecondsToTime(interarrival))
 	} else {
 		evtMgr.Schedule(cpfi, nil, EnterFunc, vrtime.CreateTime(1, 0))
 	}
@@ -255,7 +258,7 @@ func connSrcSchedule(evtMgr *evtm.EventManager, context any, data any) any {
 	// skip interarrival generation of source generation if no interarrival distribution named.  Means it is generated elsewhere,
 	// probably based on completion of some task
 	if csc.InterarrivalDist != "none" {
-		evtMgr.Schedule(cpfi, nil, connSrcSchedule, vrtime.SecondsToTime(interarrival))
+		evtMgr.Schedule(cpfi, nil, connSrcSchedule, SecondsToTime(interarrival))
 	}
 	return nil
 }
@@ -316,7 +319,7 @@ func connSrcEnterStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCo
 
 	// call the host's scheduler.
 	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
-		methodCode, genTime, math.MaxFloat64, cpfi, msg, connSrcExitStart)
+		methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, connSrcExitStart)
 }
 
 // connSrcExitStart executes at the time when the initiating connSrc activation completes
@@ -328,7 +331,7 @@ func connSrcExitStart(evtMgr *evtm.EventManager, context any, data any) any {
 	msg := advanceMsg(cpfi, task, css.outMsgIdx, "")
 
 	// schedule the exitFunc handler
-	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
+	evtMgr.Schedule(cpfi, msg, ExitFunc, SecondsToTime(0.0))
 	return nil
 }
 
@@ -342,7 +345,7 @@ func connSrcEnterReflect(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, method
 
 	// N.B. perhaps we can schedule ExitFunc here rather than
 	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
-		methodCode, genTime, math.MaxFloat64, cpfi, msg, connSrcExitReflect)
+		methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, connSrcExitReflect)
 }
 
 // connSrcEnd executes at the completion of the return processing delay.
@@ -354,7 +357,7 @@ func connSrcExitReflect(evtMgr *evtm.EventManager, context any, data any) any {
 
 	msg := advanceMsg(cpfi, task, css.outMsgIdx, "")
 
-	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
+	evtMgr.Schedule(cpfi, msg, ExitFunc, SecondsToTime(0.0))
 	return nil
 }
 
@@ -486,7 +489,7 @@ func scheduleBurst(evtMgr *evtm.EventManager, cpi *CmpPtnInst, cpfi *CmpPtnFuncI
 		if cpfi == nil {
 			panic(fmt.Errorf("empty cpfi"))
 		}
-		evtMgr.Schedule(cpfi, newMsg, EnterFunc, vrtime.SecondsToTime(advance))
+		evtMgr.Schedule(cpfi, newMsg, EnterFunc, SecondsToTime(advance))
 
 		if idx < cdc.BurstLen-1 {
 			after = cdc.PcktMu
@@ -554,7 +557,7 @@ func cycleDstSchedule(evtMgr *evtm.EventManager, context any, data any) any {
 	// schedule the next burst schedule to occur at the same time (but after)
 	// the burst just scheduled
 	if cds.cycleID < cdc.Cycles {
-		evtMgr.Schedule(cpfi, nil, cycleDstSchedule, vrtime.SecondsToTime(interarrival))
+		evtMgr.Schedule(cpfi, nil, cycleDstSchedule, SecondsToTime(interarrival))
 	}
 	return nil
 }
@@ -616,7 +619,7 @@ func cycleDstEnterStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodC
 
 	// call the host's scheduler.
 	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
-		methodCode, genTime, math.MaxFloat64, cpfi, msg, cycleDstExitStart)
+		methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, cycleDstExitStart)
 }
 
 // cycleDstExitStart executes at the time when the initiating cycleDst activation completes
@@ -628,7 +631,7 @@ func cycleDstExitStart(evtMgr *evtm.EventManager, context any, data any) any {
 	msg := advanceMsg(cpfi, task, cds.outMsgIdx, "")
 
 	// schedule the exitFunc handler
-	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
+	evtMgr.Schedule(cpfi, msg, ExitFunc, SecondsToTime(0.0))
 	return nil
 }
 
@@ -644,7 +647,7 @@ func cycleDstEnterReflect(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, metho
 
 	// call the host's scheduler.
 	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
-		methodCode, genTime, math.MaxFloat64, cpfi, msg, cycleDstExitReflect)
+		methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, cycleDstExitReflect)
 }
 
 // cycleDstEnd executes at the completion of packet generation
@@ -657,7 +660,7 @@ func cycleDstExitReflect(evtMgr *evtm.EventManager, context any, data any) any {
 
 	cpfi.MsgResp[msg.ExecID] = []*CmpPtnMsg{msg}
 
-	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
+	evtMgr.Schedule(cpfi, msg, ExitFunc, SecondsToTime(0.0))
 	return nil
 }
 
@@ -723,6 +726,7 @@ type processPcktCfg struct {
 	TgtCP     map[string]string   `yaml:tgtcp json:tgtcp`
 	TgtLabel  map[string]string   `yaml:tgtlabel json:tgtlabel`
 	TimingCode map[string]string  `yaml:timingcode json:timingcode`
+	Accl	  bool		`yaml:accl json:accl`
 	Trace     bool		`yaml:trace json:trace`
 }
 
@@ -834,7 +838,7 @@ func processPcktEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCod
 
 	// call the host's scheduler.
 	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
-		methodCode, genTime, math.MaxFloat64, cpfi, msg, processPcktExit)
+		methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, processPcktExit)
 }
 
 // processPcktExit executes when the associated message did not get served immediately on being scheduled,
@@ -863,10 +867,44 @@ func processPcktExit(evtMgr *evtm.EventManager, context any, data any) any {
 	}
 
 	// schedule the exitFunc handler
-	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
+	evtMgr.Schedule(cpfi, msg, ExitFunc, SecondsToTime(0.0))
 	return nil
 }
 
+// encryptPcktEnter schedules the simulation of the encryption of one packet
+func encryptPcktEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
+	pps := cpfi.State.(*processPcktState)
+	ppc := cpfi.Cfg.(*processPcktCfg)
+	pps.calls += 1
+
+	// look up the generation service requirement.
+	genTime := FuncExecTime(cpfi, ppc.TimingCode[methodCode], msg)
+
+	// if not hardware assisted call the host scheduler
+	scheduler := mrnes.TaskSchedulerByHostName[cpfi.Host]
+	if ppc.Accl { 
+		scheduler = mrnes.CryptoSchedulerByHostName[cpfi.Host].EncryptScheduler
+	}
+	scheduler.Schedule(evtMgr, methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, processPcktExit)
+}
+
+
+// decryptoPcktEnter schedules the simulation of the encryption of one packet
+func decryptPcktEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
+	pps := cpfi.State.(*processPcktState)
+	ppc := cpfi.Cfg.(*processPcktCfg)
+	pps.calls += 1
+
+	// look up the generation service requirement.
+	genTime := FuncExecTime(cpfi, ppc.TimingCode[methodCode], msg)
+
+	// if not hardware assisted call the host scheduler
+	scheduler := mrnes.TaskSchedulerByHostName[cpfi.Host]
+	if ppc.Accl { 
+		scheduler = mrnes.CryptoSchedulerByHostName[cpfi.Host].DecryptScheduler
+	}
+	scheduler.Schedule(evtMgr, methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, processPcktExit)
+}
 
 //-------- methods and state for function class finish
 
