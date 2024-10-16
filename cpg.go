@@ -365,6 +365,7 @@ func FuncExecTime(cpfi *CmpPtnFuncInst, op string, msg *CmpPtnMsg) float64 {
 	hostLabel := CmpPtnMapDict.Map[cpfi.funcCmpPtn()].FuncMap[cpfi.funcLabel()]
 
 	cpumodel := netportal.EndptCPUModel(hostLabel)
+	cpudrag  := netportal.EndptBckgrndDrag(hostLabel)
 
 	// if we don't have an entry for this function type, complain
 	_, present := funcExecTimeTbl[op]
@@ -382,7 +383,7 @@ func FuncExecTime(cpfi *CmpPtnFuncInst, op string, msg *CmpPtnMsg) float64 {
 	// so long as we have that length
 	timing, present2 := lenMap[msg.PcktLen]
 	if present2 {
-		return timing
+		return timing*cpudrag
 	}
 
 	// length not present so estimate from data we do have about this function type and CPU.
@@ -405,7 +406,7 @@ func FuncExecTime(cpfi *CmpPtnFuncInst, op string, msg *CmpPtnMsg) float64 {
 		timePerUnit := points[0].y / points[0].x
 
 		timing := float64(msg.PcktLen) * timePerUnit
-		return timing
+		return timing*cpudrag
 	}
 
 	// do a linear regression on the others
@@ -427,7 +428,7 @@ func FuncExecTime(cpfi *CmpPtnFuncInst, op string, msg *CmpPtnMsg) float64 {
 	b := (sumY - m*sumX) / N
 
 	timing = float64(msg.PcktLen)*m + b
-	return timing
+	return timing*cpudrag
 }
 
 // EnterFunc is an event-handling routine, scheduled by an evtm.EventManager to execute and simulate the results of

@@ -323,7 +323,7 @@ func connSrcEnterStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCo
 	genTime := FuncExecTime(cpfi, csc.TimingCode[methodCode], msg)
 
 	// call the host's scheduler.
-	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
+	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr, false,
 		methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, connSrcExitStart)
 }
 
@@ -349,7 +349,7 @@ func connSrcEnterReflect(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, method
 	genTime := FuncExecTime(cpfi, csc.TimingCode[methodCode], msg)
 
 	// N.B. perhaps we can schedule ExitFunc here rather than
-	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
+	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr, false,
 		methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, connSrcExitReflect)
 }
 
@@ -378,6 +378,7 @@ type cycleDstCfg struct {
 	BurstLen  int		`yaml:burstlen json:burstlen`
 	CycleDist string	`yaml:cycledist json:cycledist`
 	CycleMu   float64	`yaml:cyclemu json:cyclemu`
+	Pause	  float64	`yaml:pause json:pause`
 	Cycles int			`yaml:cycles json:cycles`
 	InitMsgType string	`yaml:initmsgtype json:initmsgtype`
 	InitMsgLen int		`yaml:initmsglen json:initmsglen`
@@ -407,7 +408,7 @@ func createCycleDstState() *cycleDstState {
 
 func (cd *cycleDstCfg) Populate(dsts []string, 
 	pcktDist string, pcktMu float64, burstDist string, burstMu float64, pcktBurst int,
-	cycleDist string, cycleMu float64, cycles int,
+	cycleDist string, cycleMu float64, cycles int, pause float64,
 	msgLen, pcktSize int, 
 	rt map[string]string, tc map[string]string, trace bool) {
 
@@ -421,6 +422,7 @@ func (cd *cycleDstCfg) Populate(dsts []string,
 	cd.CycleDist = cycleDist
 	cd.CycleMu = cycleMu
 	cd.Cycles = cycles
+	cd.Pause = pause
 
 	cd.InitMsgLen = msgLen
 	cd.InitPcktLen = pcktSize
@@ -516,7 +518,10 @@ func cycleDstSchedule(evtMgr *evtm.EventManager, context any, data any) any {
 	interarrival := float64(0.0)
 
 	pcktsPerCycle := cdc.Cycles*cdc.BurstLen
-	if cds.pckts > 0 && cds.pckts%pcktsPerCycle == 0 {
+
+	if cds.pckts==0 && cds.burstID==0 {
+		interarrival = cdc.Pause
+	} else if cds.pckts > 0 && cds.pckts%pcktsPerCycle == 0 {
 		if cdc.CycleDist == "exp" {
 			interarrival = csinterarrivalSample(cpi, cdc.CycleDist, cdc.CycleMu)
 		} else {
@@ -622,7 +627,7 @@ func cycleDstEnterStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodC
 	genTime := FuncExecTime(cpfi, cdc.TimingCode[methodCode], msg)
 
 	// call the host's scheduler.
-	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
+	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr, false,
 		methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, cycleDstExitStart)
 }
 
@@ -650,7 +655,7 @@ func cycleDstEnterReflect(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, metho
 	genTime := FuncExecTime(cpfi, cdc.TimingCode[methodCode], msg)
 
 	// call the host's scheduler.
-	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
+	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr, false,
 		methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, cycleDstExitReflect)
 }
 
@@ -841,8 +846,8 @@ func processPcktEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCod
 	genTime := FuncExecTime(cpfi, ppc.TimingCode[methodCode], msg)
 
 	// call the host's scheduler.
-	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr,
-		methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, processPcktExit)
+	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr, true,
+			methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, processPcktExit)
 }
 
 // processPcktExit executes when the associated message did not get served immediately on being scheduled,
@@ -889,7 +894,7 @@ func encryptPcktEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCod
 	if ppc.Accl { 
 		scheduler = mrnes.CryptoSchedulerByHostName[cpfi.Host].EncryptScheduler
 	}
-	scheduler.Schedule(evtMgr, methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, processPcktExit)
+	scheduler.Schedule(evtMgr, true, methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, processPcktExit)
 }
 
 
@@ -907,7 +912,7 @@ func decryptPcktEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCod
 	if ppc.Accl { 
 		scheduler = mrnes.CryptoSchedulerByHostName[cpfi.Host].DecryptScheduler
 	}
-	scheduler.Schedule(evtMgr, methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, processPcktExit)
+	scheduler.Schedule(evtMgr, true, methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, processPcktExit)
 }
 
 //-------- methods and state for function class finish
@@ -999,9 +1004,15 @@ func (fnsh *finishCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	return &example, nil
 }
 
+// finishEnter flags completing
 func finishEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
-
-}
+    fns := cpfi.State.(*finishState)
+    fns.calls += 1
+    endptName := cpfi.Host
+    endpt := mrnes.EndptDevByName[endptName]
+    traceMgr.AddTrace(evtMgr.CurrentTime(), msg.ExecID, 0, endpt.DevID(), "exit", msg.CarriesPckt(), msg.Rate)
+    EndRecExec(msg.ExecID, evtMgr.CurrentSeconds())
+}   
 
 //-------- methods and state for function class finish
 var wgcVar *workloadGenCfg = ClassCreateWorkloadGenCfg()
@@ -1022,19 +1033,18 @@ func (wgc *workloadGenCfg) FuncClassName() string {
 }
 
 func (wgc *workloadGenCfg) CreateCfg(cfgStr string, useYAML bool) any {
-	wgVarAny, err := fnsh.Deserialize(wgc, useYAML)
+	wgVarAny, err := wgc.Deserialize(cfgStr, useYAML)
 	if err != nil {
-		panic(fmt.Errorf("finish.InitCfg sees deserialization error"))
+		panic(fmt.Errorf("workloadGenCfg.CreateCfg sees deserialization error"))
 	}
 	return wgVarAny
 }
 
 func (wgc *workloadGenCfg) InitCfg(cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
+	cpfi.InitFunc = insertWorkload
 	wgcVarAny := wgc.CreateCfg(cfgStr, useYAML)
 	wgcv := wgcVarAny.(*workloadGenCfg)
-
-	cpfi.InitFunc = workloadGenStart
-	cpfi.Cfg = wgc
+	cpfi.Cfg = wgcv
 }
 
 func (wgc *workloadGenCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
@@ -1048,9 +1058,9 @@ func (wgc *workloadGenCfg) Serialize(useYAML bool) (string, error) {
 	var merr error
 
 	if useYAML {
-		bytes, merr = yaml.Marshal(*wg)
+		bytes, merr = yaml.Marshal(*wgc)
 	} else {
-		bytes, merr = json.Marshal(*wg)
+		bytes, merr = json.Marshal(*wgc)
 	}
 
 	if merr != nil {
@@ -1081,23 +1091,31 @@ func (wgc *workloadGenCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	return &example, nil
 }
 
-// workloadGenStart flags
 func workloadGenStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
-	endptName := cpfi.Host
-	endpt := mrnes.EndptDevByName[endptName]
+	evtMgr.Schedule(cpfi, nil, insertWorkload, SecondsToTime(0.0))
+}
 
-	wg := cpfi.Cfg.(*workloadGen)
+func insertWorkload(evtMgr *evtm.EventManager, context any, data any) any {
+	cpfi := context.(*CmpPtnFuncInst)
+	cpi := CmpPtnInstByName[cpfi.PtnName]
+	wg := cpfi.Cfg.(*workloadGenCfg)
 	
 	// look up the generation service requirement.
 	genTime := wg.Wgt
-	nxt := 1.0/wg.Rate
- 
+
+	nxt := csinterarrivalSample(cpi, "exp", 1.0/wg.Rate)
+
 	// if not hardware assisted call the host scheduler
 	scheduler := mrnes.TaskSchedulerByHostName[cpfi.Host]
-	scheduler.Schedule(evtMgr, methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, processPcktExit)
+	scheduler.Schedule(evtMgr, false, "bckgrnd", genTime, math.MaxFloat64, nxtPri(), cpfi, nil, workloadDone)
 
 	// schedule the next workload insertion
-	evtMgr.Schedule(cpfi, nil, workloadGenStart, SecondsToTime(nxt))
+	evtMgr.Schedule(cpfi, nil, insertWorkload, SecondsToTime(nxt))
+	return nil
+}
+
+func workloadDone(evtMgr *evtm.EventManager, context any, data any) any {
+	return nil
 }
 
 func workloadGenEnd(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
