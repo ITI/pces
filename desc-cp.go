@@ -17,6 +17,18 @@ import (
 	"strings"
 )
 
+type funcDesc struct {
+	CP    string
+	Label string
+}
+
+func createFuncDesc(cp, label string) funcDesc {
+	fd := new(funcDesc)
+	fd.CP = cp
+	fd.Label = label
+	return *fd
+}
+
 // CompPattern is a directed graph that describes the data flow among functions that implement an end-to-end computation
 type CompPattern struct {
 	// a model may use a number of instances of CompPatterns that have the same CPType
@@ -28,11 +40,13 @@ type CompPattern struct {
 	// instances of functions indexed by unique-to-pattern label
 	Funcs []Func `json:"funcs" yaml:"funcs"`
 
+	Services map[string]funcDesc `json:"services" yaml:"services"`
+
 	// description of edges in Pattern graph
 	Edges []CmpPtnGraphEdge `json:"edges" yaml:"edges"`
 
 	// description of external edges in Pattern graph
-	ExtEdges map[string][]XCPEdge `json:"extedges" yaml:"extedges"`
+	ExtEdges []XCPEdge `json:"extedges" yaml:"extedges"`
 }
 
 // CreateCompPattern is an initialization constructor.
@@ -40,7 +54,10 @@ type CompPattern struct {
 func CreateCompPattern(cmptnType string) *CompPattern {
 
 	cp := &CompPattern{CPType: cmptnType, Funcs: make([]Func, 0), Edges: make([]CmpPtnGraphEdge, 0)}
-	cp.ExtEdges = make(map[string][]XCPEdge)
+	cp.ExtEdges = make([]XCPEdge, 0)
+
+	cp.Funcs = make([]Func, 0)
+	cp.Services = make(map[string]funcDesc)
 
 	// make type the default name, possible over-ride later
 	cp.SetName(cmptnType)
@@ -49,37 +66,37 @@ func CreateCompPattern(cmptnType string) *CompPattern {
 }
 
 // DeepCopy creates a copy of CompPattern that explicitly copies various complex data structures
-func (cp *CompPattern) DeepCopy() *CompPattern {
+func (cpt *CompPattern) DeepCopy() *CompPattern {
 	ncp := new(CompPattern)
-	ncp.CPType = cp.CPType
-	ncp.Name = cp.Name
-	ncp.Funcs = make([]Func,len(cp.Funcs))
-	for idx, f := range cp.Funcs {
+	ncp.CPType = cpt.CPType
+	ncp.Name = cpt.Name
+	ncp.Funcs = make([]Func, len(cpt.Funcs))
+	for idx, f := range cpt.Funcs {
 		ncp.Funcs[idx] = Func{Class: f.Class, Label: f.Label}
 	}
 
-	ncp.Edges = make([]CmpPtnGraphEdge,len(cp.Edges))
-	for idx, e := range cp.Edges {
-		ncp.Edges[idx] = CmpPtnGraphEdge{SrcLabel: e.SrcLabel, MsgType: e.MsgType, 
-				DstLabel: e.DstLabel, MethodCode: e.MethodCode}
+	ncp.Services = make(map[string]funcDesc)
+	for key, value := range cpt.Services {
+		ncp.Services[key] = value
 	}
 
-	ncp.ExtEdges = make(map[string][]XCPEdge)
-	for key, xelist := range cp.ExtEdges {
-		ncp.ExtEdges[key] = make([]XCPEdge, len(xelist))
-		for idx, xe := range xelist {
-			ncp.ExtEdges[key][idx] = 
-				XCPEdge{SrcCP: xe.SrcCP,
-					DstCP: xe.DstCP,
-					SrcLabel: xe.SrcLabel,
-					DstLabel: xe.DstLabel,
-					MsgType: xe.MsgType,	
-					MethodCode: xe.MethodCode}
-		}
+	ncp.Edges = make([]CmpPtnGraphEdge, len(cpt.Edges))
+	for idx, e := range cpt.Edges {
+		ncp.Edges[idx] = CmpPtnGraphEdge{SrcLabel: e.SrcLabel, MsgType: e.MsgType,
+			DstLabel: e.DstLabel}
+	}
+
+	ncp.ExtEdges = make([]XCPEdge, len(cpt.ExtEdges))
+	for idx, xe := range cpt.ExtEdges {
+		ncp.ExtEdges[idx] =
+			XCPEdge{SrcCP: xe.SrcCP,
+				DstCP:    xe.DstCP,
+				SrcLabel: xe.SrcLabel,
+				DstLabel: xe.DstLabel,
+				MsgType:  xe.MsgType}
 	}
 	return ncp
 }
-
 
 // local dictionary that gives access to a CompPattern give its name
 var cmptnByName map[string]*CompPattern = make(map[string]*CompPattern)
@@ -94,13 +111,25 @@ func (cpt *CompPattern) AddFunc(fs *Func) {
 	cpt.Funcs = append(cpt.Funcs, *fs)
 }
 
+// AddService includes a function specification to a CompPattern
+func (cpt *CompPattern) AddService(srvName, srvFunc string) {
+	// make sure that the class declared for the function exists
+	for _, srvf := range cpt.Funcs {
+		if srvf.Label == srvFunc {
+			cpt.Services[srvName] = createFuncDesc(cpt.Name, srvFunc)
+			return
+		}
+	}
+	panic(fmt.Errorf("unrecognized func name %s", srvFunc))
+}
+
 // AddEdge creates an edge that describes message flow from one Func to another in the same comp pattern
 // and adds it to the CompPattern's list of edges. Called from code that is building a model, applies some
 // sanity checking
-func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType string, methodCode string,
+func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType string,
 	msgs *[]CompPatternMsg) {
 
-	pe := CmpPtnGraphEdge{SrcLabel: srcFuncLabel, DstLabel: dstFuncLabel, MsgType: msgType, MethodCode: methodCode}
+	pe := CmpPtnGraphEdge{SrcLabel: srcFuncLabel, DstLabel: dstFuncLabel, MsgType: msgType}
 
 	// look for duplicated edge
 	for _, edge := range cpt.Edges {
@@ -121,39 +150,19 @@ func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType strin
 	// added to the CompPattern already
 	srcFound := false
 	dstFound := false
-	dstClass := ""
+
 	for _, fnc := range cpt.Funcs {
 		if fnc.Label == srcFuncLabel {
 			srcFound = true
 		}
 		if fnc.Label == dstFuncLabel {
 			dstFound = true
-			dstClass = fnc.Class
 		}
 	}
 
 	// panic if either src or dst func is found
 	if !srcFound || !dstFound {
 		panic(fmt.Errorf("call to CmpPtn %s AddEdge specifies undeclared function", cpt.Name))
-	}
-
-	// ensure that the methodCode for the destination is recognized by its Class.
-	// The ClassMethods map is 'hardwired' into the pces package. It (like a few other data structures)
-	// needs to be updated and the simulator (and model building programs) recompiled to include
-	// new function classes
-	methodFound := false
-	fmap := ClassMethods[dstClass]
-	for mc := range fmap {
-		if mc == methodCode {
-			methodFound = true
-			break
-		}
-	}
-
-	// panic if methodCode is not part of the ClassMethod map
-	if !methodFound {
-		panic(fmt.Errorf("method %s not found associated with class %s of destination %s in CmpPtn %s AddEdge",
-			methodCode, dstClass, dstFuncLabel, cpt.Name))
 	}
 
 	// check whether message type was added to the CompPatterns cpInit dictionary
@@ -185,72 +194,47 @@ func (cpt *CompPattern) AddEdge(srcFuncLabel, dstFuncLabel string, msgType strin
 // (d) the methodCode for the function method to be executed.   Note that this structure
 // limits one XCPEdge per chgCP instance per target CP.
 type XCPEdge struct {
-	SrcCP      string
-	DstCP      string
-	SrcLabel   string
-	DstLabel   string
-	MsgType    string
-	MethodCode string
+	SrcCP    string
+	DstCP    string
+	SrcLabel string
+	DstLabel string
+	MsgType  string
+}
+
+func extEdgeEq(xe1 *XCPEdge, xe2 *XCPEdge) bool {
+	if (xe1.SrcCP != xe2.SrcCP) || (xe1.DstCP != xe2.DstCP) {
+		return false
+	}
+
+	if (xe1.SrcLabel != xe2.SrcLabel) || (xe1.DstLabel != xe2.DstLabel) {
+		return false
+	}
+
+	if xe1.MsgType != xe2.MsgType {
+		return false
+	}
+	return true
 }
 
 // AddExtEdge creates an edge that describes message flow from one Func to another in
 // a different computational pattern and adds it to the CompPattern's list of external edges.
 // Perform some sanity checks before commiting the edge
-func (cpt *CompPattern) AddExtEdge(srcCP, dstCP, srcLabel, dstLabel string, msgType string, methodCode string,
+func (cpt *CompPattern) AddExtEdge(srcCP, dstCP, srcLabel, dstLabel string, msgType string,
 	srcMsgs *[]CompPatternMsg, dstMsgs *[]CompPatternMsg) {
 
 	// create the edge we'll commit if it passes sanity checks
-	pxe := XCPEdge{SrcCP: srcCP, DstCP: dstCP, SrcLabel: srcLabel, DstLabel: dstLabel, MsgType: msgType, MethodCode: methodCode}
+	pxe := XCPEdge{SrcCP: srcCP, DstCP: dstCP, SrcLabel: srcLabel, DstLabel: dstLabel, MsgType: msgType}
 
 	// N.B. when AddExtEdge is called the model is being built and we do not yet have
 	// instances of the CmpPtn, so index on the string name rather than the instance id
 	// look for duplicated edge
-	_, present := cpt.ExtEdges[dstCP]
 
-	if present {
-		// a list of external edges from cpt aimed at dstCPName exists, so
-		// check each for exact duplication
-		for _, xedge := range cpt.ExtEdges[dstCP] {
-			if pxe == xedge {
-				fmt.Printf("Warning: duplicated declaration of external edge from %s for destination CP %s through %s\n",
-					cpt.Name, dstCP, srcLabel)
-				return
-			}
-
-			// if there is a match in the srcLabel attribute, then one of the
-			// other attributes didn't match (otherwise the test above would have
-			// caused a return
-			if (xedge.SrcCP == srcCP) && (xedge.SrcLabel == srcLabel) {
-				panic(fmt.Errorf("inconsistent external edge declaration"))
-			}
+	for _, xedge := range cpt.ExtEdges {
+		if extEdgeEq(&pxe, &xedge) {
+			return
 		}
 	}
-
-	if !present {
-		cpt.ExtEdges[dstCP] = []XCPEdge{}
-	}
-
-	// make sure the msgType is in the message lists of both CmpPtn cpInit dictionary lists
-	srcFound := false
-	dstFound := false
-	for _, msg := range *srcMsgs {
-		if msgType == msg.MsgType {
-			srcFound = true
-			break
-		}
-	}
-	for _, msg := range *dstMsgs {
-		if msgType == msg.MsgType {
-			dstFound = true
-			break
-		}
-	}
-	if !srcFound || !dstFound {
-		panic(fmt.Errorf("message type not declared for endpoint CmpPtn in AddExtEdge"))
-	}
-
-	// include the edge
-	cpt.ExtEdges[dstCP] = append(cpt.ExtEdges[dstCP], pxe)
+	cpt.ExtEdges = append(cpt.ExtEdges, pxe)
 }
 
 // SetName copies the given name to be the CmpPtn's attribute and
@@ -379,10 +363,10 @@ type GlobalFuncID struct {
 // SharedCfgGroup gathers descriptions of functions that share
 // the same cfg information, even across CmpPtn boundaries
 type SharedCfgGroup struct {
-	Name      string             // give a name to this shared cfg group
-	Class     string             // all members have to be in the same class
+	Name      string         // give a name to this shared cfg group
+	Class     string         // all members have to be in the same class
 	Instances []GlobalFuncID // slice identifying the representations that share cfg
-	CfgStr  string               // the configuration they share, used at initialization
+	CfgStr    string         // the configuration they share, used at initialization
 }
 
 // CreateSharedCfgGroup is a constructor
@@ -418,7 +402,7 @@ func (ssg *SharedCfgGroup) AddCfg(cfgStr string) {
 // for inclusion in a shared cfg description file
 type SharedCfgGroupList struct {
 	// UseYAML flags whether to interpret the seriaized cfg using json or yaml
-	UseYAML bool               `json:"useyaml" yaml:"useyaml"`
+	UseYAML bool             `json:"useyaml" yaml:"useyaml"`
 	Groups  []SharedCfgGroup `json:"groups" yaml:"groups"`
 }
 
@@ -454,7 +438,7 @@ func ReadSharedCfgGroupList(filename string, useYAML bool, dict []byte) (*Shared
 		if os.IsNotExist(err) || fileInfo.IsDir() {
 			msg := fmt.Sprintf("shared cfg group list file %s does not exist or cannot be read", filename)
 			fmt.Println(msg)
-			return nil, fmt.Errorf(msg)
+			return nil, errors.New(msg)
 		}
 		dict, err = os.ReadFile(filename)
 		if err != nil {
@@ -545,7 +529,7 @@ func (cpil *CPInitList) DeepCopy() *CPInitList {
 	nl.CPType = cpil.CPType
 	nl.UseYAML = cpil.UseYAML
 	nl.Cfg = make(map[string]string)
-	for k,v := range cpil.Cfg {
+	for k, v := range cpil.Cfg {
 		nl.Cfg[k] = v
 	}
 	nl.Msgs = make([]CompPatternMsg, len(cpil.Msgs))
@@ -556,19 +540,18 @@ func (cpil *CPInitList) DeepCopy() *CPInitList {
 	return nl
 }
 
-
 // AddCfg puts a serialized initialization struct in the dictionary indexed by Func label
-func (cpil *CPInitList) AddCfg(cp *CompPattern, fnc *Func, cfg string) {
+func (cpil *CPInitList) AddCfg(cpt *CompPattern, fnc *Func, cfg string) {
 	// make sure that the function to which the cfg is attached has been defined for the given CmpPtn
 	foundFunc := false
-	for _, cpFunc := range cp.Funcs {
+	for _, cpFunc := range cpt.Funcs {
 		if cpFunc.Label == fnc.Label {
 			foundFunc = true
 			break
 		}
 	}
 	if !foundFunc {
-		panic(fmt.Errorf("attempt to add cfg to CmpPtn %s for a function %s not defined", cp.Name, fnc.Label))
+		panic(fmt.Errorf("attempt to add cfg to CmpPtn %s for a function %s not defined", cpt.Name, fnc.Label))
 	}
 	cpil.Cfg[fnc.Label] = cfg
 }
@@ -597,7 +580,7 @@ func ReadCPInitList(filename string, useYAML bool, dict []byte) (*CPInitList, er
 		if os.IsNotExist(err) || fileInfo.IsDir() {
 			msg := fmt.Sprintf("func parameter list %s does not exist or cannot be read", filename)
 			fmt.Println(msg)
-			return nil, fmt.Errorf(msg)
+			return nil, errors.New(msg)
 		}
 		dict, err = os.ReadFile(filename)
 		if err != nil {
@@ -731,7 +714,7 @@ func ReadCPInitListDict(filename string, useYAML bool, dict []byte) (*CPInitList
 		if os.IsNotExist(err) || fileInfo.IsDir() {
 			msg := fmt.Sprintf("func parameter list dictionary %s does not exist or cannot be read", filename)
 			fmt.Println(msg)
-			return nil, fmt.Errorf(msg)
+			return nil, errors.New(msg)
 		}
 		dict, err = os.ReadFile(filename)
 		if err != nil {
@@ -761,7 +744,6 @@ type CompPatternMsg struct {
 
 	// a message may be a packet or a flow
 	IsPckt bool `json:"ispckt" yaml:"ispckt"`
-
 }
 
 // CreateCompPatternMsg is a constructer.
@@ -775,9 +757,8 @@ func CreateCompPatternMsg(msgType string, isPckt bool) *CompPatternMsg {
 // An InEdge describes the source Func of an incoming edge, the type of message it carries, and the method code
 // flagging what code should execute as a result
 type InEdge struct {
-	SrcLabel   string `json:"srclabel" yaml:"srclabel"`
-	MsgType    string `json:"msgtype" yaml:"msgtype"`
-	MethodCode string `json:"methodcode" yaml:"methodcode"`
+	SrcLabel string `json:"srclabel" yaml:"srclabel"`
+	MsgType  string `json:"msgtype" yaml:"msgtype"`
 }
 
 // An OutEdge describes the destination Func of an outbound edge, and the type of message it carries.
@@ -803,9 +784,8 @@ type Func struct {
 //   - Class, a string identifying what instances of this Func do.  Like a variable type.
 //   - FuncLabel, a unique identifier (within an instance of a [CompPattern]) of an instance of this Func
 func CreateFunc(class, funcLabel string) *Func {
-
 	// see whether class is recognized
-	_, present := FuncClassNames[class]
+	_, present := ClassMethods[class]
 	if !present {
 		panic(fmt.Errorf("function class %s not recognized", class))
 	}

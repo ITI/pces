@@ -21,7 +21,7 @@ import (
 type FuncExecDesc struct {
 	Identifier string  `json:"identifier" yaml:"identifier"`
 	Param      string  `json:"param" yaml:"param"`
-	CPUModel   string  `json:"CPUModel" yaml:"CPUModel"`
+	CPUModel   string  `json:"cpumodel" yaml:"cpumodel"`
 	PcktLen    int     `json:"pcktlen" yaml:"pcktlen"`
 	ExecTime   float64 `json:"exectime" yaml:"exectime"`
 }

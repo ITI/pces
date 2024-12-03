@@ -16,18 +16,17 @@ The pces simulator reads various files to prepare for and execute a simulation e
 
 #### Files used as part of model-building
 The files below have methods that are typically called to either build pces models, or read from file descriptions of models that have been built.
-* `desc-cp.go`  This file holds definitions of those structs related to Computational Patterns and their initializations. It contains methods used by the simulator to read in those structs, and also contains methods that a separate external Golang program can use to build and store examples of those structs for specific classes of pces models.
-* `desc-crypto.go`  The GUI should present selection options for crypto algorithms that are supported by measurements available to the simulator.  This file holds struct definitions for a file that is read in by the GUI to guide those options, a file that is created by pre-model-building analysis using methods of data structures that holding function timing measurements.
-* `desc-map.go`  Prior to model execution, its functions have to be mapped to processors in the declared architecture model. This file holds structs and methods that support creation and access to these mappings.
-* `desc-params.go`  pces supports a rich syntax for describing parameter values (e.g. the bandwidth of interfaces) to a model description before a simulation run.  This file contains structs and methods that are used for that purpose.
-* `desc-timing.go`  This file holds definition of structs that specify identities of computation functions and their execution timing as a function of the underlaying hardware platform and ‘packet length’ associated with the data being operated on.  The file contains methods for creating these structs from an external Golang program, and methods used by the simulator to read those structs in from file.
+* desc-cp.go . This file holds definitions of those structs related to Computational Patterns and their initializations. It contains methods used by the simulator to read in those structs, and also contains methods that a separate external Golang program can use to build and store examples of those structs for specific classes of pces models.
+* desc-map.go .  Prior to model execution, its functions have to be mapped to processors in the declared architecture model. This file holds structs and methods that support creation and access to these mappings.
+* desc-params.go .  pces supports a rich syntax for describing parameter values (e.g. the bandwidth of interfaces) to a model description before a simulation run.  This file contains structs and methods that are used for that purpose.
+* desc-timing.go .  This file holds definition of structs that specify identities of computation functions and their execution timing as a function of the underlaying hardware platform and ‘packet length’ associated with the data being operated on.  The file contains methods for creating these structs from an external Golang program, and methods used by the simulator to read those structs in from file.
 #### Files used as part of model-execution
-* `class.go`  mrnesbit func belong to ‘classes’ with pre-defined structs and methods used in the simulated execution of those functions.  This file contains the structs, other data structures,  methods, and event handling routines for all of the pre-declared classes.
-* `cpf.go`  The pces internals represent its functions through a type it calls a `CmpPtnFuncInst` (Computation Pattern Function Instance).  This file defines this type and methods involved in initializing and simulating the execution of func instances.
-* `cpg.go`  pces funcs are organized within so-called ‘Computation Patterns’, instances of which are represented by type `CmpPtnInst`, and which are fundamentally a graph whose nodes are `CmpPtnFuncInsts,` and whose edges describe possible communications between them.   This file contains structs and methods that support construction and traversal through computation patterns.
-* `pces.go` Methods in this file are called by the root simulation program to read in the simulation model descriptions, and support interactions with the `mrnes` package.
+* class.go .  mrnesbit func belong to ‘classes’ with pre-defined structs and methods used in the simulated execution of those functions.  This file contains the structs, other data structures,  methods, and event handling routines for all of the pre-declared classes.
+* cpf.go .  The pces internals represent its functions through a type it calls a `CmpPtnFuncInst` (Computation Pattern Function Instance).  This file defines this type and methods involved in initializing and simulating the execution of func instances.
+* cpg.go . pces funcs are organized within so-called ‘Computation Patterns’, instances of which are represented by type `CmpPtnInst`, and which are fundamentally a graph whose nodes are `CmpPtnFuncInsts,` and whose edges describe possible communications between them.   This file contains structs and methods that support construction and traversal through computation patterns.
+* pces.go . Methods in this file are called by the root simulation program to read in the simulation model descriptions, and support interactions with the `mrnes` package.
+* trace.go . Methods and data structures in this file support generation and storage of traces gathered at run-time.
 
 Copyright 2024 Board of Trustees of the University of Illinois.
 See [the license](LICENSE) for details.
-
 

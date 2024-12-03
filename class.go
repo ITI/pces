@@ -11,21 +11,21 @@ import (
 	"github.com/iti/mrnes"
 	"gopkg.in/yaml.v3"
 	"math"
-	"reflect"
-	"sort"
+	_ "sort"
+	"strings"
 )
 
-// A FuncClass represents the methods used to simulate the effect
+// FuncClassCfg represents the methods used to simulate the effect
 // of executing a function,  different types of input generate different
 // types of responses, so we use a map whose key selects the start, end pair of methods
 type FuncClassCfg interface {
 	FuncClassName() string
-	CreateCfg(string, bool) any
-	InitCfg(*CmpPtnFuncInst, string, bool)
-	ValidateCfg(*CmpPtnFuncInst) error 
+	CreateCfg(string) any
+	InitCfg(*evtm.EventManager, *CmpPtnFuncInst, string, bool)
+	ValidateCfg(*CmpPtnFuncInst) error
 }
 
-// StartMethod gives the signature of functions called to implement 
+// StartMethod gives the signature of functions called to implement
 // a function's entry point
 type StartMethod func(*evtm.EventManager, *CmpPtnFuncInst, string, *CmpPtnMsg)
 
@@ -37,10 +37,20 @@ type RespMethod struct {
 }
 
 // FuncClassNames needs to have an indexing key for every class of function that
-// might be included in a model.
-var FuncClassNames map[string]bool = 
-	map[string]bool{"connSrc": true, "processPckt": true, "cryptoPckt": true, "cycleDst": true, 
-		"workloadGen": true, "finish": true}
+// might be included in a model.  Map exists just for checking validity of
+// a function class name when building a model.   Any new class introduced
+// in this file needs to have an entry placed in this dictionary.
+var FuncClassNames map[string]bool = map[string]bool{
+	// "connSrc": true,
+	"measure":     true,
+	"processPckt": true,
+	"srvRsp":      true,
+	"srvReq":      true,
+	"transfer":    true,
+	"open":        true,
+	"start":       true,
+	"finish":      true,
+	"bckgrndLd":   true}
 
 // RegisterFuncClass is called to tell the system that a particular
 // function class exists, and gives a point to its description.
@@ -51,8 +61,7 @@ func RegisterFuncClass(fc FuncClassCfg) bool {
 	className := fc.FuncClassName()
 	_, present := FuncClasses[className]
 	if present {
-		panic(fmt.Errorf("attempt to register function class %s after that name already registered", 
-			fc.FuncClassName()))
+		return true
 	}
 	FuncClasses[className] = fc
 	FuncClassNames[className] = true
@@ -62,668 +71,152 @@ func RegisterFuncClass(fc FuncClassCfg) bool {
 // FuncClasses is a map that takes us from the name of a FuncClass
 var FuncClasses map[string]FuncClassCfg = make(map[string]FuncClassCfg)
 
+// HndlrMap maps a string name for an event handling function to the function itself
+var HndlrMap map[string]evtm.EventHandlerFunction = map[string]evtm.EventHandlerFunction{"empty": EmptyInitFunc}
+
+// AddHndlrMap includes a new association between string and event handler
+func AddHndlrMap(name string, hndlr evtm.EventHandlerFunction) {
+	if HndlrMap == nil {
+		HndlrMap = make(map[string]evtm.EventHandlerFunction)
+	}
+	HndlrMap[name] = hndlr
+}
+
 // ClassMethods maps the function class name to a map indexed by (string) operation code to get to
 // a pair of functions to handle the entry and exit to the function
 var ClassMethods map[string]map[string]RespMethod = make(map[string]map[string]RespMethod)
 var ClassMethodsBuilt bool = CreateClassMethods()
 
+// CreateClassMethods fills in the ClassMethods table for each of the defined function classes
 func CreateClassMethods() bool {
-	// build table for connSrc class
-	fmap := make(map[string]RespMethod)
-	fmap["generateOp"] = RespMethod{Start: connSrcEnterStart, End: connSrcExitStart}
-	fmap["completeOp"] = RespMethod{Start: connSrcEnterReflect, End: connSrcExitReflect}
-	ClassMethods["connSrc"] = fmap
-
-	fmap = make(map[string]RespMethod)
-	fmap["generateOp"] = RespMethod{Start: cycleDstEnterStart, End: cycleDstExitStart}
-	fmap["completeOp"] = RespMethod{Start: cycleDstEnterReflect, End: cycleDstExitReflect}
-	ClassMethods["cycleDst"] = fmap
+	// ClassMethod key is the string identity of a function class, points to
+	// a map whose key is a methodCode.
 
 	// build table for processPckt class
-	fmap = make(map[string]RespMethod)
+	fmap := make(map[string]RespMethod)
+	fmap["default"] = RespMethod{Start: processPcktEnter, End: processPcktExit}
 	fmap["processOp"] = RespMethod{Start: processPcktEnter, End: processPcktExit}
-	fmap["encryptOp"] = RespMethod{Start: encryptPcktEnter, End: processPcktExit}
-	fmap["decryptOp"] = RespMethod{Start: decryptPcktEnter, End: processPcktExit}
 	ClassMethods["processPckt"] = fmap
 
-	// build table for generateWork class
+	// build table for start class
 	fmap = make(map[string]RespMethod)
-	fmap["generateOp"] = RespMethod{Start: workloadGenStart, End: ExitFunc}
-	ClassMethods["workloadGen"] = fmap
-	
+	fmap["default"] = RespMethod{Start: startEnter, End: ExitFunc}
+	ClassMethods["start"] = fmap
+
 	// build table for finish class
 	fmap = make(map[string]RespMethod)
+	fmap["default"] = RespMethod{Start: finishEnter, End: ExitFunc}
 	fmap["finishOp"] = RespMethod{Start: finishEnter, End: ExitFunc}
 	ClassMethods["finish"] = fmap
 
+	// build table for open class
+	fmap = make(map[string]RespMethod)
+	fmap["default"] = RespMethod{Start: emptyEnterFunc, End: ExitFunc}
+	ClassMethods["open"] = fmap
+
+	fmap = make(map[string]RespMethod)
+	fmap["default"] = RespMethod{Start: measureEnter, End: ExitFunc}
+	fmap["measure"] = RespMethod{Start: measureEnter, End: ExitFunc}
+	ClassMethods["measure"] = fmap
+
+	fmap = make(map[string]RespMethod)
+	fmap["default"] = RespMethod{Start: srvRspEnter, End: ExitFunc}
+	ClassMethods["srvRsp"] = fmap
+
+	fmap = make(map[string]RespMethod)
+	fmap["default"] = RespMethod{Start: srvReqEnter, End: ExitFunc}
+	fmap["request"] = RespMethod{Start: srvReqEnter, End: ExitFunc}
+	fmap["return"] = RespMethod{Start: srvReqRtn, End: ExitFunc}
+	ClassMethods["srvReq"] = fmap
+
+	fmap = make(map[string]RespMethod)
+	fmap["default"] = RespMethod{Start: transferEnter, End: ExitFunc}
+	ClassMethods["transfer"] = fmap
+	// need to have bckgrndLd as a key to ClassMethods, but it
+	// doesn't use the RespMethod mechanisms
+	ClassMethods["bckgrndLd"] = make(map[string]RespMethod)
 	return true
+}
+
+func checkMCValidity(funcClass string, mc string) bool {
+	fcm, present := ClassMethods[funcClass]
+	if !present {
+		return false
+	}
+	_, present = fcm[mc]
+	return present
+}
+
+func CreateNewClass(className string) {
+	fmap := make(map[string]RespMethod)
+	ClassMethods[className] = fmap
+}
+
+func AddClassMethod(className string, methodName string, rm RespMethod) {
+	ClassMethods[className][methodName] = rm
 }
 
 // UpdateMsg copies the pattern, label coordinates of the message's current
 // position to be the previous one and labels the next coordinates with
 // the values given as arguments
-func UpdateMsg(msg *CmpPtnMsg, nxtCPID int, nxtLabel, msgType, nxtMC string) {
+func UpdateMsg(msg *CmpPtnMsg, nxtCPID int, nxtLabel, msgType string) {
 	msg.MsgType = msgType
-	msg.PrevCPID = msg.NxtCPID
-	msg.NxtCPID =  nxtCPID
-	msg.NxtMC = nxtMC
-	msg.PrevLabel = msg.NxtLabel
-	msg.NxtLabel = nxtLabel	
+	msg.CPID = nxtCPID
+	msg.Label = nxtLabel
 }
 
+// validFunctionClass checks whether the string argument is a function class
+// name that appears as an index in the FuncClasses map to an entity that
+// meets the FuncClassCfg interface
 func validFuncClass(class string) bool {
 	_, present := FuncClasses[class]
 	return present
 }
 
-// advanceMsg acquires the method code of a just-completed operation, looks up the output edge
-// associated with that method, and updates the message coordinates to
-// direct it to the nxt location
-func advanceMsg(cpfi *CmpPtnFuncInst, task *mrnes.Task, omi map[string]int, nxtMC string) *CmpPtnMsg {
-	msg  := task.Msg.(*CmpPtnMsg)
-	mc   := task.OpType
+func advanceMsg(cpfi *CmpPtnFuncInst, msg *CmpPtnMsg, msgType string) *CmpPtnMsg {
+	var nxtCPID int
+	var nxtMsgType string
+	var nxtLabel string
 
-	eeidx := omi[mc]
+	// if msgType is empty there is only one edge, with index 0
+	var eeidx int
+	var present bool
 
-	msgType := cpfi.OutEdges[eeidx].MsgType
-	nxtCP   := cpfi.OutEdges[eeidx].CPID	
-	nxtLabel := cpfi.OutEdges[eeidx].FuncLabel
-	UpdateMsg(msg, nxtCP, nxtLabel, msgType, nxtMC)
+	// if there is only one outedge we'll choose that, and use the msgType passed in if not empty
+	if len(cpfi.OutEdges) == 1 {
+		eeidx = 0
+		if len(msgType) > 0 {
+			nxtMsgType = cpfi.OutEdges[0].MsgType
+		} else {
+			nxtMsgType = cpfi.OutEdges[0].MsgType
+		}
+	} else if len(msgType) > 0 {
+		// Get the index of the OutEdge associated with the passed-in msgType.
+		eeidx, present = cpfi.Msg2Idx[msgType]
+		if !present {
+			panic(fmt.Errorf("expected edge for message type %s", msgType))
+		}
+		nxtMsgType = cpfi.OutEdges[eeidx].MsgType
+	}
+
+	// pull the next message's type, computation pattern, and label of target function from
+	// the outedge structure
+	nxtLabel = cpfi.OutEdges[eeidx].FuncLabel
+	nxtCPID = cpfi.OutEdges[eeidx].CPID
+
+	// modify the message in place
+	UpdateMsg(msg, nxtCPID, nxtLabel, nxtMsgType)
 
 	// put the response where ExitFunc will find it
 	cpfi.AddResponse(msg.ExecID, []*CmpPtnMsg{msg})
 	return msg
-}	
-
-
-//-------- methods and state for function class connSrc
-
-var csrcVar *connSrcCfg = ClassCreateConnSrcCfg()
-var connSrcLoaded bool = RegisterFuncClass(csrcVar)
-
-type connSrcCfg struct {
-	InterarrivalDist        string	`yaml:interarrivaldist json:interarrivaldist`
-	InterarrivalMean        float64	`yaml:interarrivalmean json:interarrivalmean`
-	InitMsgType             string	`yaml:initmsgtype json:initmsgtype`
-	InitMsgLen				int		`yaml:initmsglen json:initmsglen`
-	InitPcktLen				int		`yaml:initpcktlen json:initpcktlen`
-	InitiationLimit         int		`yaml:initiationlimit json:initiationlimit`
-	Route					map[string]string `yaml:route json:route`
-	TimingCode				map[string]string `yaml:timingcode json:timingcode`
-	Trace                   bool	`yaml:trace json:trace`
 }
 
-type connSrcState struct {
-	calls		int
-	returns		int
-	outMsgIdx	map[string]int
-}
-
-func createConnSrcState() *connSrcState {
-	cs := new(connSrcState)
-	cs.calls = 0
-	cs.returns = 0
-	cs.outMsgIdx = make(map[string]int)
-	return cs
-}
-
-
-func (cs *connSrcCfg) Populate(mean float64, limit int, interarrival, msgType string, 
-		msgLen, pcktLen int, rt map[string]string, tc map[string]string, trace bool) {
-	cs.InitMsgLen = msgLen
-	cs.InitPcktLen = pcktLen
-	cs.InitMsgType = msgType
-	cs.InterarrivalDist = interarrival
-	cs.InterarrivalMean = mean
-	cs.InitiationLimit = limit
-	cs.Route = rt
-	cs.TimingCode = tc
-	cs.Trace = trace
-}
-
-func ClassCreateConnSrcCfg() *connSrcCfg {
-	cs := new(connSrcCfg)
-	cs.InitMsgType = ""
-	cs.InitMsgLen = 0
-	cs.InitPcktLen = 0
-
-	// Interarrival{Dist,Mean} defaults
-	cs.InterarrivalDist = "const"
-	cs.InterarrivalMean = 0.0
-	cs.InitiationLimit = 0
-	cs.Route = make(map[string]string)
-	cs.TimingCode = make(map[string]string)
-	cs.Trace = false
-	return cs
-}
-
-func (cs *connSrcCfg) FuncClassName() string {
-	return "connSrc"
-}
-
-func (cs *connSrcCfg) CreateCfg(cfgStr string, useYAML bool) any {
-	csVarAny, err := cs.Deserialize(cfgStr, useYAML)
-	if err != nil {
-		panic(fmt.Errorf("connSrc.InitCfg sees deserialization error"))
-	}
-	return csVarAny
-}
-
-// InitCfg saves the state encoded for the named cpfi, and copies
-// the values given there for Interarrival{Dist, Mean} to the cpfi structure
-func (cs *connSrcCfg) InitCfg(cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
-	csVarAny := cs.CreateCfg(cfgStr, useYAML)
-	csv := csVarAny.(*connSrcCfg)
-	cpfi.Cfg = csv
-
-	cpfi.State = createConnSrcState()
-
-	cpfi.Trace = csv.Trace
-	cpfi.InitFunc = connSrcSchedule
-	cpfi.InitMsgParams(csv.InitMsgType, csv.InitMsgLen, csv.InitPcktLen, 0.0)
-	cpfi.InterarrivalDist = csv.InterarrivalDist
-	cpfi.InterarrivalMean = csv.InterarrivalMean
-}
-
-func (csc *connSrcCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
-	state := cpfi.State.(*connSrcState)
-	cfg := cpfi.Cfg.(*connSrcCfg)
-	state.outMsgIdx = validateMCDicts(cpfi, cfg.Route, cfg.TimingCode)
-	return nil
-}
-	
-// connSrcSchedule schedules the next initiation at the comp pattern function instance pointed to
-// by the context, and samples the next arrival time
-func connSrcSchedule(evtMgr *evtm.EventManager, context any, data any) any {
-	cpfi := context.(*CmpPtnFuncInst)
-	csc := cpfi.Cfg.(*connSrcCfg)
-	css := cpfi.State.(*connSrcState)
-	cpi := CmpPtnInstByName[cpfi.PtnName]
-
-	// if we do initiate messages from the implicitly named cpfi, see whether
-	// we have done already all the ones programmed to be launched
-	if csc.InitiationLimit > 0 && csc.InitiationLimit <= css.calls {
-		return nil
-	}
-
-	// default interarrival time, if one is not otherwise chosen
-	interarrival := float64(0.0)
-
-	// introduce interarrival delay if an interarrival distribution is named
-	if csc.InterarrivalDist != "none" {
-		interarrival = csinterarrivalSample(cpi, csc.InterarrivalDist, csc.InterarrivalMean)
-		evtMgr.Schedule(cpfi, nil, EnterFunc, SecondsToTime(interarrival))
-	} else {
-		evtMgr.Schedule(cpfi, nil, EnterFunc, vrtime.CreateTime(1, 0))
-	}
-
-	// the absence of a message flags (along with cpfi.InitFunc not being empty)
-	// tells EnterFunc to spawn a new message
-
-	// skip interarrival generation of source generation if no interarrival distribution named.  Means it is generated elsewhere,
-	// probably based on completion of some task
-	if csc.InterarrivalDist != "none" {
-		evtMgr.Schedule(cpfi, nil, connSrcSchedule, SecondsToTime(interarrival))
-	}
-	return nil
-}
-
-// serialize transforms the connSrc into string form for
-// inclusion through a file
-func (csc *connSrcCfg) Serialize(useYAML bool) (string, error) {
-	var bytes []byte
-	var merr error
-
-	if useYAML {
-		bytes, merr = yaml.Marshal(*csc)
-	} else {
-		bytes, merr = json.Marshal(*csc)
-	}
-
-	if merr != nil {
-		return "", merr
-	}
-
-	return string(bytes[:]), nil
-}
-
-// Deserialize recovers a serialized representation of a connSrc structure
-func (csc *connSrcCfg) Deserialize(fss string, useYAML bool) (any, error) {
-	// turn the string into a slice of bytes
-	var err error
-	fsb := []byte(fss)
-
-	rt := make(map[string]string)
-	tc := make(map[string]string)
-
-	example := connSrcCfg{Route: rt, TimingCode: tc}
-
-	// Select whether we read in json or yaml
-	if useYAML {
-		err = yaml.Unmarshal(fsb, &example)
-	} else {
-		err = json.Unmarshal(fsb, &example)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-	return &example, nil
-}
-
-// connSrcEnterStart schedules the generation of a packet
-func connSrcEnterStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string,
-	msg *CmpPtnMsg) {
-
-	csc := cpfi.Cfg.(*connSrcCfg)
-	css := cpfi.State.(*connSrcState)
-	css.calls += 1
-
-	// look up the generation service requirement
-	genTime := FuncExecTime(cpfi, csc.TimingCode[methodCode], msg)
-
-	// call the host's scheduler.
-	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr, false,
-		methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, connSrcExitStart)
-}
-
-// connSrcExitStart executes at the time when the initiating connSrc activation completes
-func connSrcExitStart(evtMgr *evtm.EventManager, context any, data any) any {
-	cpfi := context.(*CmpPtnFuncInst)
-	css := cpfi.State.(*connSrcState)
-	task := data.(*mrnes.Task)
-
-	msg := advanceMsg(cpfi, task, css.outMsgIdx, "")
-
-	// schedule the exitFunc handler
-	evtMgr.Schedule(cpfi, msg, ExitFunc, SecondsToTime(0.0))
-	return nil
-}
-
-// connSrcEnterReflect deals with the arrival of a return from the original message
-func connSrcEnterReflect(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
-
-	csc := cpfi.Cfg.(*connSrcCfg)
-
-	// look up the generation service requirement
-	genTime := FuncExecTime(cpfi, csc.TimingCode[methodCode], msg)
-
-	// N.B. perhaps we can schedule ExitFunc here rather than
-	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr, false,
-		methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, connSrcExitReflect)
-}
-
-// connSrcEnd executes at the completion of the return processing delay.
-// Do we need to make the output message slice available here?
-func connSrcExitReflect(evtMgr *evtm.EventManager, context any, data any) any {
-	cpfi := context.(*CmpPtnFuncInst)
-	css := cpfi.State.(*connSrcState)
-	task := data.(*mrnes.Task)
-
-	msg := advanceMsg(cpfi, task, css.outMsgIdx, "")
-
-	evtMgr.Schedule(cpfi, msg, ExitFunc, SecondsToTime(0.0))
-	return nil
-}
-
-//-------- methods and state for function class cycleDst
-var cdstVar *cycleDstCfg = ClassCreateCycleDstCfg()
-var cycleDstLoaded bool = RegisterFuncClass(cdstVar)
-
-type cycleDstCfg struct {
-	PcktDist  string	`yaml:pcktdist json:pcktdist`
-	PcktMu    float64	`yaml:pcktmu json:pcktmu`
-	BurstDist string	`yaml:burstdist json:burstdist`
-	BurstMu   float64	`yaml:burstmu json:burstmu`
-	BurstLen  int		`yaml:burstlen json:burstlen`
-	CycleDist string	`yaml:cycledist json:cycledist`
-	CycleMu   float64	`yaml:cyclemu json:cyclemu`
-	Pause	  float64	`yaml:pause json:pause`
-	Cycles int			`yaml:cycles json:cycles`
-	InitMsgType string	`yaml:initmsgtype json:initmsgtype`
-	InitMsgLen int		`yaml:initmsglen json:initmsglen`
-	InitPcktLen int		`yaml:initpcktlen json:initpcktlen`
-	Dsts []string		`yaml:dsts json:dsts`
-	Trace   bool		`yaml:trace json:trace`
-	Route	map[string]string `yaml:route json:route`
-	TimingCode map[string]string `yaml:timingcode json:timingcode`
-}
-
-type cycleDstState struct {
-	cycleID int
-	burstID int
-	dstID   int
-	pckts	int
-	returns int
-	calls   int
-	outMsgIdx  map[string]int
-}
-
-func createCycleDstState() *cycleDstState {
-	cds := new(cycleDstState)
-	cds.outMsgIdx = make(map[string]int)
-	return cds
-}
-
-
-func (cd *cycleDstCfg) Populate(dsts []string, 
-	pcktDist string, pcktMu float64, burstDist string, burstMu float64, pcktBurst int,
-	cycleDist string, cycleMu float64, cycles int, pause float64,
-	msgLen, pcktSize int, 
-	rt map[string]string, tc map[string]string, trace bool) {
-
-	cd.PcktDist = pcktDist
-	cd.PcktMu = pcktMu
-
-	cd.BurstDist = burstDist
-	cd.BurstMu = burstMu
-	cd.BurstLen = pcktBurst
-
-	cd.CycleDist = cycleDist
-	cd.CycleMu = cycleMu
-	cd.Cycles = cycles
-	cd.Pause = pause
-
-	cd.InitMsgLen = msgLen
-	cd.InitPcktLen = pcktSize
-	cd.InitMsgType = "initiate"
-
-	cd.Dsts = make([]string,len(dsts))
-	for idx, dst := range dsts {
-		cd.Dsts[idx] = dst
-	}
-	cd.Trace = trace
-	cd.Route = rt
-	cd.TimingCode = tc
-}
-
-func ClassCreateCycleDstCfg() *cycleDstCfg {
-	cd := new(cycleDstCfg)
-	cd.Route = make(map[string]string)
-	cd.TimingCode = make(map[string]string)
-	return cd
-}
-
-func (cd *cycleDstCfg) FuncClassName() string {
-	return "cycleDst"
-}
-
-func (cdc *cycleDstCfg) CreateCfg(cfgStr string, useYAML bool) any {
-	cdVarAny, err := cdc.Deserialize(cfgStr, useYAML)
-	if err != nil {
-		panic(fmt.Errorf("cycleDst.InitCfg sees deserialization error"))
-	}
-	return cdVarAny
-}
-
-// InitCfg saves the state encoded for the named cpfi, and copies
-// the values given there for Interarrival{Dist, Mean} to the cpfi structure
-func (cdc *cycleDstCfg) InitCfg(cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
-	cdVarAny := cdc.CreateCfg(cfgStr, useYAML)
-	cdv := cdVarAny.(*cycleDstCfg)
-	cpfi.Cfg = cdv
-
-	cpfi.State = createCycleDstState()
-
-	cpfi.Trace = cdv.Trace
-	cpfi.InitFunc = cycleDstSchedule
-
-	cpfi.InitMsgParams(cdv.InitMsgType, cdv.InitMsgLen, cdv.InitPcktLen, 0.0)
-}
-
-func (cdc *cycleDstCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
-	state := cpfi.State.(*cycleDstState)
-	cfg := cpfi.Cfg.(*cycleDstCfg)
-	state.outMsgIdx = validateMCDicts(cpfi, cfg.Route, cfg.TimingCode)
-	return nil
-}
-
-// scheduleBurst schedules the immediate generation of as many
-// packts for the target EUD as are configured.
-func scheduleBurst(evtMgr *evtm.EventManager, cpi *CmpPtnInst, cpfi *CmpPtnFuncInst, cpm *CmpPtnMsg, after float64) {
-	cdc := cpfi.Cfg.(*cycleDstCfg)
-	advance := after
-	for idx := 0; idx < cdc.BurstLen; idx++ {
-		newMsg := cpm
-		newMsg.Start = true // when this message first processed, start the timer
-		if idx > 0 {
-			newMsg = new(CmpPtnMsg)
-			*newMsg = *cpm
-			newMsg.ExecID = numExecThreads
-			numExecThreads += 1
-		}
-		if cpfi == nil {
-			panic(fmt.Errorf("empty cpfi"))
-		}
-		evtMgr.Schedule(cpfi, newMsg, EnterFunc, SecondsToTime(advance))
-
-		if idx < cdc.BurstLen-1 {
-			after = cdc.PcktMu
-			if cdc.PcktDist == "exp" {
-				after = csinterarrivalSample(cpi, "exp", cdc.PcktMu)
-			}
-			advance += after
-		}
+func copyDict(dict1, dict2 map[string]string) {
+	for key, value := range dict2 {
+		dict1[key] = value
 	}
 }
-
-// cycleDstSchedule schedules the next burst.
-func cycleDstSchedule(evtMgr *evtm.EventManager, context any, data any) any {
-	cpfi := context.(*CmpPtnFuncInst)
-	cdc := cpfi.Cfg.(*cycleDstCfg)
-	cds := cpfi.State.(*cycleDstState)
-	cpi := CmpPtnInstByName[cpfi.PtnName]
-
-	// default interarrival time for bursts, if one is not otherwise chosen
-	interarrival := float64(0.0)
-
-	pcktsPerCycle := cdc.Cycles*cdc.BurstLen
-
-	if cds.pckts==0 && cds.burstID==0 {
-		interarrival = cdc.Pause
-	} else if cds.pckts > 0 && cds.pckts%pcktsPerCycle == 0 {
-		if cdc.CycleDist == "exp" {
-			interarrival = csinterarrivalSample(cpi, cdc.CycleDist, cdc.CycleMu)
-		} else {
-			interarrival = cdc.CycleMu
-		}
-	} else {
-		if cdc.BurstDist == "exp" {
-			interarrival = csinterarrivalSample(cpi, cdc.BurstDist, cdc.BurstMu)
-		} else {
-			interarrival = cdc.BurstMu
-		}
-	}
-
-	cpm := new(CmpPtnMsg)
-	*cpm = *cpfi.InitMsg
-	cpm.ExecID = numExecThreads
-	cpm.MsgType = "initiate"
-	numExecThreads += 1
-
-	cpm.PrevCPID = cpi.ID
-	cpm.PrevLabel = cpfi.Label
-
-	// for initiation only
-	cpm.NxtCPID = cpi.ID
-	cpm.NxtLabel = cpfi.Label
-
-	numDsts := len(cdc.Dsts)
-	cpi = CmpPtnInstByName[ cdc.Dsts[ cds.burstID%numDsts ] ]
-	cpm.CmpHdr.EndCPID = cpi.ID
-
-	// note that we don't know the label of the function this will eventually go to,
-	// but trust to the edges on the path the message traverses to guide it there.
-
-	// launch the burst
-	scheduleBurst(evtMgr, cpi, cpfi, cpm, interarrival)
-
-	cds.burstID += 1
-	if cds.burstID%numDsts == 0 {
-		cds.cycleID += 1
-	}
-
-	// schedule the next burst schedule to occur at the same time (but after)
-	// the burst just scheduled
-	if cds.cycleID < cdc.Cycles {
-		evtMgr.Schedule(cpfi, nil, cycleDstSchedule, SecondsToTime(interarrival))
-	}
-	return nil
-}
-
-// serialize transforms the cycleDst into string form for
-// inclusion through a file
-func (cdc *cycleDstCfg) Serialize(useYAML bool) (string, error) {
-	var bytes []byte
-	var merr error
-
-	if useYAML {
-		bytes, merr = yaml.Marshal(*cdc)
-	} else {
-		bytes, merr = json.Marshal(*cdc)
-	}
-
-	if merr != nil {
-		return "", merr
-	}
-
-	return string(bytes[:]), nil
-}
-
-// Deserialize recovers a serialized representation of a cycleDst structure
-func (cdc *cycleDstCfg) Deserialize(fss string, useYAML bool) (any, error) {
-	// turn the string into a slice of bytes
-	var err error
-	fsb := []byte(fss)
-
-	rt := make(map[string]string)
-	tc := make(map[string]string)
-	dsts := make([]string,0)
-
-	example := cycleDstCfg{Route: rt, TimingCode:tc, Dsts: dsts }
-
-	// Select whether we read in json or yaml
-	if useYAML {
-		err = yaml.Unmarshal(fsb, &example)
-	} else {
-		err = json.Unmarshal(fsb, &example)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-	return &example, nil
-}
-
-// cycleDstEnterStart schedules the generation of a packet
-func cycleDstEnterStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string,
-	msg *CmpPtnMsg) {
-
-	cdc := cpfi.Cfg.(*cycleDstCfg)
-	cds := cpfi.State.(*cycleDstState)
-	cds.calls += 1
-
-	// look up the generation service requirement
-	genTime := FuncExecTime(cpfi, cdc.TimingCode[methodCode], msg)
-
-	// call the host's scheduler.
-	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr, false,
-		methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, cycleDstExitStart)
-}
-
-// cycleDstExitStart executes at the time when the initiating cycleDst activation completes
-func cycleDstExitStart(evtMgr *evtm.EventManager, context any, data any) any {
-	cpfi := context.(*CmpPtnFuncInst)
-	cds := cpfi.State.(*cycleDstState)
-	task := data.(*mrnes.Task)
-
-	msg := advanceMsg(cpfi, task, cds.outMsgIdx, "")
-
-	// schedule the exitFunc handler
-	evtMgr.Schedule(cpfi, msg, ExitFunc, SecondsToTime(0.0))
-	return nil
-}
-
-// cycleDstEnterReflect deals with the arrival of a return from the original message
-func cycleDstEnterReflect(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
-
-	cds := cpfi.State.(*cycleDstState)
-	cdc := cpfi.Cfg.(*cycleDstCfg)
-	cds.returns += 1
-
-	// look up the generation service requirement
-	genTime := FuncExecTime(cpfi, cdc.TimingCode[methodCode], msg)
-
-	// call the host's scheduler.
-	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr, false,
-		methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, cycleDstExitReflect)
-}
-
-// cycleDstEnd executes at the completion of packet generation
-func cycleDstExitReflect(evtMgr *evtm.EventManager, context any, data any) any {
-	cpfi := context.(*CmpPtnFuncInst)
-	cds := cpfi.State.(*cycleDstState)
-	task := data.(*mrnes.Task)
-
-	msg := advanceMsg(cpfi, task, cds.outMsgIdx, "")
-
-	cpfi.MsgResp[msg.ExecID] = []*CmpPtnMsg{msg}
-
-	evtMgr.Schedule(cpfi, msg, ExitFunc, SecondsToTime(0.0))
-	return nil
-}
-
-func csinterarrivalSample(cpi *CmpPtnInst, dist string, mean float64) float64 {
-	switch dist {
-	case "const":
-		return mean
-	case "exp":
-		u := cpi.Rngs.RandU01()
-		return -1.0 * mean * math.Log(u)
-	}
-	return mean
-}
-
-func validateMCDicts(cpfi *CmpPtnFuncInst, rt, tc map[string]string) map[string]int {
-	routeKeys := []string{}
-	for key, _ := range rt {
-		routeKeys = append(routeKeys, key)
-	}
-	sort.Strings(routeKeys)
-
-	tcKeys := []string{}
-	for key, _ := range tc {
-		tcKeys = append(tcKeys, key)
-	}
-	sort.Strings(tcKeys)
-
-	if !reflect.DeepEqual(routeKeys, tcKeys) {
-		panic(fmt.Errorf("method code indexing problem in processPckt initialization for %s\n", cpfi.Label))
-	}
-
-	omi := make(map[string]int)
-
-	// given ppv.EgressMsgType find the first outEdge in cpfi's list
-	// that matches
-	for _, mc := range routeKeys {
-		found := 0
-		emt := rt[mc] 
-
-		for idx, edge := range cpfi.OutEdges {
-			if emt == edge.MsgType {
-				omi[mc] = idx
-				found += 1
-			}
-		}
-		if found == 0 {
-			panic(fmt.Errorf("initialization of Func in %s cites non-existant egress edge", cpfi.Label))
-		} else if found > 1 {
-			panic(fmt.Errorf("initialization of Func in %s cites multiple egress edges for a method code", cpfi.Label))
-		}
-	}
-	return omi
-}
-
 
 //-------- methods and state for function class processPckt
 
@@ -731,35 +224,31 @@ var ppVar *processPcktCfg = ClassCreateProcessPcktCfg()
 var processPcktLoaded bool = RegisterFuncClass(ppVar)
 
 type processPcktCfg struct {
-	Route	  map[string]string   `yaml:route json:route`
-	TgtCP     map[string]string   `yaml:tgtcp json:tgtcp`
-	TgtLabel  map[string]string   `yaml:tgtlabel json:tgtlabel`
-	TimingCode map[string]string  `yaml:timingcode json:timingcode`
-	Accl	  bool		`yaml:accl json:accl`
-	Trace     bool		`yaml:trace json:trace`
+	// map method code to an operation for the timing lookup
+	TimingCode map[string]string `yaml:"timingcode" json:"timingcode"`
+	Msg2MC     map[string]string `yaml:"msg2mc" json:"msg2mc"`
+	// if the packet is processed through an accelerator, its name in the destination endpoint
+	AccelName string `yaml:"accelname" json:"accelname"`
+	Trace     int    `yaml:"trace" json:"trace"`
 }
 
 type processPcktState struct {
-	calls     int				  
-	outMsgIdx map[string]int	  
+	calls int
 }
 
-// ClassCreateProcessPckt is a constructor called just to create an instance, fields unimportant
+// ClassCreateProcessPcktCfg is a constructor called just to create an instance, fields unimportant
 func ClassCreateProcessPcktCfg() *processPcktCfg {
 	pp := new(processPcktCfg)
-	pp.Route = make(map[string]string)
 	pp.TimingCode = make(map[string]string)
-	pp.TgtCP    = make(map[string]string)
-	pp.TgtLabel = make(map[string]string)
-
-	pp.Trace = false
+	pp.Msg2MC = make(map[string]string)
+	pp.AccelName = ""
+	pp.Trace = 0
 	return pp
 }
 
-
 func createProcessPcktState() *processPcktState {
 	pps := new(processPcktState)
-	pps.outMsgIdx = make(map[string]int)
+	pps.calls = 0
 	return pps
 }
 
@@ -767,30 +256,29 @@ func (pp *processPcktCfg) FuncClassName() string {
 	return "processPckt"
 }
 
-func (pp *processPcktCfg) CreateCfg(cfgStr string, useYAML bool) any {
+func (pp *processPcktCfg) CreateCfg(cfgStr string) any {
+	useYAML := (cfgStr[0] != '{')
 	ppVarAny, err := pp.Deserialize(cfgStr, useYAML)
 	if err != nil {
-		panic(fmt.Errorf("processPckt.CreateCfg sees deserialization error"))
+		panic(fmt.Errorf("processPckt.InitCfg sees deserialization error"))
 	}
 	return ppVarAny
 }
 
-func (pp *processPcktCfg) InitCfg(cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
-	ppVarAny := pp.CreateCfg(cfgStr, useYAML)
+func (pp *processPcktCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
+	ppVarAny := pp.CreateCfg(cfgStr)
 	ppv := ppVarAny.(*processPcktCfg)
 	cpfi.Cfg = ppv
 	cpfi.State = createProcessPcktState()
-	cpfi.Trace = ppv.Trace
+	copyDict(cpfi.Msg2MC, ppv.Msg2MC)
+	cpfi.Trace = (ppv.Trace != 0)
 }
 
 func (pp *processPcktCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
-	state := cpfi.State.(*processPcktState)
-	cfg := cpfi.Cfg.(*processPcktCfg)
-	state.outMsgIdx = validateMCDicts(cpfi, cfg.Route, cfg.TimingCode)
 	return nil
 }
 
-// serialize transforms the processPckt into string form for
+// Serialize transforms the processPckt into string form for
 // inclusion through a file
 func (pp *processPcktCfg) Serialize(useYAML bool) (string, error) {
 	var bytes []byte
@@ -809,18 +297,23 @@ func (pp *processPcktCfg) Serialize(useYAML bool) (string, error) {
 	return string(bytes[:]), nil
 }
 
+func (pp *processPcktCfg) CfgStr() string {
+	rtn, err := pp.Serialize(true)
+	if err != nil {
+		panic(fmt.Errorf("process packet cfg serialization error"))
+	}
+	return rtn
+}
+
 // Deserialize recovers a serialized representation of a processPckt structure
 func (pp *processPcktCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	// turn the string into a slice of bytes
 	var err error
 	fsb := []byte(fss)
 
-	rt    := make(map[string]string)
 	tc := make(map[string]string)
-	tgtcp := make(map[string]string)
-	tgtlbl := make(map[string]string)
-	
-	example := processPcktCfg{Route: rt, TgtCP: tgtcp, TgtLabel: tgtlbl, TimingCode: tc, Trace: false}
+
+	example := processPcktCfg{TimingCode: tc, Trace: 0}
 
 	// Select whether we read in json or yaml
 	if useYAML {
@@ -835,138 +328,239 @@ func (pp *processPcktCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	return &example, nil
 }
 
-// processPcktEnter schedules the simulation of processing one packet
+// processPcktEnter schedules the simulation of processing one packet.
+// Default handler
 func processPcktEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
-
 	pps := cpfi.State.(*processPcktState)
 	ppc := cpfi.Cfg.(*processPcktCfg)
 	pps.calls += 1
 
-	// look up the generation service requirement.
-	genTime := FuncExecTime(cpfi, ppc.TimingCode[methodCode], msg)
+	// determine whether an accelerator call is part of this cpfi and if so get the right time and scheduler
+	var genTime float64
+	var scheduler *mrnes.TaskScheduler
 
-	// call the host's scheduler.
-	mrnes.TaskSchedulerByHostName[cpfi.Host].Schedule(evtMgr, true,
-			methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, processPcktExit)
+	opCode := msg.MsgType
+
+	if len(ppc.AccelName) > 0 {
+		// look up the model associated with this name
+		genTime = AccelFuncExecTime(cpfi, ppc.AccelName, ppc.TimingCode[opCode], msg)
+		scheduler = mrnes.AccelSchedulersByHostName[cpfi.Host][ppc.AccelName]
+	} else {
+		// not an accelerator call. look up the generation service requirement.
+		genTime = HostFuncExecTime(cpfi, ppc.TimingCode[opCode], msg)
+		scheduler = mrnes.TaskSchedulerByHostName[cpfi.Host]
+	}
+
+	endPtID := mrnes.EndptDevByName[cpfi.Host].DevID()
+	execID := msg.ExecID
+
+	// call the scheduler.
+	scheduler.Schedule(evtMgr, methodCode, genTime, cpfi.Priority, math.MaxFloat64, cpfi, msg, execID, endPtID, processPcktExit)
 }
 
 // processPcktExit executes when the associated message did not get served immediately on being scheduled,
 // but now has finished.
 func processPcktExit(evtMgr *evtm.EventManager, context any, data any) any {
+
+	// optionally call a function to transform the packet,
+	// using the string to function look-up table.
+
 	cpfi := context.(*CmpPtnFuncInst)
 	task := data.(*mrnes.Task)
-	pps := cpfi.State.(*processPcktState)
-	ppg := cpfi.Cfg.(*processPcktCfg)
 
-	msg := advanceMsg(cpfi, task, pps.outMsgIdx, "")
-
-	// if the associated method code has an entry in the Func's globalDst dictionary
-	// change the global destination CP and label
-	mc := task.OpType
-	_, present := ppg.TgtCP[mc]
-	if present {
-		tgtCP := ppg.TgtCP[mc]
-		tgtCPID := CmpPtnInstByName[tgtCP].ID	
-		msg.CmpHdr.EndCPID  = tgtCPID
-	}
-	_, present = ppg.TgtLabel[mc]
-	if present {
-		tgtLabel := ppg.TgtLabel[mc]
-		msg.CmpHdr.EndLabel = tgtLabel
-	}
+	// N.B. processPckts
+	msg := advanceMsg(cpfi, task.Msg.(*CmpPtnMsg), "")
 
 	// schedule the exitFunc handler
-	evtMgr.Schedule(cpfi, msg, ExitFunc, SecondsToTime(0.0))
+	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
 	return nil
 }
 
-// encryptPcktEnter schedules the simulation of the encryption of one packet
-func encryptPcktEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
-	pps := cpfi.State.(*processPcktState)
-	ppc := cpfi.Cfg.(*processPcktCfg)
-	pps.calls += 1
+//-------- methods and state for function class start
 
-	// look up the generation service requirement.
-	genTime := FuncExecTime(cpfi, ppc.TimingCode[methodCode], msg)
+var srtVar *StartCfg = ClassCreateStartCfg()
+var startLoaded bool = RegisterFuncClass(srtVar)
 
-	// if not hardware assisted call the host scheduler
-	scheduler := mrnes.TaskSchedulerByHostName[cpfi.Host]
-	if ppc.Accl { 
-		scheduler = mrnes.CryptoSchedulerByHostName[cpfi.Host].EncryptScheduler
-	}
-	scheduler.Schedule(evtMgr, true, methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, processPcktExit)
+type startState struct {
+	calls int
 }
 
-
-// decryptoPcktEnter schedules the simulation of the encryption of one packet
-func decryptPcktEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
-	pps := cpfi.State.(*processPcktState)
-	ppc := cpfi.Cfg.(*processPcktCfg)
-	pps.calls += 1
-
-	// look up the generation service requirement.
-	genTime := FuncExecTime(cpfi, ppc.TimingCode[methodCode], msg)
-
-	// if not hardware assisted call the host scheduler
-	scheduler := mrnes.TaskSchedulerByHostName[cpfi.Host]
-	if ppc.Accl { 
-		scheduler = mrnes.CryptoSchedulerByHostName[cpfi.Host].DecryptScheduler
-	}
-	scheduler.Schedule(evtMgr, true, methodCode, genTime, math.MaxFloat64, nxtPri(), cpfi, msg, processPcktExit)
+type StartCfg struct {
+	PcktLen   int               `yaml:"pcktlen" json:"pcktlen"`
+	MsgLen    int               `yaml:"msglen" json:"msglen"`
+	MsgType   string            `yaml:"msgtype" json:"msgtype"`
+	Data      string            `yaml:"data" json:"data"`
+	StartTime float64           `yaml:"starttime" json:"starttime"`
+	Msg2MC    map[string]string `yaml:"msg2mc" json:"msg2mc"`
+	Trace     int               `yaml:"trace" json:"trace"`
 }
 
-//-------- methods and state for function class finish
+func ClassCreateStartCfg() *StartCfg {
+	srt := new(StartCfg)
+	srt.Msg2MC = make(map[string]string)
+	srt.Trace = 0
+	return srt
+}
 
-var fnshVar *finishCfg = ClassCreateFinishCfg()
+func createStartState() *startState {
+	srt := new(startState)
+	return srt
+}
+
+func (srt *StartCfg) FuncClassName() string {
+	return "start"
+}
+
+func (srt *StartCfg) CreateCfg(cfgStr string) any {
+	useYAML := cfgStr[0] != '{'
+	srtVarAny, err := srt.Deserialize(cfgStr, useYAML)
+	if err != nil {
+		panic(fmt.Errorf("start.InitCfg sees deserialization error"))
+	}
+	return srtVarAny
+}
+
+func (srt *StartCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
+	srtVarAny := srt.CreateCfg(cfgStr)
+	srtv := srtVarAny.(*StartCfg)
+	cpfi.Cfg = srtv
+	copyDict(cpfi.Msg2MC, srtv.Msg2MC)
+	cpfi.State = createStartState()
+	cpfi.Trace = (srtv.Trace != 0)
+}
+
+func (srt *StartCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
+	return nil
+}
+
+// Serialize transforms the start into string form for
+// inclusion through a file
+func (srt *StartCfg) Serialize(useYAML bool) (string, error) {
+	var bytes []byte
+	var merr error
+
+	if useYAML {
+		bytes, merr = yaml.Marshal(*srt)
+	} else {
+		bytes, merr = json.Marshal(*srt)
+	}
+
+	if merr != nil {
+		return "", merr
+	}
+
+	return string(bytes[:]), nil
+}
+
+func (srt *StartCfg) CfgStr() string {
+	rtn, err := srt.Serialize(true)
+	if err != nil {
+		panic(fmt.Errorf("start cfg serialization error"))
+	}
+	return rtn
+}
+
+// Deserialize recovers a serialized representation of a start structure
+func (srt *StartCfg) Deserialize(fss string, useYAML bool) (any, error) {
+	// turn the string into a slice of bytes
+	var err error
+	fsb := []byte(fss)
+
+	example := StartCfg{Trace: 0}
+
+	// Select whether we read in json or yaml
+	if useYAML {
+		err = yaml.Unmarshal(fsb, &example)
+	} else {
+		err = json.Unmarshal(fsb, &example)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return &example, nil
+}
+
+// start an execution thread, main thing here is creating the initial
+// message and giving it an execID
+func startEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
+	srtg := cpfi.Cfg.(*StartCfg)
+	srts := cpfi.State.(*startState)
+	srts.calls += 1
+
+	cpm := new(CmpPtnMsg)
+	cpm.PcktLen = srtg.PcktLen
+	cpm.MsgLen = srtg.MsgLen
+	cpm.MsgType = srtg.MsgType
+	numExecThreads += 1
+	cpm.ExecID = numExecThreads
+
+	endptName := cpfi.Host
+	endpt := mrnes.EndptDevByName[endptName]
+	AddCPTrace(traceMgr, evtMgr.CurrentTime(), cpm.ExecID, endpt.DevID(), "enter", cpm)
+
+	srtTime := srtg.StartTime
+
+	cpm = advanceMsg(cpfi, cpm, "")
+	cpfi.AddResponse(cpm.ExecID, []*CmpPtnMsg{cpm})
+	evtMgr.Schedule(cpfi, cpm, ExitFunc, vrtime.SecondsToTime(srtTime))
+}
+
+//-------- methods and state for function class start
+
+var fnshVar *FinishCfg = ClassCreateFinishCfg()
 var finishLoaded bool = RegisterFuncClass(fnshVar)
 
 type finishState struct {
 	calls int
 }
 
-type finishCfg struct {
-	Trace     bool		`yaml:trace json:trace`
+type FinishCfg struct {
+	Msg2MC map[string]string `yaml:"msg2mc" json:"msg2mc"`
+	Trace  int               `yaml:"trace" json:"trace"`
 }
 
-func ClassCreateFinishCfg() *finishCfg {
-	fnsh := new(finishCfg)
-	fnsh.Trace = false
+func ClassCreateFinishCfg() *FinishCfg {
+	fnsh := new(FinishCfg)
+	fnsh.Trace = 0
+	fnsh.Msg2MC = make(map[string]string)
 	return fnsh
 }
 
 func createFinishState() *finishState {
 	fnsh := new(finishState)
 	return fnsh
-}	
+}
 
-func (fnsh *finishCfg) FuncClassName() string {
+func (fnsh *FinishCfg) FuncClassName() string {
 	return "finish"
 }
 
-func (fnsh *finishCfg) CreateCfg(cfgStr string, useYAML bool) any {
+func (fnsh *FinishCfg) CreateCfg(cfgStr string) any {
+	useYAML := cfgStr[0] != '{'
 	fnshVarAny, err := fnsh.Deserialize(cfgStr, useYAML)
 	if err != nil {
-		panic(fmt.Errorf("finish.CreateCfg sees deserialization error"))
+		panic(fmt.Errorf("finish.InitCfg sees deserialization error"))
 	}
 	return fnshVarAny
 }
 
-func (fnsh *finishCfg) InitCfg(cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
-	fnshVarAny := fnsh.CreateCfg(cfgStr, useYAML)
-	fnshv := fnshVarAny.(*finishCfg)
+func (fnsh *FinishCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
+	fnshVarAny := fnsh.CreateCfg(cfgStr)
+	fnshv := fnshVarAny.(*FinishCfg)
 	cpfi.Cfg = fnshv
+	copyDict(cpfi.Msg2MC, fnshv.Msg2MC)
 	cpfi.State = createFinishState()
-	cpfi.Trace = fnshv.Trace
+	cpfi.Trace = (fnshv.Trace != 0)
 }
 
-func (fnsh *finishCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
+func (fnsh *FinishCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
 	return nil
 }
 
-
-// serialize transforms the finish into string form for
+// Serialize transforms the finish into string form for
 // inclusion through a file
-func (fnsh *finishCfg) Serialize(useYAML bool) (string, error) {
+func (fnsh *FinishCfg) Serialize(useYAML bool) (string, error) {
 	var bytes []byte
 	var merr error
 
@@ -983,13 +577,21 @@ func (fnsh *finishCfg) Serialize(useYAML bool) (string, error) {
 	return string(bytes[:]), nil
 }
 
+func (fnsh *FinishCfg) CfgStr() string {
+	rtn, err := fnsh.Serialize(true)
+	if err != nil {
+		panic(fmt.Errorf("finish cfg serialization error"))
+	}
+	return rtn
+}
+
 // Deserialize recovers a serialized representation of a finish structure
-func (fnsh *finishCfg) Deserialize(fss string, useYAML bool) (any, error) {
+func (fnsh *FinishCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	// turn the string into a slice of bytes
 	var err error
 	fsb := []byte(fss)
 
-	example := finishCfg{Trace: false}
+	example := FinishCfg{Trace: 0}
 
 	// Select whether we read in json or yaml
 	if useYAML {
@@ -1004,63 +606,81 @@ func (fnsh *finishCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	return &example, nil
 }
 
-// finishEnter flags completing
+// finishEnter drops information in the logs, and by not scheduling anything lets the execution thread finish
 func finishEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
-    fns := cpfi.State.(*finishState)
-    fns.calls += 1
-    endptName := cpfi.Host
-    endpt := mrnes.EndptDevByName[endptName]
-    traceMgr.AddTrace(evtMgr.CurrentTime(), msg.ExecID, 0, endpt.DevID(), "exit", msg.CarriesPckt(), msg.Rate)
-    EndRecExec(msg.ExecID, evtMgr.CurrentSeconds())
-}   
+	fns := cpfi.State.(*finishState)
+	fns.calls += 1
 
-//-------- methods and state for function class finish
-var wgcVar *workloadGenCfg = ClassCreateWorkloadGenCfg()
-var wgcLoaded bool = RegisterFuncClass(wgcVar)
-
-type workloadGenCfg struct {
-	Rate float64	`yaml:rate json:rate`
-	Wgt  float64	`yaml:wgt json:wgt`
+	endptName := cpfi.Host
+	endpt := mrnes.EndptDevByName[endptName]
+	AddCPTrace(traceMgr, evtMgr.CurrentTime(), msg.ExecID, endpt.DevID(), "exit", msg)
 }
 
-func ClassCreateWorkloadGenCfg() *workloadGenCfg {
-	wgc := new(workloadGenCfg)
-	return wgc
+//-------- methods and state for function class open
+
+var opnVar *openCfg = ClassCreateOpenCfg()
+var openLoaded bool = RegisterFuncClass(opnVar)
+
+type openState struct {
+	calls int
 }
 
-func (wgc *workloadGenCfg) FuncClassName() string {
-	return "workloadGen"
+type openCfg struct {
+	Data       string            `yaml:"data" json:"data"`
+	TimingCode map[string]string `yaml:"timingcode" json:"timingcode"`
+	Msg2MC     map[string]string `yaml:"msg2mc" json:"msg2mc"`
+	Trace      int               `yaml:"trace" json:"trace"`
 }
 
-func (wgc *workloadGenCfg) CreateCfg(cfgStr string, useYAML bool) any {
-	wgVarAny, err := wgc.Deserialize(cfgStr, useYAML)
+func ClassCreateOpenCfg() *openCfg {
+	opn := new(openCfg)
+	opn.TimingCode = make(map[string]string)
+	opn.Msg2MC = make(map[string]string)
+	opn.Trace = 0
+	return opn
+}
+
+func createOpenState() *openState {
+	opn := new(openState)
+	return opn
+}
+
+func (opn *openCfg) FuncClassName() string {
+	return "open"
+}
+
+func (opn *openCfg) CreateCfg(cfgStr string) any {
+	useYAML := cfgStr[0] != '{'
+	opnVarAny, err := opn.Deserialize(cfgStr, useYAML)
 	if err != nil {
-		panic(fmt.Errorf("workloadGenCfg.CreateCfg sees deserialization error"))
+		panic(fmt.Errorf("open.InitCfg sees deserialization error"))
 	}
-	return wgVarAny
+	return opnVarAny
 }
 
-func (wgc *workloadGenCfg) InitCfg(cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
-	cpfi.InitFunc = insertWorkload
-	wgcVarAny := wgc.CreateCfg(cfgStr, useYAML)
-	wgcv := wgcVarAny.(*workloadGenCfg)
-	cpfi.Cfg = wgcv
+func (opn *openCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
+	opnVarAny := opn.CreateCfg(cfgStr)
+	opnv := opnVarAny.(*openCfg)
+	cpfi.Cfg = opnv
+	copyDict(cpfi.Msg2MC, opnv.Msg2MC)
+	cpfi.State = createOpenState()
+	cpfi.Trace = (opnv.Trace != 0)
 }
 
-func (wgc *workloadGenCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
+func (opn *openCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
 	return nil
 }
 
-// serialize transforms the finish into string form for
+// Serialize transforms the open into string form for
 // inclusion through a file
-func (wgc *workloadGenCfg) Serialize(useYAML bool) (string, error) {
+func (opn *openCfg) Serialize(useYAML bool) (string, error) {
 	var bytes []byte
 	var merr error
 
 	if useYAML {
-		bytes, merr = yaml.Marshal(*wgc)
+		bytes, merr = yaml.Marshal(*opn)
 	} else {
-		bytes, merr = json.Marshal(*wgc)
+		bytes, merr = json.Marshal(*opn)
 	}
 
 	if merr != nil {
@@ -1070,13 +690,21 @@ func (wgc *workloadGenCfg) Serialize(useYAML bool) (string, error) {
 	return string(bytes[:]), nil
 }
 
-// Deserialize recovers a serialized representation of a finish structure
-func (wgc *workloadGenCfg) Deserialize(fss string, useYAML bool) (any, error) {
+func (opn *openCfg) CfgStr() string {
+	rtn, err := opn.Serialize(true)
+	if err != nil {
+		panic(fmt.Errorf("open cfg serialization error"))
+	}
+	return rtn
+}
+
+// Deserialize recovers a serialized representation of a open structure
+func (opn *openCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	// turn the string into a slice of bytes
 	var err error
 	fsb := []byte(fss)
 
-	example := workloadGenCfg{Rate: 1.0, Wgt: 1e-3}
+	example := openCfg{Trace: 0}
 
 	// Select whether we read in json or yaml
 	if useYAML {
@@ -1091,33 +719,799 @@ func (wgc *workloadGenCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	return &example, nil
 }
 
-func workloadGenStart(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
-	evtMgr.Schedule(cpfi, nil, insertWorkload, SecondsToTime(0.0))
+// -------- methods and state for function class srvRsp
+// srvRsp receives a request to perform some service, from
+// a different comp pattern and label.  Those are found in the message's
+// PrevCPID, prevLabel, and the requesting message type is
+// in prevMsgType.   The srvRsp function delays based on the (configured) service operation
+// and then responds back to the requesting source.
+var srvRspVar *srvRspCfg = ClassCreateSrvRspCfg()
+var srvRspLoaded bool = RegisterFuncClass(srvRspVar)
+
+type srvRspState struct {
+	calls int
 }
 
-func insertWorkload(evtMgr *evtm.EventManager, context any, data any) any {
-	cpfi := context.(*CmpPtnFuncInst)
-	cpi := CmpPtnInstByName[cpfi.PtnName]
-	wg := cpfi.Cfg.(*workloadGenCfg)
+type srvRspCfg struct {
+	// chosen op, for timing
+	TimingCode   map[string]string `yaml:"timingcode" json:"timingcode"`
+	Msg2MC       map[string]string `yaml:"msg2mc" json:"msg2mc"`
+	DirectPrefix []string          `yaml:"directprefix" json:"directprefix"`
+	Trace        int               `yaml:"trace" json:"trace"`
+}
+
+func ClassCreateSrvRspCfg() *srvRspCfg {
+	srvRsp := new(srvRspCfg)
+	srvRsp.TimingCode = make(map[string]string)
+	srvRsp.DirectPrefix = make([]string, 0)
+	srvRsp.Msg2MC = make(map[string]string)
+	srvRsp.Trace = 0
+	return srvRsp
+}
+
+func createSrvRspState() *srvRspState {
+	srvRsp := new(srvRspState)
+	return srvRsp
+}
+
+func (srvRsp *srvRspCfg) FuncClassName() string {
+	return "srvRsp"
+}
+
+func (srvRsp *srvRspCfg) CreateCfg(cfgStr string) any {
+	useYAML := (cfgStr[0] != '{')
+	srvRspVarAny, err := srvRsp.Deserialize(cfgStr, useYAML)
+	if err != nil {
+		panic(fmt.Errorf("srvRsp.InitCfg sees deserialization error"))
+	}
+	return srvRspVarAny
+}
+
+func (srvRsp *srvRspCfg) Populate(tc map[string]string, trace bool) {
+	for key, value := range tc {
+		srvRsp.TimingCode[key] = value
+	}
+}
+
+func (srvRsp *srvRspCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
+	srvRspVarAny := srvRsp.CreateCfg(cfgStr)
+	srvRspv := srvRspVarAny.(*srvRspCfg)
+	cpfi.Cfg = srvRspv
+	copyDict(cpfi.Msg2MC, srvRspv.Msg2MC)
+	cpfi.IsService = true
+	cpfi.State = createSrvRspState()
+
+	// the srventication response function is a service, meaning
+	// that its selection doesn't require identification of the source CP
+	cpfi.Trace = (srvRspv.Trace != 0)
+}
+
+func (srvRsp *srvRspCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
+	return nil
+}
+
+// Serialize transforms the srvRsp into string form for
+// inclusion through a file
+func (srvRsp *srvRspCfg) Serialize(useYAML bool) (string, error) {
+	var bytes []byte
+	var merr error
+
+	if useYAML {
+		bytes, merr = yaml.Marshal(*srvRsp)
+	} else {
+		bytes, merr = json.Marshal(*srvRsp)
+	}
+
+	if merr != nil {
+		return "", merr
+	}
+
+	return string(bytes[:]), nil
+}
+
+func (srvRsp *srvRspCfg) CfgStr() string {
+	rtn, err := srvRsp.Serialize(true)
+	if err != nil {
+		panic(fmt.Errorf("service response cfg serialization error"))
+	}
+	return rtn
+}
+
+// Deserialize recovers a serialized representation of a srvRsp structure
+func (srvRsp *srvRspCfg) Deserialize(fss string, useYAML bool) (any, error) {
+	// turn the string into a slice of bytes
+	var err error
+	fsb := []byte(fss)
+
+	example := srvRspCfg{Trace: 0}
+
+	// Select whether we read in json or yaml
+	if useYAML {
+		err = yaml.Unmarshal(fsb, &example)
+	} else {
+		err = json.Unmarshal(fsb, &example)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return &example, nil
+}
+
+// srvRspEnter flags
+func srvRspEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
+	arpc := cpfi.Cfg.(*srvRspCfg)
+	arps := cpfi.State.(*srvRspState)
+	arps.calls += 1
+
+	endptName := cpfi.Host
+	endpt := mrnes.EndptDevByName[endptName]
+	AddCPTrace(traceMgr, evtMgr.CurrentTime(), msg.ExecID, endpt.DevID(), "enter", msg)
+
+	// look up response delay.  If message type prefix matches the direct prefix list
+	// use it directly
+	pieces := strings.Split(msg.MsgType, "-")
+	var tcCode string
+	if len(pieces) > 1 {
+		found := false
+		opPrefix := pieces[0]
+		for _, prefix := range arpc.DirectPrefix {
+			if opPrefix == prefix {
+				found = true
+				break
+			}
+		}
+		if !found {
+			panic(fmt.Errorf("expected server to have prefix %s for msg type %s", pieces[0], msg.MsgType))
+		}
+		tcCode = msg.MsgType
+	} else {
+		tcCode = arpc.TimingCode[msg.MsgType]
+	}
+	genTime := HostFuncExecTime(cpfi, tcCode, msg)
+
+	msg.CPID = msg.RtnCPID
+	msg.Label = msg.RtnLabel
+	msg.MsgType = msg.RtnMsgType
+
+	// put where ExitFunc will find it
+	cpfi.AddResponse(msg.ExecID, []*CmpPtnMsg{msg})
+
+	// schedule ExitFunc to happen after the genTime delay
+	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(genTime))
+}
+
+// -------- methods and state for function class srvReq
+var srvReqVar *srvReqCfg = ClassCreateSrvReqCfg()
+var srvReqLoaded bool = RegisterFuncClass(srvReqVar)
+
+type srvReqState struct {
+	rspEdgeIdx int // index of edge pointing to service response function
+	calls      int
+}
+
+type srvReqCfg struct {
+	// map the service request to the message type on departure
+	Bypass int               `yaml:"bypass" json:"bypass"`
+	SrvCP  string            `yaml:"srvcp" json:"srvcp"`
+	SrvOp  string            `yaml:"srvop" json:"srvop"`
+	SrvLabel string          `yaml:"srvlabel" json:"srvlabel"`
+	Msg2MC map[string]string `yaml:"msg2mc" json:"msg2mc"`
+	Trace  int               `yaml:"trace" json:"trace"`
+}
+
+func ClassCreateSrvReqCfg() *srvReqCfg {
+	srvReq := new(srvReqCfg)
+	srvReq.Msg2MC = make(map[string]string)
+	return srvReq
+}
+
+func createSrvReqState() *srvReqState {
+	srqs := new(srvReqState)
+	srqs.rspEdgeIdx = -1 // flag for replacement on first encounter
+	return srqs
+}
+
+func (srvReq *srvReqCfg) FuncClassName() string {
+	return "srvReq"
+}
+
+func (srvReq *srvReqCfg) CreateCfg(cfgStr string) any {
+	useYAML := (cfgStr[0] != '{')
+	srvReqVarAny, err := srvReq.Deserialize(cfgStr, useYAML)
+	if err != nil {
+		panic(fmt.Errorf("srvReq.InitCfg sees deserialization error"))
+	}
+	return srvReqVarAny
+}
+
+func (srvReq *srvReqCfg) Populate(bypass bool, trace bool) {
+	if trace {
+		srvReq.Trace = 1
+	} else {
+		srvReq.Trace = 0
+	}
+}
+
+func (srvReq *srvReqCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
+	srvReqVarAny := srvReq.CreateCfg(cfgStr)
+	srvReqv := srvReqVarAny.(*srvReqCfg)
+	cpfi.Cfg = srvReqv
+	copyDict(cpfi.Msg2MC, srvReq.Msg2MC)
+	cpfi.State = createSrvReqState()
+	cpfi.Trace = (srvReqv.Trace != 0)
+}
+
+func (srvReq *srvReqCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
+	return nil
+}
+
+// Serialize transforms the srvReq into string form for
+// inclusion through a file
+func (srvReq *srvReqCfg) Serialize(useYAML bool) (string, error) {
+	var bytes []byte
+	var merr error
+
+	if useYAML {
+		bytes, merr = yaml.Marshal(*srvReq)
+	} else {
+		bytes, merr = json.Marshal(*srvReq)
+	}
+
+	if merr != nil {
+		return "", merr
+	}
+
+	return string(bytes[:]), nil
+}
+
+func (srvReq *srvReqCfg) CfgStr() string {
+	rtn, err := srvReq.Serialize(true)
+	if err != nil {
+		panic(fmt.Errorf("service request cfg serialization error"))
+	}
+	return rtn
+}
+
+// Deserialize recovers a serialized representation of a srvReq structure
+func (srvReq *srvReqCfg) Deserialize(fss string, useYAML bool) (any, error) {
+	// turn the string into a slice of bytes
+	var err error
+	fsb := []byte(fss)
+
+	example := srvReqCfg{Trace: 0}
+
+	// Select whether we read in json or yaml
+	if useYAML {
+		err = yaml.Unmarshal(fsb, &example)
+	} else {
+		err = json.Unmarshal(fsb, &example)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return &example, nil
+}
+
+// srvReqEnter flags
+func srvReqEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
+	srqs := cpfi.State.(*srvReqState)
+	srqc := cpfi.Cfg.(*srvReqCfg)
+	srqs.calls += 1
+
+	var found bool
+	if srqs.rspEdgeIdx == -1 {
+
+		// find edge whose target func is from the "srvRsp" class
+		for idx, edge := range cpfi.OutEdges {
+			cp := CmpPtnInstByID[edge.CPID]
+			for _, funcInst := range cp.Funcs {
+				if funcInst.Class == "srvRsp" {
+					srqs.rspEdgeIdx = idx
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+	}
+
+	if found {
+		var eidx = srqs.rspEdgeIdx
+		if srqc.Bypass != 0 {
+			// there should be only two out edges, one pointing to the srvRsp, the
+			// other to the next hop
+			eidx = (srqs.rspEdgeIdx + 1) % 2
+		}
+
+		edge := cpfi.OutEdges[eidx]
+		msg.CPID = edge.CPID
+		msg.Label = edge.FuncLabel
 	
-	// look up the generation service requirement.
-	genTime := wg.Wgt
+	} else {
+		var srvCPID int
+		var srvLabel string
+		// the server CP is either given, or if not given is taken to be the CP from which the 
+		// inbound message came
+		if len(srqc.SrvCP) > 0 {
+			// srqc.SrvCP points to the CP and srvc.SrvOp gives the index in the Services table
+			srvCPID = CmpPtnInstByName[srqc.SrvCP].ID
+		} else {
+			srvCPID = CmpPtnInstByID[msg.PrevCPID].ID
+		}
 
-	nxt := csinterarrivalSample(cpi, "exp", 1.0/wg.Rate)
+		// the server label is either given, or is looked up from the server CP services table
+		if len(srqc.SrvLabel) > 0 {
+			srvLabel = srqc.SrvLabel
+		} else {
+			// use the service op prefix as a code to look in the services table
+			pieces := strings.Split(srqc.SrvOp, "-")
+			srvOp := pieces[0]
+		
+			srvDesc := CmpPtnInstByID[srvCPID].Services[srvOp]
+			if len(srvDesc.CP) > 0 {
+				srvCPID = CmpPtnInstByName[srvDesc.CP].ID
+			}
+			srvLabel = srvDesc.Label
+		}
+		msg.CPID  = srvCPID
+		msg.Label = srvLabel
+	}
+	msg.MsgType = srqc.SrvOp
+	msg.RtnCPID = cpfi.CPID
+	msg.RtnLabel = cpfi.Label
+	msg.RtnMsgType = "return-" + msg.MsgType
 
-	// if not hardware assisted call the host scheduler
-	scheduler := mrnes.TaskSchedulerByHostName[cpfi.Host]
-	scheduler.Schedule(evtMgr, false, "bckgrnd", genTime, math.MaxFloat64, nxtPri(), cpfi, nil, workloadDone)
+	// put msg where ExitFunc will find it
+	cpfi.AddResponse(msg.ExecID, []*CmpPtnMsg{msg})
 
-	// schedule the next workload insertion
-	evtMgr.Schedule(cpfi, nil, insertWorkload, SecondsToTime(nxt))
+	endptName := cpfi.Host
+	endpt := mrnes.EndptDevByName[endptName]
+	AddCPTrace(traceMgr, evtMgr.CurrentTime(), msg.ExecID, endpt.DevID(), "enter", msg)
+
+	// set up the return msgType to point to the return function
+	cpfi.Msg2MC[msg.RtnMsgType] = "return"
+
+	// schedule ExitFunc to happen after the genTime delay
+	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
+}
+
+func srvReqRtn(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
+	srqs := cpfi.State.(*srvReqState)
+	srqs.calls += 1
+
+	endptName := cpfi.Host
+	endpt := mrnes.EndptDevByName[endptName]
+	AddCPTrace(traceMgr, evtMgr.CurrentTime(), msg.ExecID, endpt.DevID(), "enter", msg)
+
+	// find the edge whose msg type is not the service code
+	edge := cpfi.OutEdges[(srqs.rspEdgeIdx+1)%2]
+	msg.CPID = edge.CPID
+	msg.Label = edge.FuncLabel
+	msg.MsgType = edge.MsgType
+
+	cpfi.AddResponse(msg.ExecID, []*CmpPtnMsg{msg})
+
+	// schedule ExitFunc to happen after the genTime delay
+	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
+}
+
+// -------- methods and state for function class transfer, to move
+// a message from one comp pattern to another
+var transferVar *transferCfg = ClassCreateTransferCfg()
+var transferLoaded bool = RegisterFuncClass(transferVar)
+
+type transferState struct {
+	calls int
+}
+
+type transferCfg struct {
+	Carried int               `yaml:"carried" json:"carried"` // message carries xCPID, xLabel
+	XCP     string            `yaml:"xcp" json:"xcp"`         // CmpPtn name of destination
+	XLabel  string            `yaml:"xlabel" json:"xlabel"`   // function label at destination
+	Msg2MC  map[string]string `yaml:"msg2mc" json:"msg2mc"`
+	Trace   int               `yaml:"trace" json:"trace"`
+}
+
+func ClassCreateTransferCfg() *transferCfg {
+	trnsfr := new(transferCfg)
+	return trnsfr
+}
+
+func createTransferState() *transferState {
+	transfer := new(transferState)
+	return transfer
+}
+
+func (trnsfr *transferCfg) FuncClassName() string {
+	return "transfer"
+}
+
+func (trnsfr *transferCfg) CreateCfg(cfgStr string) any {
+	useYAML := (cfgStr[0] != '{')
+	transferVarAny, err := trnsfr.Deserialize(cfgStr, useYAML)
+	if err != nil {
+		panic(fmt.Errorf("transfer.InitCfg sees deserialization error"))
+	}
+	return transferVarAny
+}
+
+func (trnsfr *transferCfg) Populate(carried bool, xcp string, xlabel string, trace bool) {
+	if carried {
+		trnsfr.Carried = 1
+	} else {
+		trnsfr.Carried = 0
+	}
+	trnsfr.XCP = xcp
+	trnsfr.XLabel = xlabel
+	if trace {
+		trnsfr.Trace = 1
+	} else {
+		trnsfr.Trace = 1
+	}
+}
+
+func (trnsfr *transferCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
+	transferVarAny := trnsfr.CreateCfg(cfgStr)
+	transferv := transferVarAny.(*transferCfg)
+	cpfi.Cfg = transferv
+	copyDict(cpfi.Msg2MC, transferv.Msg2MC)
+	cpfi.State = createSrvReqState()
+	cpfi.Trace = (transferv.Trace != 0)
+}
+
+func (trnsfr *transferCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
 	return nil
 }
 
-func workloadDone(evtMgr *evtm.EventManager, context any, data any) any {
+// Serialize transforms the transfer into string form for
+// inclusion through a file
+func (trnsfr *transferCfg) Serialize(useYAML bool) (string, error) {
+	var bytes []byte
+	var merr error
+
+	if useYAML {
+		bytes, merr = yaml.Marshal(*trnsfr)
+	} else {
+		bytes, merr = json.Marshal(*trnsfr)
+	}
+
+	if merr != nil {
+		return "", merr
+	}
+
+	return string(bytes[:]), nil
+}
+
+func (trnsfr *transferCfg) CfgStr() string {
+	rtn, err := trnsfr.Serialize(true)
+	if err != nil {
+		panic(fmt.Errorf("service request cfg serialization error"))
+	}
+	return rtn
+}
+
+// Deserialize recovers a serialized representation of a transfer structure
+func (trnsfr *transferCfg) Deserialize(fss string, useYAML bool) (any, error) {
+	// turn the string into a slice of bytes
+	var err error
+	fsb := []byte(fss)
+
+	example := transferCfg{Trace: 0}
+
+	// Select whether we read in json or yaml
+	if useYAML {
+		err = yaml.Unmarshal(fsb, &example)
+	} else {
+		err = json.Unmarshal(fsb, &example)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return &example, nil
+}
+
+// transferEnter flags
+func transferEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
+	tfrs := cpfi.State.(*transferState)
+	tfrc := cpfi.Cfg.(*transferCfg)
+	tfrs.calls += 1
+
+	// the location of the CPID and Label depend on whether the function Carried bit is set
+	if tfrc.Carried != 0 {
+		// get ID of comp pattern where service to be requested resided
+		msg.CPID = msg.XCPID
+		msg.Label = msg.XLabel
+	} else {
+		msg.CPID = CmpPtnInstByName[tfrc.XCP].ID
+		msg.Label = tfrc.XLabel
+	}
+
+	// put where ExitFunc will find it
+	cpfi.AddResponse(msg.ExecID, []*CmpPtnMsg{msg})
+
+	endptName := cpfi.Host
+	endpt := mrnes.EndptDevByName[endptName]
+	AddCPTrace(traceMgr, evtMgr.CurrentTime(), msg.ExecID, endpt.DevID(), "enter", msg)
+
+	// schedule ExitFunc to happen immediately
+	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
+}
+
+//-------- methods and state for function class bckgrndLd
+
+var bgLdVar *bckgrndLdCfg = ClassCreateBckgrndLdCfg()
+var bckgrndLdLoaded bool = RegisterFuncClass(bgLdVar)
+
+type bckgrndLdState struct {
+	calls int
+}
+
+type bckgrndLdCfg struct {
+	BckgrndFunc string  `yaml:"bckgrndfunc" json:"bckgrndfunc"`
+	BckgrndRate float64 `yaml:"bckgrndrate" json:"bckgrndrate"`
+	BckgrndSrv  float64 `yaml:"bckgrndsrv" json:"bckgrndsrv"`
+	Trace       int     `yaml:"trace" json:"trace"`
+}
+
+func ClassCreateBckgrndLdCfg() *bckgrndLdCfg {
+	bgld := new(bckgrndLdCfg)
+	bgld.BckgrndFunc = "empty"
+	bgld.BckgrndRate = 0.0
+	bgld.BckgrndSrv = 0.010
+	return bgld
+}
+
+func createBckgrndLdState() *bckgrndLdState {
+	bglds := new(bckgrndLdState)
+	return bglds
+}
+
+func (bgld *bckgrndLdCfg) FuncClassName() string {
+	return "bckgrndLd"
+}
+
+func (bgld *bckgrndLdCfg) CreateCfg(cfgStr string) any {
+	useYAML := (cfgStr[0] != '{')
+	bgldVarAny, err := bgld.Deserialize(cfgStr, useYAML)
+	if err != nil {
+		panic(fmt.Errorf("bckgrndLd.InitCfg sees deserialization error"))
+	}
+	return bgldVarAny
+}
+
+func (bgld *bckgrndLdCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
+	bgldVarAny := bgld.CreateCfg(cfgStr)
+	bgldv := bgldVarAny.(*bckgrndLdCfg)
+
+	// default background event handler
+	AddHndlrMap("genbckgrnd", generateBckgrndLd)
+
+	// take the background load update function name and
+	// use it to set up a function call
+	_, present := HndlrMap[bgldv.BckgrndFunc]
+	if !present {
+		panic(fmt.Errorf("hndlr name %s unrecognized for bckgrndLd", bgldv.BckgrndFunc))
+	}
+
+	// schedule the initation of the background task
+	evtMgr.Schedule(cpfi, nil, HndlrMap[bgldv.BckgrndFunc], vrtime.SecondsToTime(0.0))
+	cpfi.Cfg = bgldv
+
+	cpfi.State = createBckgrndLdState()
+	cpfi.Trace = (bgldv.Trace != 0)
+
+	// use the background parameters to impact the underlaying endpoint
+	// background parameters
+	/* save the below for the startup event handler
+	endpt := mrnes.EndptDevByName[cpfi.Host]
+	endpt.EndptState.BckgrndRate += bgldv.BckgrndRate
+	endpt.EndptState.BckgrndSrv = math.Max(bgldv.BckgrndSrv, endpt.EndptState.BckgrndSrv)
+	*/
+}
+
+func (bgld *bckgrndLdCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
 	return nil
 }
 
-func workloadGenEnd(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
-	return 
+// Serialize transforms the bckgrndLd into string form for
+// inclusion through a file
+func (bgld *bckgrndLdCfg) Serialize(useYAML bool) (string, error) {
+	var bytes []byte
+	var merr error
+
+	if useYAML {
+		bytes, merr = yaml.Marshal(*bgld)
+	} else {
+		bytes, merr = json.Marshal(*bgld)
+	}
+
+	if merr != nil {
+		return "", merr
+	}
+
+	return string(bytes[:]), nil
+}
+
+// Deserialize recovers a serialized representation of a bckgrndLd structure
+func (bgld *bckgrndLdCfg) Deserialize(fss string, useYAML bool) (any, error) {
+	// turn the string into a slice of bytes
+	var err error
+	fsb := []byte(fss)
+
+	example := bckgrndLdCfg{Trace: 0, BckgrndRate: 0.0, BckgrndSrv: 0.010}
+
+	// Select whether we read in json or yaml
+	if useYAML {
+		err = yaml.Unmarshal(fsb, &example)
+	} else {
+		err = json.Unmarshal(fsb, &example)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return &example, nil
+}
+
+// bckgrndGenLd will start the background load activity, but not schedule any changes
+// to it
+func generateBckgrndLd(evtMgr *evtm.EventManager, context any, data any) any {
+	cpfi := context.(*CmpPtnFuncInst)
+	cfg := cpfi.Cfg.(*bckgrndLdCfg)
+	endpt := mrnes.EndptDevByName[cpfi.Host]
+	endpt.EndptState.BckgrndRate += cfg.BckgrndRate
+	endpt.EndptState.BckgrndSrv = math.Max(cfg.BckgrndSrv, endpt.EndptState.BckgrndSrv)
+	mrnes.InitializeBckgrndEndpt(evtMgr, endpt)
+	return nil
+}
+
+//-------- methods and state for function class measure
+
+var measureVar *MeasureCfg = ClassCreateMeasureCfg()
+var measureLoaded bool = RegisterFuncClass(measureVar)
+
+type measureState struct {
+	calls int
+}
+
+type MeasureCfg struct {
+	MsrName string            `yaml:"msrname" json:"msrname"`
+	MsrOp   string            `yaml:"msrop" json:"msrop"`
+	Msg2MC  map[string]string `yaml:"msg2mc" json:"msg2mc"`
+	Trace   int               `yaml:"trace" json:"trace"`
+}
+
+func ClassCreateMeasureCfg() *MeasureCfg {
+	measure := new(MeasureCfg)
+	return measure
+}
+
+func (measure *MeasureCfg) Populate(name string, pcktlen int, msglen int, start bool, op string, trace bool) {
+
+	measure.MsrName = name
+	if trace {
+		measure.Trace = 1
+	} else {
+		measure.Trace = 0
+	}
+	measure.MsrOp = op
+}
+
+func createMeasureState() *measureState {
+	measure := new(measureState)
+	return measure
+}
+
+func (measure *MeasureCfg) FuncClassName() string {
+	return "measure"
+}
+
+func (measure *MeasureCfg) CreateCfg(cfgStr string) any {
+	useYAML := (cfgStr[0] != '{')
+	measureVarAny, err := measure.Deserialize(cfgStr, useYAML)
+	if err != nil {
+		panic(fmt.Errorf("measure.InitCfg sees deserialization error"))
+	}
+	return measureVarAny
+}
+
+func (measure *MeasureCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
+	measureVarAny := measure.CreateCfg(cfgStr)
+	measurev := measureVarAny.(*MeasureCfg)
+	cpfi.Cfg = measurev
+	copyDict(cpfi.Msg2MC, measurev.Msg2MC)
+	cpfi.State = createMeasureState()
+	cpfi.Trace = (measurev.Trace != 0)
+}
+
+func (measure *MeasureCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
+	return nil
+}
+
+// Serialize transforms the measure into string form for
+// inclusion through a file
+func (measure *MeasureCfg) Serialize(useYAML bool) (string, error) {
+	var bytes []byte
+	var merr error
+
+	if useYAML {
+		bytes, merr = yaml.Marshal(*measure)
+	} else {
+		bytes, merr = json.Marshal(*measure)
+	}
+
+	if merr != nil {
+		return "", merr
+	}
+
+	return string(bytes[:]), nil
+}
+
+func (measure *MeasureCfg) CfgStr() string {
+	rtn, err := measure.Serialize(true)
+	if err != nil {
+		panic(fmt.Errorf("measure cfg serialization error"))
+	}
+	return rtn
+}
+
+// Deserialize recovers a serialized representation of a measure structure
+func (measure *MeasureCfg) Deserialize(fss string, useYAML bool) (any, error) {
+	// turn the string into a slice of bytes
+	var err error
+	prb := []byte(fss)
+
+	example := MeasureCfg{Trace: 0}
+
+	// Select whether we read in json or yaml
+	if useYAML {
+		err = yaml.Unmarshal(prb, &example)
+	} else {
+		err = json.Unmarshal(prb, &example)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return &example, nil
+}
+
+// measureEnter either starts or stops a measurement
+func measureEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
+	mcfg := cpfi.Cfg.(*MeasureCfg)
+
+	endptName := cpfi.Host
+	endpt := mrnes.EndptDevByName[endptName]
+	AddCPTrace(traceMgr, evtMgr.CurrentTime(), msg.ExecID, endpt.DevID(), "exit", msg)
+
+	// create an initial message
+	if mcfg.MsrOp == "start" || mcfg.MsrOp == "Start" {
+		if Measured == nil {
+			Measured = new(MsrData)
+			Measured.Measurements = make([]PerfRecord, 0)
+		}
+		createMeasureRecord(cpfi, mcfg.MsrName, evtMgr.CurrentSeconds(), msg)
+
+		// should be only one edge
+		edge := cpfi.OutEdges[0]
+		msg.MsgType = edge.MsgType
+
+		// put where ExitFunc will find it
+		cpfi.AddResponse(msg.ExecID, []*CmpPtnMsg{msg})
+	} else if (mcfg.MsrName == measureID2Name[msg.MeasureID]) && (mcfg.MsrOp != "end" && mcfg.MsrOp != "End") {
+		// this measurement has the same name as one that was tagged to the message
+		cpfi.AddResponse(msg.ExecID, []*CmpPtnMsg{msg})
+		recordMeasure(msg.MeasureID, evtMgr.CurrentSeconds(), cpfi.Host, CmpPtnInstByID[cpfi.CPID].Name, cpfi.Label)
+	} else if mcfg.MsrOp == "end" || mcfg.MsrOp == "End" {
+		endMeasure(msg.MeasureID, evtMgr.CurrentSeconds(), cpfi.Host, CmpPtnInstByID[cpfi.CPID].Name, cpfi.Label)
+	}
+
+	// empty message type flags assertion that there is only one edge, so select it
+	cpm := advanceMsg(cpfi, msg, "")
+	evtMgr.Schedule(cpfi, cpm, ExitFunc, vrtime.SecondsToTime(0.0))
 }

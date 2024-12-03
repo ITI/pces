@@ -5,6 +5,8 @@ package pces
 import (
 	"fmt"
 	"github.com/iti/evt/evtm"
+	"strconv"
+	"strings"
 )
 
 // The edgeStruct struct describes a possible output edge for a response
@@ -14,6 +16,7 @@ type edgeStruct struct {
 	MsgType   string
 }
 
+// createEdgeStruct is a constructor
 func createEdgeStruct(cpID int, label, msgType string) edgeStruct {
 	es := edgeStruct{CPID: cpID, FuncLabel: label, MsgType: msgType}
 	return es
@@ -21,61 +24,68 @@ func createEdgeStruct(cpID int, label, msgType string) edgeStruct {
 
 // The CmpPtnFuncInst struct represents an instantiated instance of a function
 type CmpPtnFuncInst struct {
-	InitFunc         evtm.EventHandlerFunction // if not 'emptyInitFunc' call this to initialize the function
-	AuxFunc          evtm.EventHandlerFunction  
-	InitMsg          *CmpPtnMsg                // message that is copied when this instance is used to initiate a chain of func evaluations
-	Class            string                    // specifier leading to specific state, entrance, and exit functions
-	Label            string                    // an identifier for this func, unique within the instance of CompPattern holding it.
-	Host             string                    // identity of the host to which this func is mapped for execution
-	SharedGroup      string                    // empty means state not shared, otherwise global name of group with shared state
-	PtnName          string                    // name of the instantiated CompPattern holding this function
-	CPID             int                       // id of the comp pattern this func is attached to
-	ID               int                       // integer identity which is unique among all objects in the pces model
-	Active           bool                      // flag whether function is actively processing inputs
-	Trace            bool                      // indicate whether this function should record its enter/exit in the trace
-	Cfg				 any                       // holds string-coded state for string-code configuratin variable names
-	State            any                       // holds string-coded state for string-code state variable names
-	InterarrivalDist string
-	InterarrivalMean float64
+	AuxFunc     evtm.EventHandlerFunction
+	Class       string             // specifier leading to specific state, entrance, and exit functions
+	Label       string             // an identifier for this func, unique within the instance of CompPattern holding it.
+	Host        string             // identity of the host to which this func is mapped for execution
+	SharedGroup string             // empty means state not shared, otherwise global name of group with shared state
+	PtnName     string             // name of the instantiated CompPattern holding this function
+	CPID        int                // id of the comp pattern this func is attached to
+	ID          int                // integer identity which is unique among all objects in the pces model
+	Trace       bool               // indicate whether this function should record its enter/exit in the trace
+	Measure     bool               // If true start device-to-device measurement
+	IsService   bool               // when a service the processing does not depend on the CP asking for a response
+	PrevEdge    map[int]edgeStruct // saved selection edge
+	Priority    float64            // scheduling priority
+	Cfg         any                // holds string-coded state for string-code configuratin variable names
+	State       any                // holds string-coded state for string-code state variable names
 
-	// represent the comp pattern edges touching this function.  The in edge
-	// is indexed by the source function label and message type, yielding the method code
-	InEdgeMethodCode map[edgeStruct]string
-
-	// the out edges are in a list of edgeStructs
+	// OutEdges is a list of edgeStructs
 	OutEdges []edgeStruct
 
-	// respMethods indexed by method code
+	// input message type to method code
+	Msg2MC map[string]string
+
+	// output message type to index in OutEdges
+	Msg2Idx map[string]int
+
+	// RespMethods are indexed by method code.
+	// A Respond method holds a pointer to a function to call when processing
+	// an input with the given response method, and a function to schedule
+	// when the method has completed.
 	RespMethods map[string]*RespMethod
 
-	// save messages created as result of processing function
+	// MsgResp maps a thread's execID to a list of computation pattern messages
 	MsgResp map[int][]*CmpPtnMsg
 }
 
-// createDestFuncInst== is a constructor that builds an instance of CmpPtnFunctInst from a Func description and
+// createDestFuncInst is a constructor that builds an instance of CmpPtnFunctInst from a Func description and
 // a serialized representation of a StaticParameters struct.
-func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYAML bool) *CmpPtnFuncInst {
+func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYAML bool, evtMgr *evtm.EventManager) *CmpPtnFuncInst {
 	cpfi := new(CmpPtnFuncInst)
 	cpfi.ID = nxtID()         // get an integer id that is unique across all objects in the simulation model
 	cpfi.Label = fnc.Label    // remember a label given to this function instance as part of building a CompPattern graph
 	cpfi.PtnName = cpInstName // remember the name of the instance of the comp pattern in which this func resides
 	cpfi.CPID = cpID          // remember the ID of the Comp Pattern in which this func resides
-	cpfi.InitFunc = nil       // will be over-ridden if there is an initialization event scheduled later
-	cpfi.InitMsg = nil        // will be over-ridden if the initialization block indicates initiation possible
-	cpfi.Active = true
-	cpfi.Trace = false
-	cpfi.Class = fnc.Class
-	cpfi.MsgResp = make(map[int][]*CmpPtnMsg)
+	cpfi.Trace = false        // flag whether we should trace execution through this function
+	cpfi.IsService = false
+	cpfi.Class = fnc.Class // remember the class
+
+	cpfi.MsgResp = make(map[int][]*CmpPtnMsg) // prepare to be initialized
 
 	// inEdges, outEdges, and methodCode filled in after all function instances for a comp pattern created
-	cpfi.InEdgeMethodCode = make(map[edgeStruct]string)
 	cpfi.OutEdges = make([]edgeStruct, 0)
-	// cpfi.methodCode = make(map[string]string)
-	cpfi.RespMethods = make(map[string]*RespMethod)
+	cpfi.Msg2MC = make(map[string]string)
+	cpfi.Msg2Idx = make(map[string]int)
+
+	cpfi.RespMethods = make(map[string]*RespMethod) // prepare to be initialized
 
 	// if the ClassMethods map for the cpfi's class exists,
 	// initialize respMethods to be that
 
+	// the ClassMethods map associates a dictionary with the name of the
+	// function class.  That dictionary is indexed by 'methodCode' and has as
+	// a value a RespMethod structure that describes
 	_, present := ClassMethods[fnc.Class]
 	if present {
 		// copy over the mapping to event handlers
@@ -88,6 +98,7 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYA
 
 	// look up the func-to-host assignment, established earlier in the initialization sequence
 	cpfi.Host = CmpPtnFuncHost(cpfi)
+	cpfi.Priority = CmpPtnFuncPriority(cpfi)
 
 	// get a pointer to the function's class
 	fc := FuncClasses[fnc.Class]
@@ -96,7 +107,7 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYA
 	// otherwise we have already created the state and just recover it
 	// FINDME N.B. revisit notion/use of shared function
 	if len(cpfi.SharedGroup) == 0 {
-		fc.InitCfg(cpfi, cfgStr, useYAML)
+		fc.InitCfg(evtMgr, cpfi, cfgStr, useYAML)
 	} else {
 		gfid := GlobalFuncID{CmpPtnName: cpfi.PtnName, Label: cpfi.Label}
 		cpfi.Cfg = funcInstToSharedCfg[gfid]
@@ -105,7 +116,6 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYA
 	if cpfi.funcTrace() {
 		traceMgr.AddName(cpfi.ID, cpfi.GlobalName(), "application")
 	}
-
 	return cpfi
 }
 
@@ -127,6 +137,7 @@ func (cpfi *CmpPtnFuncInst) AddResponse(execID int, resp []*CmpPtnMsg) {
 // funcResp returns the saved list of function response messages associated
 // the the response to the input msg, and removes it from the msgResp map
 func (cpfi *CmpPtnFuncInst) funcResp(execID int) []*CmpPtnMsg {
+
 	rtn, present := cpfi.MsgResp[execID]
 	if !present {
 		panic(fmt.Errorf("unsuccessful resp recovery"))
@@ -134,19 +145,6 @@ func (cpfi *CmpPtnFuncInst) funcResp(execID int) []*CmpPtnMsg {
 	delete(cpfi.MsgResp, execID)
 
 	return rtn
-}
-
-func (cpfi *CmpPtnFuncInst) isInitiating() bool {
-	return cpfi.InitFunc != nil
-}
-
-func (cpfi *CmpPtnFuncInst) InitMsgParams(msgType string, msgLen, pcktLen int, rate float64) {
-	cpfi.InitMsg = &CmpPtnMsg{MsgType: msgType, MsgLen: msgLen, PcktLen: pcktLen, Rate: rate}
-}
-
-// funcActive indicates whether the function is processing messages
-func (cpfi *CmpPtnFuncInst) funcActive() bool {
-	return cpfi.Active
 }
 
 // funcClass gives the FuncClass declares on the Func upon which this instance is based
@@ -179,11 +177,6 @@ func (cpfi *CmpPtnFuncInst) funcDevice() string {
 	return cpfi.Host
 }
 
-// func funcInitEvtHdlr gives the function to schedule to initialize the function instance
-func (cpfi *CmpPtnFuncInst) funcInitEvtHdlr() evtm.EventHandlerFunction {
-	return cpfi.InitFunc
-}
-
 // AddStartMethod associates a string response 'name' with a pair of methods used to
 // represent the start and end of the function's execution.   The default method
 // for the end method is ExitFunc
@@ -213,5 +206,21 @@ func (cpfi *CmpPtnFuncInst) AddEndMethod(methodCode string, end evtm.EventHandle
 
 func CmpPtnFuncHost(cpfi *CmpPtnFuncInst) string {
 	ptnMap := CmpPtnMapDict.Map[cpfi.PtnName] // note binding of pattern to dictionary map to function map.  Shared needs something different
-	return ptnMap.FuncMap[cpfi.Label]
+	hostPri := ptnMap.FuncMap[cpfi.Label]
+	if strings.Contains(hostPri, ",") {
+		pieces := strings.Split(hostPri, ",")
+		return pieces[0]
+	}
+	return hostPri
+}
+
+func CmpPtnFuncPriority(cpfi *CmpPtnFuncInst) float64 {
+	ptnMap := CmpPtnMapDict.Map[cpfi.PtnName] // note binding of pattern to dictionary map to function map.  Shared needs something different
+	hostPri := ptnMap.FuncMap[cpfi.Label]
+	if strings.Contains(hostPri, ",") {
+		pieces := strings.Split(hostPri, ",")
+		pri, _ := strconv.ParseFloat(pieces[1], 64)
+		return pri
+	}
+	return 1.0
 }

@@ -5,7 +5,6 @@ package pces
 import (
 	"fmt"
 	"github.com/iti/evt/evtm"
-	"github.com/iti/evt/vrtime"
 	"github.com/iti/mrnes"
 	"path"
 	"sort"
@@ -22,26 +21,8 @@ type NetSimPortal interface {
 		any, evtm.EventHandlerFunction, any, evtm.EventHandlerFunction) any
 }
 
-// The TraceManager interface helps integrate use of the mrnes functionality for managing
-// traces in the pces package
-type TraceManager interface {
-
-	// at creation a flag is set indicating whether the trace manager will be active
-	Active() bool
-
-	// add a trace event to the manager
-	AddTrace(vrtime.Time, int, int, int, string, bool, float64)
-
-	// include an id -> (name, type) pair in the trace manager dictionary
-	AddName(int, string, string)
-
-	// save the trace to file (if active) and return flag indicating whether file creatation actually happened
-	WriteToFile(string) bool
-}
-
 // pces pointers to mrnes implemenations of the NetworkPortal and TraceManager interfaces
 var netportal *mrnes.NetworkPortal
-var traceMgr TraceManager
 
 var CmpPtnMapDict *CompPatternMapDict
 var funcExecTimeTbl map[string]map[string]map[int]float64
@@ -59,15 +40,14 @@ type CmpPtnGraph struct {
 // CmpPtnGraphEdge declares the possibility that a function with label srcLabel
 // might send a message of type msgType to the function (in the same CPG) with label dstLabel
 type CmpPtnGraphEdge struct {
-	SrcLabel   string
-	MsgType    string
-	DstLabel   string
-	MethodCode string
+	SrcLabel string
+	MsgType  string
+	DstLabel string
 }
 
 func (cpge *CmpPtnGraphEdge) EdgeStr() string {
-	rtn := fmt.Sprintf("src %s, type %s, dst %s, method %s",
-		cpge.SrcLabel, cpge.MsgType, cpge.DstLabel, cpge.MethodCode)
+	rtn := fmt.Sprintf("src %s, type %s, dst %s",
+		cpge.SrcLabel, cpge.MsgType, cpge.DstLabel)
 	return rtn
 }
 
@@ -77,8 +57,8 @@ type ExtCmpPtnGraphEdge struct {
 	CPGE  CmpPtnGraphEdge
 }
 
-func CreateCmpPtnGraphEdge(srcLabel, msgType, dstLabel, methodCode string) *CmpPtnGraphEdge {
-	cpge := &CmpPtnGraphEdge{SrcLabel: srcLabel, MsgType: msgType, DstLabel: dstLabel, MethodCode: methodCode}
+func CreateCmpPtnGraphEdge(srcLabel, msgType, dstLabel string) *CmpPtnGraphEdge {
+	cpge := &CmpPtnGraphEdge{SrcLabel: srcLabel, MsgType: msgType, DstLabel: dstLabel}
 	return cpge
 }
 
@@ -93,8 +73,8 @@ type CmpPtnGraphNode struct {
 
 // addEdge takes the description of a CPG edge and attempts
 // to add that edge to the CPG node corresponding to the edge's source and destination
-func (cpg *CmpPtnGraph) addEdge(srcLabel, msgType, dstLabel, methodCode string) error {
-	edge := &CmpPtnGraphEdge{SrcLabel: srcLabel, MsgType: msgType, DstLabel: dstLabel, MethodCode: methodCode}
+func (cpg *CmpPtnGraph) addEdge(srcLabel, msgType, dstLabel string) error {
+	edge := &CmpPtnGraphEdge{SrcLabel: srcLabel, MsgType: msgType, DstLabel: dstLabel}
 
 	srcNode, present1 := cpg.Nodes[srcLabel]
 	if !present1 {
@@ -150,7 +130,7 @@ func createCmpPtnGraph(cp *CompPattern) (*CmpPtnGraph, error) {
 	// note that nodes are inferred from edges, not pulled out explicitly first
 	// Edge is (SrcLabel, DstLabel, MsgType) where the labels are for funcs
 	for _, edge := range cp.Edges {
-		err := cpg.addEdge(edge.SrcLabel, edge.MsgType, edge.DstLabel, edge.MethodCode)
+		err := cpg.addEdge(edge.SrcLabel, edge.MsgType, edge.DstLabel)
 		errList = append(errList, err)
 	}
 
@@ -168,7 +148,7 @@ func createCmpPtnGraphNode(label string) *CmpPtnGraphNode {
 
 // buildCmpPtns goes through every CompPattern in the input CompPatternDict,
 // and creates a run-time CmpPtnInst representation for it.
-func buildCmpPtns(cpd *CompPatternDict, cpid *CPInitListDict, ssgl *SharedCfgGroupList) error {
+func buildCmpPtns(cpd *CompPatternDict, cpid *CPInitListDict, ssgl *SharedCfgGroupList, evtMgr *evtm.EventManager) error {
 
 	errList := []error{}
 	// CompPatterns are arranged in a map that is indexed by the CompPattern name
@@ -178,12 +158,16 @@ func buildCmpPtns(cpd *CompPatternDict, cpid *CPInitListDict, ssgl *SharedCfgGro
 		// of the map of comp pattern initialization structs
 		var cpi *CmpPtnInst
 		var err error
-		cpi, err = createCmpPtnInst(cpName, cp, cpid.InitList[cpName])
+		cpi, err = createCmpPtnInst(cpName, cp, cpid.InitList[cpName], evtMgr)
 
 		errList = append(errList, err)
 
 		// save the instance we can look it up given the comp pattern name
 		CmpPtnInstByName[cpName] = cpi
+	}
+
+	for _, cp := range cpd.Patterns {
+		createSrvFuncLinks(cp)
 	}
 
 	// after all the patterns have been built, create their edge tables
@@ -232,7 +216,7 @@ func buildFuncExecTimeTbl(fel *FuncExecList) map[string]map[string]map[int]float
 // uses to assemble and initialize the model (and experiment) data structures.
 // It returns a pointer to an EventManager data structure used to coordinate the
 // execution of events in the simulation.
-func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm TraceManager) (*evtm.EventManager, error) {
+func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm *mrnes.TraceManager, evtMgr *evtm.EventManager) error {
 	// syn is a map that binds pre-defined keys referring to input file types with file names
 	// The keys are
 	//	"cpInput"		- file describing comp patterns and functions
@@ -245,11 +229,20 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm Tr
 	// call GetExperimentCPDicts to do the heavy lifting of extracting data structures
 	// (typically maps) designed for serialization/deserialization,  and assign those maps to variables
 	// we'll use to re-represent this information in structures optimized for run-time use
-	cpd, cpid, ssgl, fel, cpmd := GetExperimentCPDicts(syn)
+	cpd, cpid, fel, cpmd := GetExperimentCPDicts(syn)
 
+	err := ContinueBuildExperimentCP(cpd, cpid, fel, cpmd, syn, idCounter, tm, evtMgr)
 	// get a pointer to a mrns NetworkPortal
 
+	return err
+}
+
+func ContinueBuildExperimentCP(cpd *CompPatternDict, cpid *CPInitListDict,
+	fel *FuncExecList, cpmd *CompPatternMapDict, syn map[string]string,
+	idCounter int, tm *mrnes.TraceManager, evtMgr *evtm.EventManager) error {
+
 	netportal = mrnes.CreateNetworkPortal()
+
 	_, use := syn["qksim"]
 	netportal.SetQkNetSim(use)
 
@@ -268,21 +261,22 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm Tr
 	// build the tables used to look up the execution time of comp pattern functions, and device operations
 	funcExecTimeTbl = buildFuncExecTimeTbl(fel)
 
-	buildSharedCfgMaps(ssgl, useYAML)
+	var ssgl *SharedCfgGroupList
+	buildSharedCfgMaps(ssgl, true)
 
 	// create the run-time representation of comp patterns, and initialize them
 	CreateClassMethods()
-	err := buildCmpPtns(cpd, cpid, ssgl)
+	err := buildCmpPtns(cpd, cpid, ssgl, evtMgr)
 
 	// check the coherence of the shared cfg groups
 	if ssgl != nil {
 		checkSharedCfgAssignment(ssgl)
 	}
 
-	// schedule the initiating events on self-initiating funcs
-	evtMgr := evtm.New()
-	schedInitEvts(evtMgr)
-	return evtMgr, err
+	// initialize background computation traces on endpoints that use that
+	mrnes.InitializeBckgrnd(evtMgr)
+
+	return err
 }
 
 // NumIDs holds value that utility function used for generating unique integer ids on demand
@@ -296,13 +290,12 @@ func nxtID() int {
 // GetExperimentCPDicts accepts a map that holds the names of the input files used to define an experiment,
 // creates internal representations of the information they hold, and returns those structs.
 func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListDict,
-	*SharedCfgGroupList, *FuncExecList, *CompPatternMapDict) {
+	*FuncExecList, *CompPatternMapDict) {
 
 	var cpd *CompPatternDict
 	var cpid *CPInitListDict
 	var fel *FuncExecList
 	var cpmd *CompPatternMapDict
-	var scgl *SharedCfgGroupList
 
 	empty := make([]byte, 0)
 
@@ -332,14 +325,16 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 	cpid, err = ReadCPInitListDict(syn["cpInitInput"], useYAML, empty)
 	errs = append(errs, err)
 
-	scgl = nil
-	if len(syn["sharedCfg"]) > 0 {
-		ext = path.Ext(syn["sharedCfg"])
-		useYAML = (ext == ".yaml") || (ext == ".yml")
+	/*
+		scgl := nil
+		if len(syn["sharedCfg"]) > 0 {
+			ext = path.Ext(syn["sharedCfg"])
+			useYAML = (ext == ".yaml") || (ext == ".yml")
 
-		scgl, err = ReadSharedCfgGroupList(syn["sharedCfg"], useYAML, empty)
-		errs = append(errs, err)
-	}
+			scgl, err = ReadSharedCfgGroupList(syn["sharedCfg"], useYAML, empty)
+			errs = append(errs, err)
+		}
+	*/
 
 	ext = path.Ext(syn["funcExecInput"])
 	useYAML = (ext == ".yaml") || (ext == ".yml")
@@ -358,7 +353,7 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 		panic(err)
 	}
 
-	return cpd, cpid, scgl, fel, cpmd
+	return cpd, cpid, fel, cpmd
 }
 
 // buildSharedCfgMaps fills out two maps used to initialize funcs with shared cfg.
@@ -386,7 +381,7 @@ func buildSharedCfgMaps(ssgl *SharedCfgGroupList, useYAML bool) {
 		fc := FuncClasses[ssg.Class]
 
 		// create the state for this group, what the maps will point to
-		cfg := fc.CreateCfg(ssg.CfgStr, useYAML)
+		cfg := fc.CreateCfg(ssg.CfgStr)
 
 		// given the group name, get a pointer to the state structure
 		nameToSharedCfg[ssg.Name] = cfg
@@ -515,6 +510,6 @@ func ReportStatistics() {
 			q25 = data[0]
 			q75 = data[0]
 		}
-		fmt.Printf("With %d samples trace gathering group %s has spread %f, %f, %f %f, %f, %f\n", num, name, minv, q25, mean, med, q75, maxv)
+		fmt.Printf("With %d samples Trace gathering group %s has spread %f, %f, %f, %f, %f, %f\n", num, name, minv, q25, mean, med, q75, maxv)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"os"
 	"path"
+	"strconv"
 )
 
 // A CompPatternMap describes how funcs in an instantiated [CompPattern]
@@ -33,7 +34,7 @@ func CreateCompPatternMap(ptnName string) *CompPatternMap {
 
 // AddMapping inserts into the CompPatternMap a binding of Func label to a host.  Optionally,
 // an error might be returned if a binding of that Func has already been made, and is different.
-func (cpm *CompPatternMap) AddMapping(funcLabel string, hostname string, overwrite bool) error {
+func (cpm *CompPatternMap) AddMapping(funcLabel string, hostname string, priority float64, overwrite bool) error {
 	// only check for overwrite if asked to
 	if !overwrite {
 		host, present := cpm.FuncMap[funcLabel]
@@ -44,7 +45,8 @@ func (cpm *CompPatternMap) AddMapping(funcLabel string, hostname string, overwri
 	}
 
 	// store the mapping
-	cpm.FuncMap[funcLabel] = hostname
+	priStr := strconv.FormatFloat(priority, 'f', -1, 64)
+	cpm.FuncMap[funcLabel] = hostname + "," + priStr
 
 	return nil
 }
