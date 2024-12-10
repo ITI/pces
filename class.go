@@ -4,14 +4,13 @@ package pces
 // related to the 'class' specialization of instances of computational functions
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/iti/evt/evtm"
 	"github.com/iti/evt/vrtime"
 	"github.com/iti/mrnes"
 	"gopkg.in/yaml.v3"
+	"encoding/json"
 	"math"
-	_ "sort"
 	"strings"
 )
 
@@ -47,7 +46,6 @@ var FuncClassNames map[string]bool = map[string]bool{
 	"srvRsp":      true,
 	"srvReq":      true,
 	"transfer":    true,
-	"open":        true,
 	"start":       true,
 	"finish":      true,
 	"bckgrndLd":   true}
@@ -109,11 +107,6 @@ func CreateClassMethods() bool {
 	fmap["finishOp"] = RespMethod{Start: finishEnter, End: ExitFunc}
 	ClassMethods["finish"] = fmap
 
-	// build table for open class
-	fmap = make(map[string]RespMethod)
-	fmap["default"] = RespMethod{Start: emptyEnterFunc, End: ExitFunc}
-	ClassMethods["open"] = fmap
-
 	fmap = make(map[string]RespMethod)
 	fmap["default"] = RespMethod{Start: measureEnter, End: ExitFunc}
 	fmap["measure"] = RespMethod{Start: measureEnter, End: ExitFunc}
@@ -173,28 +166,24 @@ func validFuncClass(class string) bool {
 	return present
 }
 
-func advanceMsg(cpfi *CmpPtnFuncInst, msg *CmpPtnMsg, msgType string) *CmpPtnMsg {
+func advanceMsg(cpfi *CmpPtnFuncInst, msg *CmpPtnMsg, msgTypeOut string) *CmpPtnMsg {
 	var nxtCPID int
 	var nxtMsgType string
 	var nxtLabel string
 
-	// if msgType is empty there is only one edge, with index 0
 	var eeidx int
 	var present bool
 
-	// if there is only one outedge we'll choose that, and use the msgType passed in if not empty
+	// if there is only one outedge we'll choose that. Throw a warning if 
+	// the msgType passed in differs from the msgType on the edge 
 	if len(cpfi.OutEdges) == 1 {
 		eeidx = 0
-		if len(msgType) > 0 {
-			nxtMsgType = cpfi.OutEdges[0].MsgType
-		} else {
-			nxtMsgType = cpfi.OutEdges[0].MsgType
-		}
-	} else if len(msgType) > 0 {
+		nxtMsgType = cpfi.OutEdges[0].MsgType
+	} else if len(msgTypeOut) > 0 {
 		// Get the index of the OutEdge associated with the passed-in msgType.
-		eeidx, present = cpfi.Msg2Idx[msgType]
+		eeidx, present = cpfi.Msg2Idx[msgTypeOut]
 		if !present {
-			panic(fmt.Errorf("expected edge for message type %s", msgType))
+			panic(fmt.Errorf("expected output edge for funcion %s", cpfi.Label))
 		}
 		nxtMsgType = cpfi.OutEdges[eeidx].MsgType
 	}
@@ -227,12 +216,15 @@ type processPcktCfg struct {
 	// map method code to an operation for the timing lookup
 	TimingCode map[string]string `yaml:"timingcode" json:"timingcode"`
 	Msg2MC     map[string]string `yaml:"msg2mc" json:"msg2mc"`
+	Msg2Msg    map[string]string `yaml:"msg2msg" json:"msg2msg"`
+
 	// if the packet is processed through an accelerator, its name in the destination endpoint
 	AccelName string `yaml:"accelname" json:"accelname"`
 	Trace     int    `yaml:"trace" json:"trace"`
 }
 
 type processPcktState struct {
+	msgTypeIn string
 	calls int
 }
 
@@ -241,6 +233,7 @@ func ClassCreateProcessPcktCfg() *processPcktCfg {
 	pp := new(processPcktCfg)
 	pp.TimingCode = make(map[string]string)
 	pp.Msg2MC = make(map[string]string)
+	pp.Msg2Msg = make(map[string]string)
 	pp.AccelName = ""
 	pp.Trace = 0
 	return pp
@@ -339,6 +332,7 @@ func processPcktEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCod
 	var genTime float64
 	var scheduler *mrnes.TaskScheduler
 
+	pps.msgTypeIn = msg.MsgType
 	opCode := msg.MsgType
 
 	if len(ppc.AccelName) > 0 {
@@ -362,14 +356,14 @@ func processPcktEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCod
 // but now has finished.
 func processPcktExit(evtMgr *evtm.EventManager, context any, data any) any {
 
-	// optionally call a function to transform the packet,
-	// using the string to function look-up table.
-
 	cpfi := context.(*CmpPtnFuncInst)
 	task := data.(*mrnes.Task)
+	ppc := cpfi.Cfg.(*processPcktCfg)
+	pps := cpfi.State.(*processPcktState)
 
-	// N.B. processPckts
-	msg := advanceMsg(cpfi, task.Msg.(*CmpPtnMsg), "")
+	// get transformed message type as function of inbound message type
+	outMsgType, _ := ppc.Msg2Msg[pps.msgTypeIn]	
+	msg := advanceMsg(cpfi, task.Msg.(*CmpPtnMsg), outMsgType)
 
 	// schedule the exitFunc handler
 	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
@@ -501,7 +495,9 @@ func startEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode stri
 
 	srtTime := srtg.StartTime
 
-	cpm = advanceMsg(cpfi, cpm, "")
+	// out edge destination a function of the message type
+	cpm = advanceMsg(cpfi, cpm, srtg.MsgType)
+
 	cpfi.AddResponse(cpm.ExecID, []*CmpPtnMsg{cpm})
 	evtMgr.Schedule(cpfi, cpm, ExitFunc, vrtime.SecondsToTime(srtTime))
 }
@@ -614,109 +610,6 @@ func finishEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode str
 	endptName := cpfi.Host
 	endpt := mrnes.EndptDevByName[endptName]
 	AddCPTrace(traceMgr, evtMgr.CurrentTime(), msg.ExecID, endpt.DevID(), "exit", msg)
-}
-
-//-------- methods and state for function class open
-
-var opnVar *openCfg = ClassCreateOpenCfg()
-var openLoaded bool = RegisterFuncClass(opnVar)
-
-type openState struct {
-	calls int
-}
-
-type openCfg struct {
-	Data       string            `yaml:"data" json:"data"`
-	TimingCode map[string]string `yaml:"timingcode" json:"timingcode"`
-	Msg2MC     map[string]string `yaml:"msg2mc" json:"msg2mc"`
-	Trace      int               `yaml:"trace" json:"trace"`
-}
-
-func ClassCreateOpenCfg() *openCfg {
-	opn := new(openCfg)
-	opn.TimingCode = make(map[string]string)
-	opn.Msg2MC = make(map[string]string)
-	opn.Trace = 0
-	return opn
-}
-
-func createOpenState() *openState {
-	opn := new(openState)
-	return opn
-}
-
-func (opn *openCfg) FuncClassName() string {
-	return "open"
-}
-
-func (opn *openCfg) CreateCfg(cfgStr string) any {
-	useYAML := cfgStr[0] != '{'
-	opnVarAny, err := opn.Deserialize(cfgStr, useYAML)
-	if err != nil {
-		panic(fmt.Errorf("open.InitCfg sees deserialization error"))
-	}
-	return opnVarAny
-}
-
-func (opn *openCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
-	opnVarAny := opn.CreateCfg(cfgStr)
-	opnv := opnVarAny.(*openCfg)
-	cpfi.Cfg = opnv
-	copyDict(cpfi.Msg2MC, opnv.Msg2MC)
-	cpfi.State = createOpenState()
-	cpfi.Trace = (opnv.Trace != 0)
-}
-
-func (opn *openCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
-	return nil
-}
-
-// Serialize transforms the open into string form for
-// inclusion through a file
-func (opn *openCfg) Serialize(useYAML bool) (string, error) {
-	var bytes []byte
-	var merr error
-
-	if useYAML {
-		bytes, merr = yaml.Marshal(*opn)
-	} else {
-		bytes, merr = json.Marshal(*opn)
-	}
-
-	if merr != nil {
-		return "", merr
-	}
-
-	return string(bytes[:]), nil
-}
-
-func (opn *openCfg) CfgStr() string {
-	rtn, err := opn.Serialize(true)
-	if err != nil {
-		panic(fmt.Errorf("open cfg serialization error"))
-	}
-	return rtn
-}
-
-// Deserialize recovers a serialized representation of a open structure
-func (opn *openCfg) Deserialize(fss string, useYAML bool) (any, error) {
-	// turn the string into a slice of bytes
-	var err error
-	fsb := []byte(fss)
-
-	example := openCfg{Trace: 0}
-
-	// Select whether we read in json or yaml
-	if useYAML {
-		err = yaml.Unmarshal(fsb, &example)
-	} else {
-		err = json.Unmarshal(fsb, &example)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-	return &example, nil
 }
 
 // -------- methods and state for function class srvRsp
@@ -886,7 +779,8 @@ var srvReqVar *srvReqCfg = ClassCreateSrvReqCfg()
 var srvReqLoaded bool = RegisterFuncClass(srvReqVar)
 
 type srvReqState struct {
-	rspEdgeIdx int // index of edge pointing to service response function
+	rspEdgeIdx int     // index of edge pointing to service response function
+	msgTypeIn  string  // type of message on receipt
 	calls      int
 }
 
@@ -895,14 +789,17 @@ type srvReqCfg struct {
 	Bypass int               `yaml:"bypass" json:"bypass"`
 	SrvCP  string            `yaml:"srvcp" json:"srvcp"`
 	SrvOp  string            `yaml:"srvop" json:"srvop"`
+	RspOp  string            `yaml:"rspop" json:"rspop"`
 	SrvLabel string          `yaml:"srvlabel" json:"srvlabel"`
 	Msg2MC map[string]string `yaml:"msg2mc" json:"msg2mc"`
-	Trace  int               `yaml:"trace" json:"trace"`
+	Msg2Msg map[string]string `yaml:"op2msg" json:"op2msg"`	
+	Trace  int                `yaml:"trace" json:"trace"`
 }
 
 func ClassCreateSrvReqCfg() *srvReqCfg {
 	srvReq := new(srvReqCfg)
 	srvReq.Msg2MC = make(map[string]string)
+	srvReq.Msg2Msg = make(map[string]string)
 	return srvReq
 }
 
@@ -1000,6 +897,23 @@ func srvReqEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode str
 	srqc := cpfi.Cfg.(*srvReqCfg)
 	srqs.calls += 1
 
+	if srqc.Bypass != 0 {
+		// the outbound message type is the same as the inbound.
+		// Find the outbound edge that matches
+
+		outMsg := advanceMsg(cpfi, msg, msg.MsgType)		
+
+		// put msg where ExitFunc will find it
+		cpfi.AddResponse(msg.ExecID, []*CmpPtnMsg{outMsg})
+
+		// schedule ExitFunc to happen after the genTime delay
+		evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
+		return
+	}
+
+	// remember incoming message type
+	srqs.msgTypeIn = msg.MsgType
+
 	var found bool
 	if srqs.rspEdgeIdx == -1 {
 
@@ -1021,25 +935,19 @@ func srvReqEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode str
 
 	if found {
 		var eidx = srqs.rspEdgeIdx
-		if srqc.Bypass != 0 {
-			// there should be only two out edges, one pointing to the srvRsp, the
-			// other to the next hop
-			eidx = (srqs.rspEdgeIdx + 1) % 2
-		}
-
 		edge := cpfi.OutEdges[eidx]
 		msg.CPID = edge.CPID
 		msg.Label = edge.FuncLabel
-	
 	} else {
 		var srvCPID int
 		var srvLabel string
-		// the server CP is either given, or if not given is taken to be the CP from which the 
-		// inbound message came
+		// the server CP needs to be given
 		if len(srqc.SrvCP) > 0 {
 			// srqc.SrvCP points to the CP and srvc.SrvOp gives the index in the Services table
 			srvCPID = CmpPtnInstByName[srqc.SrvCP].ID
 		} else {
+			// for the use case of the first function on a processor asking for an authentication
+			// service from the CmpPtn that called it
 			srvCPID = CmpPtnInstByID[msg.PrevCPID].ID
 		}
 
@@ -1059,11 +967,14 @@ func srvReqEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode str
 		}
 		msg.CPID  = srvCPID
 		msg.Label = srvLabel
+		msg.MsgType = srqc.SrvOp
+		msg.RtnCPID = cpfi.CPID
+		msg.RtnLabel = cpfi.Label
+		msg.RtnMsgType = "return-" + msg.MsgType
+
+		// set up the return msgType to point to the return function
+		cpfi.Msg2MC[msg.RtnMsgType] = "return"
 	}
-	msg.MsgType = srqc.SrvOp
-	msg.RtnCPID = cpfi.CPID
-	msg.RtnLabel = cpfi.Label
-	msg.RtnMsgType = "return-" + msg.MsgType
 
 	// put msg where ExitFunc will find it
 	cpfi.AddResponse(msg.ExecID, []*CmpPtnMsg{msg})
@@ -1072,31 +983,30 @@ func srvReqEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode str
 	endpt := mrnes.EndptDevByName[endptName]
 	AddCPTrace(traceMgr, evtMgr.CurrentTime(), msg.ExecID, endpt.DevID(), "enter", msg)
 
-	// set up the return msgType to point to the return function
-	cpfi.Msg2MC[msg.RtnMsgType] = "return"
-
 	// schedule ExitFunc to happen after the genTime delay
 	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
 }
 
 func srvReqRtn(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
 	srqs := cpfi.State.(*srvReqState)
+	srqc := cpfi.Cfg.(*srvReqCfg)
 	srqs.calls += 1
 
 	endptName := cpfi.Host
 	endpt := mrnes.EndptDevByName[endptName]
 	AddCPTrace(traceMgr, evtMgr.CurrentTime(), msg.ExecID, endpt.DevID(), "enter", msg)
 
-	// find the edge whose msg type is not the service code
-	edge := cpfi.OutEdges[(srqs.rspEdgeIdx+1)%2]
-	msg.CPID = edge.CPID
-	msg.Label = edge.FuncLabel
-	msg.MsgType = edge.MsgType
+	// add response return processing delay, if indicated
+	var rspTime	float64
+	if len(srqc.RspOp) > 0 {
+		rspTime = HostFuncExecTime(cpfi, srqc.RspOp, msg)
+	}
 
-	cpfi.AddResponse(msg.ExecID, []*CmpPtnMsg{msg})
+	outMsgType, _ := srqc.Msg2Msg[srqs.msgTypeIn]
+	advanceMsg(cpfi, msg, outMsgType) 
 
-	// schedule ExitFunc to happen after the genTime delay
-	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(0.0))
+	// schedule ExitFunc to happen after the delay of responding to service request
+	evtMgr.Schedule(cpfi, msg, ExitFunc, vrtime.SecondsToTime(rspTime))
 }
 
 // -------- methods and state for function class transfer, to move
