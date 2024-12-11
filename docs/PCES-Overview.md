@@ -21,7 +21,7 @@ The nature of a function's response to a message depends on its **peces**-define
 
 To illustrate the idea, consider Figure 1 below.  Each blue box is a function, the arrows indicate message flows.
 
-![func-chain-1](/Users/nicol/Dropbox/PCES Documentation/images/func-chain-1.png)
+![func-chain-1](./images/func-chain-1.png)
 
 ​								*Figure 1: Chain of **pces** functions*
 
@@ -37,7 +37,7 @@ Function 'endMeasure' is also of the *measure* class.  A configuration flag tell
 
 Another pair of **pces** class functions are worth notice.  Consider Figure 2, closely related to Figure 1.
 
-![func-chain-2](/Users/nicol/Dropbox/PCES Documentation/images/func-chain-2.png)
+![func-chain-2](./images/func-chain-2.png)
 
 ​						*Figure 2: Chain of **pces** functions including server*
 
@@ -158,7 +158,7 @@ The default subroutine for a *processPckt* function is in pces/cgp.go, and is ca
 
 The default subroutine for srvReq functions is *pces/class.go/srvReqEnter*.   It's first task is to determine the global location of the server to be queried for service.   A first step is to determine whether that is specified by the expressed topology of the model's functions. If it happens that the topological (graph) description of the model's functions defines an edge from this function to some other function that is of class 'srvRsp',  **pces** takes the destination function to be the server function.  If the model function topology does not identify the server,  *processPcktEnter* uses a non-empty value of srvCP to identify the server's source CmpPtn.   These two scenarios are illustrated in Figure 3 below.
 
-<img src="/Users/nicol/Dropbox/PCES Documentation/images/srvReq-1.png" alt="srvReq-1" style="zoom:50%;" />
+<img src="./images/srvReq-1.png" alt="srvReq-1" style="zoom:50%;" />
 
 ​	*Figure 3: Direct methods for specifying server function that responds to srvReq Function query*
 
@@ -166,7 +166,7 @@ There is another means of identifying the server function, that is driven by a u
 
 
 
-<img src="/Users/nicol/Dropbox/PCES Documentation/images/srvReq-2.png" alt="srvReq2" style="zoom:50%;" />
+<img src="./images/srvReq-2.png" alt="srvReq2" style="zoom:50%;" />
 
 ​	      *Figure 4: Indirect methods for specifying server function that responds to srvReq Function query*
 
