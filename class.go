@@ -362,7 +362,7 @@ func processPcktExit(evtMgr *evtm.EventManager, context any, data any) any {
 	pps := cpfi.State.(*processPcktState)
 
 	// get transformed message type as function of inbound message type
-	outMsgType, _ := ppc.Msg2Msg[pps.msgTypeIn]	
+	outMsgType  := ppc.Msg2Msg[pps.msgTypeIn]	
 	msg := advanceMsg(cpfi, task.Msg.(*CmpPtnMsg), outMsgType)
 
 	// schedule the exitFunc handler
@@ -1002,7 +1002,7 @@ func srvReqRtn(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode strin
 		rspTime = HostFuncExecTime(cpfi, srqc.RspOp, msg)
 	}
 
-	outMsgType, _ := srqc.Msg2Msg[srqs.msgTypeIn]
+	outMsgType := srqc.Msg2Msg[srqs.msgTypeIn]
 	advanceMsg(cpfi, msg, outMsgType) 
 
 	// schedule ExitFunc to happen after the delay of responding to service request

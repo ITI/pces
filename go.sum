@@ -1,3 +1,5 @@
+github.com/iti/cmdline v0.1.1 h1:Nq1heiXyE5suGc82dWMxAGruw8LAY7/dzVAazA96pJQ=
+github.com/iti/cmdline v0.1.1/go.mod h1:TbCZptCysYs4UyP281TmNiEubmu19VKNvJFFsTtMos0=
 github.com/iti/evt/evtm v0.1.4 h1:Lh24UpCPgnhMCE+MWKCbFSMjQhc14W/xA2PaxcdiEEY=
 github.com/iti/evt/evtm v0.1.4/go.mod h1:g4WfNeI6lpSfIp7Jyv83Fz+dSCHs7IjXIweuvTg2yPk=
 github.com/iti/evt/evtq v0.1.4 h1:cLkfhqiCRUSeiDVN/YN2ZC2L1mznL9n5o9CFKt/pwkc=
