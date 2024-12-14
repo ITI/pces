@@ -151,8 +151,8 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 
 	if cp.IsLoaded("trace") {
 		useTrace = true
+		traceFile = cp.GetVar("trace").(string)
 		if !container {
-			traceFile = cp.GetVar("trace").(string)
 			traceFile = filepath.Join(outputDir, traceFile)
 		} else {
 			baseFile := filepath.Base(traceFile)
