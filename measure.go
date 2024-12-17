@@ -25,6 +25,7 @@ type TerseMeasureStep struct {
 
 type MeasureRecord struct {
 	Start        float64
+	Index		 int
 	SrcDev       string
 	SrcCP        string
 	SrcLabel     string
@@ -33,12 +34,13 @@ type MeasureRecord struct {
 
 type TerseMeasureRecord struct {
 	Start        float64
+	Index		 int
 	MeasureSteps []*TerseMeasureStep
 }
 
 var measureID2Name map[int]string = make(map[int]string)
 
-func createMeasureRecord(cpfi *CmpPtnFuncInst, msrName string, srtTime float64, msg *CmpPtnMsg) {
+func createMeasureRecord(cpfi *CmpPtnFuncInst, msrName string, msrCalls int, srtTime float64, msg *CmpPtnMsg) {
 	srtTime = timeInUnits(srtTime, TimeUnits)
 	prec := new(MeasureRecord)
 	trsPrec := new(TerseMeasureRecord)
@@ -48,6 +50,9 @@ func createMeasureRecord(cpfi *CmpPtnFuncInst, msrName string, srtTime float64, 
 
 	prec.Start = srtTime
 	trsPrec.Start = srtTime
+
+	prec.Index = msrCalls
+	trsPrec.Index = msrCalls
 
 	prec.SrcCP = CmpPtnInstByID[cpfi.CPID].Name
 	prec.SrcDev = cpfi.Host
@@ -91,6 +96,9 @@ func endMeasure(MeasureID int, time float64, dstDev, dstCP, dstLabel string) {
 
 	prec.MeasureName = MeasureID2Name[MeasureID]
 	trsPrec.MeasureName = prec.MeasureName
+
+	prec.Index = pstats.Index
+	trsPrec.Index = prec.Index
 
 	prec.SrcDev = pstats.SrcDev
 	prec.SrcCP = pstats.SrcCP
@@ -150,6 +158,7 @@ func endMeasure(MeasureID int, time float64, dstDev, dstCP, dstLabel string) {
 // flow Measure from SrcName CP to DstName CP
 type PerfRecord struct {
 	MeasureName string
+	Index		int
 	SrcDev      string
 	SrcCP       string
 	SrcLabel    string
@@ -164,6 +173,7 @@ type PerfRecord struct {
 
 type TersePerfRecord struct {
 	MeasureName string
+	Index		int
 	Latency     string
 	Waypoints []TerseMeasureStep
 }

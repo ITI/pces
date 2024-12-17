@@ -15,7 +15,7 @@ The interface specification for a pces simulation names 8 files that contain the
 - -exp <filename> Names a file that contains a description of assigning performance parameters to network entities
 - -funcExec <filename> Names a file that contains all function execution timing information needed by the model.
 - -devExec <filename> Names a file that contains device operation timing information for routers and switches
-- -srdCfg <filename> Names a file that contains a description of functions that share configuration information.
+- -experiment <filename> Names a file that describes a set of experiments to run together as a group defining an 'evaluation'
 
 The sections below describe the format of each file, using yaml notion to describe lists, dictionaries, and to some extent data types.    However this is not pure yaml, as we embed in this notion model-specific information about keys and values of some of the dictionaries.   When a dictionary definition includes a word that is entirely in capital letters, it means that in the actual yaml file one expects a string to be in that location, and that the capitalized word represents a set of strings from which the string must come. In section [Identity Sets](#Identity-Sets) we define the set associated with each such word.  In addition, the value of a dictionary's key may be given by a keyword that is a mixture of upper and lower case characters.  This keyword will be the name of a dictionary structure as it is defined in this document.   The dictionary names are types from the go representation of those dictionaries in the pces and mrnes code bodies. 
 
@@ -210,7 +210,7 @@ groups: [GROUPNAME]
 devtype: DEVTYPE
 device: DEVNAME
 cable: INTRFCNAME
-carry: INTRFCNAME
+carry: [INTRFCNAME]
 wireless: [INTRFCNAME]
 faces: NETNAME
 ```
@@ -361,50 +361,6 @@ exectime: float
 ```
 
 The DevExecDesc description identifies the operation code (same as the key leading to this list),  a string uniquely identifying the device on which the timing is taken, and the timing itself (in units of seconds).
-
-#### 8. srdState.yaml
-
-Normally every instance of a function in a pces model has its own state.   We have found it useful sometimes though to allow different functions of the same type to coordinate through shared state.   Groups of functions to share state are assigned to the same shared state group; a pces model may have multiple such groups. 
-
-srdState.yaml holds a dictionary SharedStateGroupList.  States in principle may be serialized in json or yaml, and so the 'useyaml' attribute indicates whether the states to be shared are a serialized form of yaml.
-
-**8.1	SharedStateGroupList**
-
-```
-useyaml: bool
-groups: [SharedStateGroup]
-```
-
-**8.2	SharedCfgGroup**
-
-We declare a collection of functions to share a configuration by giving their group a name.   They must all be from the same class, which is also declared.   Each function is uniquely identified by specification of the CompPattern instance that holds it, and its label within that compPattern (in a structure called GlobalFuncInstId).  Finally, SharedCfgGroup holds the serialized configuration that they will share.
-
-```
-name: string
-class: FUNCLASS
-instances: [GlobalFuncInstId]
-cfgstr: |
-	string
-```
-
-with
-
-**8.3	GlobalFuncInstId**
-
-```
-cmptnname: CPNAME
-label: FUNCLABEL
-```
-
-
-
-### Method Codes
-
-Directed edges between Funcs are described by CmpPtnGraphEdge and XCPEdge dictionaries, both of which carry a `methodcode` key.   The method code essentially specifies to the receiving Func what to do when a message arrives from the source Func of the edge.
-
-As we will see in section [Func Classes](#Func-Classes) ,  every Func class lists a number of methods it can perform in response to receiving a message. Any string given as the value of the`methodcode` key in an inter-Func edge must be included in the list of method codes known for the destination Func's class.  
-
-Table [Func Class Table](#Func-Class-Table) lists for each current Func class the codes for its available methods.
 
 ### Identity Sets
 

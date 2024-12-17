@@ -1394,6 +1394,9 @@ func (measure *MeasureCfg) Deserialize(fss string, useYAML bool) (any, error) {
 // measureEnter either starts or stops a measurement
 func measureEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
 	mcfg := cpfi.Cfg.(*MeasureCfg)
+	mcfs := cpfi.State.(*measureState)
+
+	mcfs.calls += 1
 
 	endptName := cpfi.Host
 	endpt := mrnes.EndptDevByName[endptName]
@@ -1405,7 +1408,7 @@ func measureEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode st
 			Measured = new(MsrData)
 			Measured.Measurements = make([]PerfRecord, 0)
 		}
-		createMeasureRecord(cpfi, mcfg.MsrName, evtMgr.CurrentSeconds(), msg)
+		createMeasureRecord(cpfi, mcfg.MsrName, mcfs.calls, evtMgr.CurrentSeconds(), msg)
 
 		// should be only one edge
 		edge := cpfi.OutEdges[0]
