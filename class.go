@@ -220,7 +220,7 @@ type processPcktCfg struct {
 
 	// if the packet is processed through an accelerator, its name in the destination endpoint
 	AccelName string `yaml:"accelname" json:"accelname"`
-	Trace     int    `yaml:"trace" json:"trace"`
+	Trace     string    `yaml:"trace" json:"trace"`
 }
 
 type processPcktState struct {
@@ -235,7 +235,7 @@ func ClassCreateProcessPcktCfg() *processPcktCfg {
 	pp.Msg2MC = make(map[string]string)
 	pp.Msg2Msg = make(map[string]string)
 	pp.AccelName = ""
-	pp.Trace = 0
+	pp.Trace = "0"
 	return pp
 }
 
@@ -264,7 +264,7 @@ func (pp *processPcktCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncIns
 	cpfi.Cfg = ppv
 	cpfi.State = createProcessPcktState()
 	copyDict(cpfi.Msg2MC, ppv.Msg2MC)
-	cpfi.Trace = (ppv.Trace != 0)
+	cpfi.Trace = (ppv.Trace != "0")
 }
 
 func (pp *processPcktCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
@@ -306,7 +306,7 @@ func (pp *processPcktCfg) Deserialize(fss string, useYAML bool) (any, error) {
 
 	tc := make(map[string]string)
 
-	example := processPcktCfg{TimingCode: tc, Trace: 0}
+	example := processPcktCfg{TimingCode: tc, Trace: "0"}
 
 	// Select whether we read in json or yaml
 	if useYAML {
@@ -386,13 +386,13 @@ type StartCfg struct {
 	Data      string            `yaml:"data" json:"data"`
 	StartTime float64           `yaml:"starttime" json:"starttime"`
 	Msg2MC    map[string]string `yaml:"msg2mc" json:"msg2mc"`
-	Trace     int               `yaml:"trace" json:"trace"`
+	Trace     string			`yaml:"trace" json:"trace"`
 }
 
 func ClassCreateStartCfg() *StartCfg {
 	srt := new(StartCfg)
 	srt.Msg2MC = make(map[string]string)
-	srt.Trace = 0
+	srt.Trace = "0"
 	return srt
 }
 
@@ -420,7 +420,7 @@ func (srt *StartCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, cf
 	cpfi.Cfg = srtv
 	copyDict(cpfi.Msg2MC, srtv.Msg2MC)
 	cpfi.State = createStartState()
-	cpfi.Trace = (srtv.Trace != 0)
+	cpfi.Trace = (srtv.Trace != "0")
 }
 
 func (srt *StartCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
@@ -460,7 +460,7 @@ func (srt *StartCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	var err error
 	fsb := []byte(fss)
 
-	example := StartCfg{Trace: 0}
+	example := StartCfg{Trace: "0"}
 
 	// Select whether we read in json or yaml
 	if useYAML {
@@ -513,12 +513,12 @@ type finishState struct {
 
 type FinishCfg struct {
 	Msg2MC map[string]string `yaml:"msg2mc" json:"msg2mc"`
-	Trace  int               `yaml:"trace" json:"trace"`
+	Trace  string            `yaml:"trace" json:"trace"`
 }
 
 func ClassCreateFinishCfg() *FinishCfg {
 	fnsh := new(FinishCfg)
-	fnsh.Trace = 0
+	fnsh.Trace = "0"
 	fnsh.Msg2MC = make(map[string]string)
 	return fnsh
 }
@@ -547,7 +547,7 @@ func (fnsh *FinishCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, 
 	cpfi.Cfg = fnshv
 	copyDict(cpfi.Msg2MC, fnshv.Msg2MC)
 	cpfi.State = createFinishState()
-	cpfi.Trace = (fnshv.Trace != 0)
+	cpfi.Trace = (fnshv.Trace != "0")
 }
 
 func (fnsh *FinishCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
@@ -587,7 +587,7 @@ func (fnsh *FinishCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	var err error
 	fsb := []byte(fss)
 
-	example := FinishCfg{Trace: 0}
+	example := FinishCfg{Trace: "0"}
 
 	// Select whether we read in json or yaml
 	if useYAML {
@@ -630,7 +630,7 @@ type srvRspCfg struct {
 	TimingCode   map[string]string `yaml:"timingcode" json:"timingcode"`
 	Msg2MC       map[string]string `yaml:"msg2mc" json:"msg2mc"`
 	DirectPrefix []string          `yaml:"directprefix" json:"directprefix"`
-	Trace        int               `yaml:"trace" json:"trace"`
+	Trace        string            `yaml:"trace" json:"trace"`
 }
 
 func ClassCreateSrvRspCfg() *srvRspCfg {
@@ -638,7 +638,7 @@ func ClassCreateSrvRspCfg() *srvRspCfg {
 	srvRsp.TimingCode = make(map[string]string)
 	srvRsp.DirectPrefix = make([]string, 0)
 	srvRsp.Msg2MC = make(map[string]string)
-	srvRsp.Trace = 0
+	srvRsp.Trace = "0"
 	return srvRsp
 }
 
@@ -676,7 +676,7 @@ func (srvRsp *srvRspCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst
 
 	// the srventication response function is a service, meaning
 	// that its selection doesn't require identification of the source CP
-	cpfi.Trace = (srvRspv.Trace != 0)
+	cpfi.Trace = (srvRspv.Trace != "0")
 }
 
 func (srvRsp *srvRspCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
@@ -716,7 +716,7 @@ func (srvRsp *srvRspCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	var err error
 	fsb := []byte(fss)
 
-	example := srvRspCfg{Trace: 0}
+	example := srvRspCfg{Trace: "0"}
 
 	// Select whether we read in json or yaml
 	if useYAML {
@@ -786,14 +786,14 @@ type srvReqState struct {
 
 type srvReqCfg struct {
 	// map the service request to the message type on departure
-	Bypass int               `yaml:"bypass" json:"bypass"`
+	Bypass string           `yaml:"bypass" json:"bypass"`
 	SrvCP  string            `yaml:"srvcp" json:"srvcp"`
 	SrvOp  string            `yaml:"srvop" json:"srvop"`
 	RspOp  string            `yaml:"rspop" json:"rspop"`
 	SrvLabel string          `yaml:"srvlabel" json:"srvlabel"`
 	Msg2MC map[string]string `yaml:"msg2mc" json:"msg2mc"`
 	Msg2Msg map[string]string `yaml:"op2msg" json:"op2msg"`	
-	Trace  int                `yaml:"trace" json:"trace"`
+	Trace  string            `yaml:"trace" json:"trace"`
 }
 
 func ClassCreateSrvReqCfg() *srvReqCfg {
@@ -824,9 +824,9 @@ func (srvReq *srvReqCfg) CreateCfg(cfgStr string) any {
 
 func (srvReq *srvReqCfg) Populate(bypass bool, trace bool) {
 	if trace {
-		srvReq.Trace = 1
+		srvReq.Trace = "1"
 	} else {
-		srvReq.Trace = 0
+		srvReq.Trace = "0"
 	}
 }
 
@@ -836,7 +836,7 @@ func (srvReq *srvReqCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst
 	cpfi.Cfg = srvReqv
 	copyDict(cpfi.Msg2MC, srvReq.Msg2MC)
 	cpfi.State = createSrvReqState()
-	cpfi.Trace = (srvReqv.Trace != 0)
+	cpfi.Trace = (srvReqv.Trace != "0")
 }
 
 func (srvReq *srvReqCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
@@ -876,7 +876,7 @@ func (srvReq *srvReqCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	var err error
 	fsb := []byte(fss)
 
-	example := srvReqCfg{Trace: 0}
+	example := srvReqCfg{Trace: "0"}
 
 	// Select whether we read in json or yaml
 	if useYAML {
@@ -897,7 +897,7 @@ func srvReqEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode str
 	srqc := cpfi.Cfg.(*srvReqCfg)
 	srqs.calls += 1
 
-	if srqc.Bypass != 0 {
+	if srqc.Bypass != "0" {
 		// the outbound message type is the same as the inbound.
 		// Find the outbound edge that matches
 
@@ -1023,7 +1023,7 @@ type transferCfg struct {
 	XCP     string            `yaml:"xcp" json:"xcp"`         // CmpPtn name of destination
 	XLabel  string            `yaml:"xlabel" json:"xlabel"`   // function label at destination
 	Msg2MC  map[string]string `yaml:"msg2mc" json:"msg2mc"`
-	Trace   int               `yaml:"trace" json:"trace"`
+	Trace   string            `yaml:"trace" json:"trace"`
 }
 
 func ClassCreateTransferCfg() *transferCfg {
@@ -1058,9 +1058,9 @@ func (trnsfr *transferCfg) Populate(carried bool, xcp string, xlabel string, tra
 	trnsfr.XCP = xcp
 	trnsfr.XLabel = xlabel
 	if trace {
-		trnsfr.Trace = 1
+		trnsfr.Trace = "1"
 	} else {
-		trnsfr.Trace = 1
+		trnsfr.Trace = "0" 
 	}
 }
 
@@ -1070,7 +1070,7 @@ func (trnsfr *transferCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncIn
 	cpfi.Cfg = transferv
 	copyDict(cpfi.Msg2MC, transferv.Msg2MC)
 	cpfi.State = createSrvReqState()
-	cpfi.Trace = (transferv.Trace != 0)
+	cpfi.Trace = (transferv.Trace != "0")
 }
 
 func (trnsfr *transferCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
@@ -1110,7 +1110,7 @@ func (trnsfr *transferCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	var err error
 	fsb := []byte(fss)
 
-	example := transferCfg{Trace: 0}
+	example := transferCfg{Trace: "0"}
 
 	// Select whether we read in json or yaml
 	if useYAML {
@@ -1165,7 +1165,7 @@ type bckgrndLdCfg struct {
 	BckgrndFunc string  `yaml:"bckgrndfunc" json:"bckgrndfunc"`
 	BckgrndRate float64 `yaml:"bckgrndrate" json:"bckgrndrate"`
 	BckgrndSrv  float64 `yaml:"bckgrndsrv" json:"bckgrndsrv"`
-	Trace       int     `yaml:"trace" json:"trace"`
+	Trace       string  `yaml:"trace" json:"trace"`
 }
 
 func ClassCreateBckgrndLdCfg() *bckgrndLdCfg {
@@ -1213,7 +1213,7 @@ func (bgld *bckgrndLdCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncIns
 	cpfi.Cfg = bgldv
 
 	cpfi.State = createBckgrndLdState()
-	cpfi.Trace = (bgldv.Trace != 0)
+	cpfi.Trace = (bgldv.Trace != "0")
 
 	// use the background parameters to impact the underlaying endpoint
 	// background parameters
@@ -1253,7 +1253,7 @@ func (bgld *bckgrndLdCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	var err error
 	fsb := []byte(fss)
 
-	example := bckgrndLdCfg{Trace: 0, BckgrndRate: 0.0, BckgrndSrv: 0.010}
+	example := bckgrndLdCfg{Trace: "0", BckgrndRate: 0.0, BckgrndSrv: 0.010}
 
 	// Select whether we read in json or yaml
 	if useYAML {
@@ -1293,7 +1293,7 @@ type MeasureCfg struct {
 	MsrName string            `yaml:"msrname" json:"msrname"`
 	MsrOp   string            `yaml:"msrop" json:"msrop"`
 	Msg2MC  map[string]string `yaml:"msg2mc" json:"msg2mc"`
-	Trace   int               `yaml:"trace" json:"trace"`
+	Trace   string            `yaml:"trace" json:"trace"`
 }
 
 func ClassCreateMeasureCfg() *MeasureCfg {
@@ -1305,9 +1305,9 @@ func (measure *MeasureCfg) Populate(name string, pcktlen int, msglen int, start 
 
 	measure.MsrName = name
 	if trace {
-		measure.Trace = 1
+		measure.Trace = "1"
 	} else {
-		measure.Trace = 0
+		measure.Trace = "0"
 	}
 	measure.MsrOp = op
 }
@@ -1336,7 +1336,7 @@ func (measure *MeasureCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncIn
 	cpfi.Cfg = measurev
 	copyDict(cpfi.Msg2MC, measurev.Msg2MC)
 	cpfi.State = createMeasureState()
-	cpfi.Trace = (measurev.Trace != 0)
+	cpfi.Trace = (measurev.Trace != "0")
 }
 
 func (measure *MeasureCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
@@ -1376,7 +1376,7 @@ func (measure *MeasureCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	var err error
 	prb := []byte(fss)
 
-	example := MeasureCfg{Trace: 0}
+	example := MeasureCfg{Trace: "0"}
 
 	// Select whether we read in json or yaml
 	if useYAML {
