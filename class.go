@@ -9,6 +9,7 @@ import (
 	"github.com/iti/evt/vrtime"
 	"github.com/iti/mrnes"
 	"gopkg.in/yaml.v3"
+	"strconv"
 	"encoding/json"
 	"math"
 	"strings"
@@ -239,7 +240,7 @@ func ClassCreateProcessPcktCfg() *processPcktCfg {
 	return pp
 }
 
-func createProcessPcktState() *processPcktState {
+func createProcessPcktState(ppc *processPcktCfg) *processPcktState {
 	pps := new(processPcktState)
 	pps.calls = 0
 	return pps
@@ -262,7 +263,7 @@ func (pp *processPcktCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncIns
 	ppVarAny := pp.CreateCfg(cfgStr)
 	ppv := ppVarAny.(*processPcktCfg)
 	cpfi.Cfg = ppv
-	cpfi.State = createProcessPcktState()
+	cpfi.State = createProcessPcktState(ppv)
 	copyDict(cpfi.Msg2MC, ppv.Msg2MC)
 	cpfi.Trace = (ppv.Trace != "0")
 }
@@ -376,15 +377,19 @@ var srtVar *StartCfg = ClassCreateStartCfg()
 var startLoaded bool = RegisterFuncClass(srtVar)
 
 type startState struct {
+	pcktLen	int
+	msgLen int
+	msgType string
+	startTime float64
 	calls int
 }
 
 type StartCfg struct {
-	PcktLen   int               `yaml:"pcktlen" json:"pcktlen"`
-	MsgLen    int               `yaml:"msglen" json:"msglen"`
+	PcktLen   string            `yaml:"pcktlen" json:"pcktlen"`
+	MsgLen    string            `yaml:"msglen" json:"msglen"`
 	MsgType   string            `yaml:"msgtype" json:"msgtype"`
 	Data      string            `yaml:"data" json:"data"`
-	StartTime float64           `yaml:"starttime" json:"starttime"`
+	StartTime string            `yaml:"starttime" json:"starttime"`
 	Msg2MC    map[string]string `yaml:"msg2mc" json:"msg2mc"`
 	Trace     string			`yaml:"trace" json:"trace"`
 }
@@ -396,8 +401,12 @@ func ClassCreateStartCfg() *StartCfg {
 	return srt
 }
 
-func createStartState() *startState {
+func createStartState(scfg *StartCfg) *startState {
 	srt := new(startState)
+	srt.msgLen, _  = strconv.Atoi(scfg.MsgLen)
+	srt.pcktLen, _ = strconv.Atoi(scfg.PcktLen)
+	srt.msgType = scfg.MsgType
+	srt.startTime, _  = strconv.ParseFloat(scfg.StartTime, 64)
 	return srt
 }
 
@@ -419,7 +428,7 @@ func (srt *StartCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, cf
 	srtv := srtVarAny.(*StartCfg)
 	cpfi.Cfg = srtv
 	copyDict(cpfi.Msg2MC, srtv.Msg2MC)
-	cpfi.State = createStartState()
+	cpfi.State = createStartState(srtv)
 	cpfi.Trace = (srtv.Trace != "0")
 }
 
@@ -478,14 +487,13 @@ func (srt *StartCfg) Deserialize(fss string, useYAML bool) (any, error) {
 // start an execution thread, main thing here is creating the initial
 // message and giving it an execID
 func startEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
-	srtg := cpfi.Cfg.(*StartCfg)
 	srts := cpfi.State.(*startState)
 	srts.calls += 1
 
 	cpm := new(CmpPtnMsg)
-	cpm.PcktLen = srtg.PcktLen
-	cpm.MsgLen = srtg.MsgLen
-	cpm.MsgType = srtg.MsgType
+	cpm.PcktLen = srts.pcktLen
+	cpm.MsgLen = srts.msgLen
+	cpm.MsgType = srts.msgType
 	numExecThreads += 1
 	cpm.ExecID = numExecThreads
 
@@ -493,10 +501,10 @@ func startEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode stri
 	endpt := mrnes.EndptDevByName[endptName]
 	AddCPTrace(traceMgr, evtMgr.CurrentTime(), cpm.ExecID, endpt.DevID(), "enter", cpm)
 
-	srtTime := srtg.StartTime
+	srtTime := srts.startTime
 
 	// out edge destination a function of the message type
-	cpm = advanceMsg(cpfi, cpm, srtg.MsgType)
+	cpm = advanceMsg(cpfi, cpm, srts.msgType)
 
 	cpfi.AddResponse(cpm.ExecID, []*CmpPtnMsg{cpm})
 	evtMgr.Schedule(cpfi, cpm, ExitFunc, vrtime.SecondsToTime(srtTime))
@@ -523,7 +531,7 @@ func ClassCreateFinishCfg() *FinishCfg {
 	return fnsh
 }
 
-func createFinishState() *finishState {
+func createFinishState(fcfg *FinishCfg) *finishState {
 	fnsh := new(finishState)
 	return fnsh
 }
@@ -546,7 +554,7 @@ func (fnsh *FinishCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, 
 	fnshv := fnshVarAny.(*FinishCfg)
 	cpfi.Cfg = fnshv
 	copyDict(cpfi.Msg2MC, fnshv.Msg2MC)
-	cpfi.State = createFinishState()
+	cpfi.State = createFinishState(fnshv)
 	cpfi.Trace = (fnshv.Trace != "0")
 }
 
@@ -642,9 +650,9 @@ func ClassCreateSrvRspCfg() *srvRspCfg {
 	return srvRsp
 }
 
-func createSrvRspState() *srvRspState {
-	srvRsp := new(srvRspState)
-	return srvRsp
+func createSrvRspState(srvRsp *srvRspCfg) *srvRspState {
+	srvRsps := new(srvRspState)
+	return srvRsps
 }
 
 func (srvRsp *srvRspCfg) FuncClassName() string {
@@ -672,7 +680,7 @@ func (srvRsp *srvRspCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst
 	cpfi.Cfg = srvRspv
 	copyDict(cpfi.Msg2MC, srvRspv.Msg2MC)
 	cpfi.IsService = true
-	cpfi.State = createSrvRspState()
+	cpfi.State = createSrvRspState(srvRspv)
 
 	// the srventication response function is a service, meaning
 	// that its selection doesn't require identification of the source CP
@@ -803,7 +811,7 @@ func ClassCreateSrvReqCfg() *srvReqCfg {
 	return srvReq
 }
 
-func createSrvReqState() *srvReqState {
+func createSrvReqState(srvReq *srvReqCfg) *srvReqState {
 	srqs := new(srvReqState)
 	srqs.rspEdgeIdx = -1 // flag for replacement on first encounter
 	return srqs
@@ -835,7 +843,7 @@ func (srvReq *srvReqCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst
 	srvReqv := srvReqVarAny.(*srvReqCfg)
 	cpfi.Cfg = srvReqv
 	copyDict(cpfi.Msg2MC, srvReq.Msg2MC)
-	cpfi.State = createSrvReqState()
+	cpfi.State = createSrvReqState(srvReqv)
 	cpfi.Trace = (srvReqv.Trace != "0")
 }
 
@@ -1031,7 +1039,7 @@ func ClassCreateTransferCfg() *transferCfg {
 	return trnsfr
 }
 
-func createTransferState() *transferState {
+func createTransferState(tcfg *transferCfg) *transferState {
 	transfer := new(transferState)
 	return transfer
 }
@@ -1069,7 +1077,7 @@ func (trnsfr *transferCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncIn
 	transferv := transferVarAny.(*transferCfg)
 	cpfi.Cfg = transferv
 	copyDict(cpfi.Msg2MC, transferv.Msg2MC)
-	cpfi.State = createSrvReqState()
+	cpfi.State = createTransferState(transferv)
 	cpfi.Trace = (transferv.Trace != "0")
 }
 
@@ -1176,7 +1184,7 @@ func ClassCreateBckgrndLdCfg() *bckgrndLdCfg {
 	return bgld
 }
 
-func createBckgrndLdState() *bckgrndLdState {
+func createBckgrndLdState(bcfg *bckgrndLdCfg) *bckgrndLdState {
 	bglds := new(bckgrndLdState)
 	return bglds
 }
@@ -1212,7 +1220,7 @@ func (bgld *bckgrndLdCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncIns
 	evtMgr.Schedule(cpfi, nil, HndlrMap[bgldv.BckgrndFunc], vrtime.SecondsToTime(0.0))
 	cpfi.Cfg = bgldv
 
-	cpfi.State = createBckgrndLdState()
+	cpfi.State = createBckgrndLdState(bgldv)
 	cpfi.Trace = (bgldv.Trace != "0")
 
 	// use the background parameters to impact the underlaying endpoint
@@ -1312,7 +1320,7 @@ func (measure *MeasureCfg) Populate(name string, pcktlen int, msglen int, start 
 	measure.MsrOp = op
 }
 
-func createMeasureState() *measureState {
+func createMeasureState(mcfg *MeasureCfg) *measureState {
 	measure := new(measureState)
 	return measure
 }
@@ -1335,7 +1343,7 @@ func (measure *MeasureCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncIn
 	measurev := measureVarAny.(*MeasureCfg)
 	cpfi.Cfg = measurev
 	copyDict(cpfi.Msg2MC, measurev.Msg2MC)
-	cpfi.State = createMeasureState()
+	cpfi.State = createMeasureState(measurev)
 	cpfi.Trace = (measurev.Trace != "0")
 }
 
