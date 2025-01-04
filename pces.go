@@ -253,7 +253,7 @@ func ContinueBuildExperimentCP(cpd *CompPatternDict, cpid *CPInitListDict,
 
 	// N.B. ssgl may be empty if there are no functions with shared cfg
 	NumIDs = idCounter
-	traceMgr = tm
+	TraceMgr = tm
 
 	// remember the mapping of functions to host
 	CmpPtnMapDict = cpmd
@@ -264,8 +264,6 @@ func ContinueBuildExperimentCP(cpd *CompPatternDict, cpid *CPInitListDict,
 	var ssgl *SharedCfgGroupList
 	buildSharedCfgMaps(ssgl, true)
 
-	// create the run-time representation of comp patterns, and initialize them
-	CreateClassMethods()
 	err := buildCmpPtns(cpd, cpid, ssgl, evtMgr)
 
 	// check the coherence of the shared cfg groups

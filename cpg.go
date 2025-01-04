@@ -13,6 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"math"
 	"strings"
+	"sort"
 )
 
 // CompPattern functions, messages, and edges are described by structs in the desc package,
@@ -47,6 +48,7 @@ type CmpPtnInst struct {
 	CpType    string
 	ID        int                        // unique id
 	Funcs     map[string]*CmpPtnFuncInst // use func label to get to func in that pattern with that label
+	FuncsByGroup map[string][]*CmpPtnFuncInst // index is group name, list of functions in the CmpPtn belonging to that group
 	Services  map[string]funcDesc        // map an offered service (e.g., "auth", "encrypt", "hash") to a function label
 	Msgs      map[string]CompPatternMsg  // MsgType indexes msgs
 	Rngs      *rngstream.RngStream
@@ -76,6 +78,9 @@ func createCmpPtnInst(ptnInstName string, cpd CompPattern, cpid CPInitList, evtM
 
 	// initialize slice of the func instances that make up the cpmPtnInst
 	cpi.Funcs = make(map[string]*CmpPtnFuncInst)
+
+	// initialize map of group names to functions in that group
+	cpi.FuncsByGroup = make(map[string][]*CmpPtnFuncInst)
 
 	// initialize slice of the service func instances that make up the cpmPtnInst
 	cpi.Services = make(map[string]funcDesc)
@@ -124,6 +129,15 @@ func createCmpPtnInst(ptnInstName string, cpd CompPattern, cpid CPInitList, evtM
 
 	return cpi, gerr
 }
+
+func (cpi *CmpPtnInst) AddFuncToGroup(cpfi *CmpPtnFuncInst, groupName string) {
+	_, present := cpi.FuncsByGroup[groupName]
+	if !present {
+		cpi.FuncsByGroup[groupName] = make([]*CmpPtnFuncInst, 0)
+	}
+	cpi.FuncsByGroup[groupName] = append(cpi.FuncsByGroup[groupName], cpfi)
+}
+ 
 
 // createSrvFuncLinks establishes the Services table for the computational patterns
 func createSrvFuncLinks(cpd CompPattern) {
@@ -335,6 +349,7 @@ func buildAllEdgeTablesOld(cpd *CompPatternDict) {
 		}
 	}
 }
+
 
 type trackingGroup struct {
 	Name      string
@@ -564,6 +579,16 @@ func funcExecTime(model string, op string, msg *CmpPtnMsg) float64 {
 		panic(fmt.Errorf("no function timing look for operation %s on cpu model %s", op, model))
 	}
 
+	// if msg is nil return the timing from the first entry in the map
+	if msg == nil {
+		keys := []int{}
+		for key := range lenMap {
+			keys = append(keys,key)
+		}
+		sort.Ints(keys)
+		return lenMap[keys[0]]
+	}
+
 	// lenMap is map[int]string associating an execution time for a packet with the stated length,
 	// so long as we have that length
 	timing, present2 := lenMap[msg.PcktLen]
@@ -663,8 +688,21 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 			methodCode = "default"
 		}
 	}
+	if cpm != nil {
+		AddCPTrace(TraceMgr, cpfi.Trace, evtMgr.CurrentTime(), cpm.ExecID, cpfi.ID, FullFuncName(cpfi,"EnterFunc"), cpm)
+	} 
 
-	methods := cpfi.RespMethods[methodCode]
+	methods, present := cpfi.RespMethods[methodCode]
+	if !present {
+		// methods might have been put in by user extension after the function's own setup
+		classMethods, classpresent := ClassMethods[cpfi.Class][methodCode]
+		if !classpresent {
+			panic(fmt.Errorf("expected class %s to have response methods for method code %s", cpfi.Class, methodCode))
+		}
+		methods = &classMethods
+		cpfi.RespMethods[methodCode] = methods
+	}
+	
 	methods.Start(evtMgr, cpfi, methodCode, cpm)
 	return nil
 }
@@ -697,9 +735,7 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 	msgs := cpfi.funcResp(cpm.ExecID)
 
 	// note exit from function
-	if cpfi.funcTrace() {
-		AddCPTrace(traceMgr, evtMgr.CurrentTime(), cpm.ExecID, cpfi.ID, "exit", cpm)
-	}
+	AddCPTrace(TraceMgr, cpfi.Trace, evtMgr.CurrentTime(), cpm.ExecID, cpfi.ID, FullFuncName(cpfi,"ExitFunc"), cpm)
 
 	// a problem if there are no messages, because the controled end of a thread
 	// is supposed always to be a "finish" function

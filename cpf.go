@@ -36,7 +36,7 @@ type CmpPtnFuncInst struct {
 	Measure     bool               // If true start device-to-device measurement
 	IsService   bool               // when a service the processing does not depend on the CP asking for a response
 	PrevEdge    map[int]edgeStruct // saved selection edge
-	Priority    float64            // scheduling priority
+	Priority    int				   // scheduling priority
 	Cfg         any                // holds string-coded state for string-code configuratin variable names
 	State       any                // holds string-coded state for string-code state variable names
 
@@ -48,6 +48,9 @@ type CmpPtnFuncInst struct {
 
 	// output message type to index in OutEdges
 	Msg2Idx map[string]int
+
+	// list of user-defined groups
+	Groups []string
 
 	// RespMethods are indexed by method code.
 	// A Respond method holds a pointer to a function to call when processing
@@ -70,7 +73,6 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYA
 	cpfi.Trace = false        // flag whether we should trace execution through this function
 	cpfi.IsService = false
 	cpfi.Class = fnc.Class // remember the class
-
 	cpfi.MsgResp = make(map[int][]*CmpPtnMsg) // prepare to be initialized
 
 	// inEdges, outEdges, and methodCode filled in after all function instances for a comp pattern created
@@ -79,6 +81,8 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYA
 	cpfi.Msg2Idx = make(map[string]int)
 
 	cpfi.RespMethods = make(map[string]*RespMethod) // prepare to be initialized
+
+	cpfi.Groups = make([]string,0)
 
 	// if the ClassMethods map for the cpfi's class exists,
 	// initialize respMethods to be that
@@ -108,13 +112,17 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYA
 	// FINDME N.B. revisit notion/use of shared function
 	if len(cpfi.SharedGroup) == 0 {
 		fc.InitCfg(evtMgr, cpfi, cfgStr, useYAML)
+		cpi := CmpPtnInstByID[cpfi.CPID]
+		for _, grp := range cpfi.Groups {
+			cpi.AddFuncToGroup(cpfi, grp)
+		}
 	} else {
 		gfid := GlobalFuncID{CmpPtnName: cpfi.PtnName, Label: cpfi.Label}
 		cpfi.Cfg = funcInstToSharedCfg[gfid]
 	}
 
 	if cpfi.funcTrace() {
-		traceMgr.AddName(cpfi.ID, cpfi.GlobalName(), "application")
+		TraceMgr.AddName(cpfi.ID, cpfi.GlobalName(), "application")
 	}
 	return cpfi
 }
@@ -205,7 +213,8 @@ func (cpfi *CmpPtnFuncInst) AddEndMethod(methodCode string, end evtm.EventHandle
 }
 
 func CmpPtnFuncHost(cpfi *CmpPtnFuncInst) string {
-	ptnMap := CmpPtnMapDict.Map[cpfi.PtnName] // note binding of pattern to dictionary map to function map.  Shared needs something different
+	// note binding of pattern to dictionary map to function map.  
+	ptnMap := CmpPtnMapDict.Map[cpfi.PtnName] 
 	hostPri := ptnMap.FuncMap[cpfi.Label]
 	if strings.Contains(hostPri, ",") {
 		pieces := strings.Split(hostPri, ",")
@@ -214,12 +223,12 @@ func CmpPtnFuncHost(cpfi *CmpPtnFuncInst) string {
 	return hostPri
 }
 
-func CmpPtnFuncPriority(cpfi *CmpPtnFuncInst) float64 {
+func CmpPtnFuncPriority(cpfi *CmpPtnFuncInst) int {
 	ptnMap := CmpPtnMapDict.Map[cpfi.PtnName] // note binding of pattern to dictionary map to function map.  Shared needs something different
 	hostPri := ptnMap.FuncMap[cpfi.Label]
 	if strings.Contains(hostPri, ",") {
 		pieces := strings.Split(hostPri, ",")
-		pri, _ := strconv.ParseFloat(pieces[1], 64)
+		pri, _ := strconv.Atoi(pieces[1])
 		return pri
 	}
 	return 1.0

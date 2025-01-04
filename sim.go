@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"errors"
+	"math"
 	"github.com/iti/cmdline"
 	"github.com/iti/mrnes"
 	"github.com/iti/evt/evtm"
@@ -34,7 +35,7 @@ func cmdlineParams() *cmdline.CmdParser {
 	cp.AddFlag(cmdline.StringFlag, "topo", false)    // name of output file used for topo templates
 	cp.AddFlag(cmdline.StringFlag, "trace", false)   // path to output file of trace records
 	cp.AddFlag(cmdline.IntFlag, "rngseed", false)    // RNG seed 
-	cp.AddFlag(cmdline.FloatFlag, "stop", true)      // run the simulation until this time (in seconds)
+	cp.AddFlag(cmdline.FloatFlag, "stop", false)      // run the simulation until this time (in seconds)
 	cp.AddFlag(cmdline.BoolFlag, "json", false)      // input/output files in YAML, or JSON
 	cp.AddFlag(cmdline.StringFlag, "msr", true)      // name of file where measurements will be written
 	cp.AddFlag(cmdline.BoolFlag, "verbose", false)  // measure output is terse
@@ -53,6 +54,8 @@ var cp *cmdline.CmdParser
 var exprmnt string
 var TimeUnits string
 var MsrVerbose bool
+
+var GlobalSeed int64 = 1234567
 
 // ReadSimArgs defines the command line parameters expected, and reads them
 func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
@@ -98,7 +101,11 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 		}	
 	}
 
-	termination = cp.GetVar("stop").(float64)
+	// if there is no stop argument, termination is left at the largest possible time
+	termination = math.MaxFloat64
+	if cp.IsLoaded("stop") {
+		termination = cp.GetVar("stop").(float64)
+	}
 
 	TimeUnits = cp.GetVar("tunits").(string)
 	if !(TimeUnits == "sec" || TimeUnits == "musec" || TimeUnits == "msec" || TimeUnits == "nsec") {
@@ -182,6 +189,7 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 	if cp.IsLoaded("rngseed") {
 		seed := cp.GetVar("rngseed").(int)
 		rngstream.SetRngStreamMasterSeed(uint64(seed))
+		GlobalSeed = int64(seed)
 	}
 	return cp, evtMgr
 }
@@ -189,11 +197,11 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 
 func RunExperiment(expCntrl evtm.EventHandlerFunction, expCmplt evtm.EventHandlerFunction) {
 
-	traceMgr = mrnes.CreateTraceManager(exprmnt, useTrace)
+	TraceMgr = mrnes.CreateTraceManager(exprmnt, useTrace)
 
 	// build the experiment.  First the network stuff
 	// start the id counter at 1 (value passed is incremented before use)
-	mrnes.BuildExperimentNet(syn, true, 0, traceMgr)
+	mrnes.BuildExperimentNet(syn, true, 0, TraceMgr)
 
 	// now get the computation patterns and initialization structures
 	// cpd  *CompPatternDict
@@ -202,7 +210,7 @@ func RunExperiment(expCntrl evtm.EventHandlerFunction, expCmplt evtm.EventHandle
 	// cpmd *CompPatternMapDict
 	cpd, cpid, fel, cpmd := GetExperimentCPDicts(syn)
 
-	err := ContinueBuildExperimentCP(cpd, cpid, fel, cpmd, syn, mrnes.NumIDs, traceMgr, evtMgr)
+	err := ContinueBuildExperimentCP(cpd, cpid, fel, cpmd, syn, mrnes.NumIDs, TraceMgr, evtMgr)
 	if err != nil {
 		panic(err)
 	}
@@ -210,17 +218,10 @@ func RunExperiment(expCntrl evtm.EventHandlerFunction, expCmplt evtm.EventHandle
 	// call function expControl to find start functions and run them
 
 	expCntrl(evtMgr, nil, nil) 
-
-	termination := cp.GetVar("stop").(float64)
 	evtMgr.Run(termination)
 
 	// call function expComplete to complete the experiment, write out measurements
 	expCmplt(evtMgr, &msrFile, &exprmnt) 
-
-	if useTrace {
-		traceMgr.WriteToFile(traceFile)
-	}
-	fmt.Println("Done")
 }
 
 

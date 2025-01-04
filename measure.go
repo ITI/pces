@@ -244,7 +244,7 @@ var MeasureID2Name map[int]string = make(map[int]string)
 // into the file whose name is passed
 func SaveMeasureResults(msrFileName string, exprmntName string, useYAML bool) {
 
-	if Measured == nil {
+	if Measured == nil || len(Measured.Measurements) == 0{
 		return
 	}
 

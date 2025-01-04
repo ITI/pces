@@ -8,7 +8,7 @@ import (
 
 
 var trtToStr map[mrnes.TraceRecordType]string = map[mrnes.TraceRecordType]string{mrnes.NetworkType:"network",mrnes.CmpPtnType:"cp"}
-var traceMgr *mrnes.TraceManager
+var TraceMgr *mrnes.TraceManager
 
 // CPTrace saves information about the visitation of a message to some point in the computation pattern portion of the simulation.
 // saved for post-run analysis
@@ -39,15 +39,24 @@ func (cpt *CPTrace) Serialize() string {
 }
 
 // AddCPTrace creates a record of the trace using its calling arguments, and stores it
-func AddCPTrace(tm *mrnes.TraceManager, vrt vrtime.Time, execID int, objID int, op string, cpm *CmpPtnMsg) {
+func AddCPTrace(tm *mrnes.TraceManager, flag bool, vrt vrtime.Time, execID int, objID int, op string, cpm *CmpPtnMsg) {
+	if !flag {
+		return
+	}
 	cpt := new(CPTrace)
 	cpt.Time = vrt.Seconds()
 	cpt.Ticks = vrt.Ticks()
 	cpt.Priority = vrt.Pri()
-	cpt.ExecID   = cpm.ExecID
+	if cpm != nil {
+		cpt.ExecID   = cpm.ExecID
+	} else {
+		cpt.ExecID   = 0
+	}
 	cpt.ObjID = objID
 	cpt.Op = op
-	cpt.CPM = cpm.Serialize()
+	if cpm != nil {
+		cpt.CPM = cpm.Serialize()
+	}
 	cptStr := cpt.Serialize()
 
 	timeInStr := strconv.FormatFloat(cpt.Time, 'f', -1, 64)
