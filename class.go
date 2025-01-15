@@ -512,8 +512,8 @@ func startEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode stri
 	cpm.PcktLen = srts.PcktLen
 	cpm.MsgLen = srts.MsgLen
 	cpm.MsgType = srts.MsgType
-	numExecThreads += 1
-	cpm.ExecID = numExecThreads
+	NumExecThreads += 1
+	cpm.ExecID = NumExecThreads
 
 	endptName := cpfi.Host
 	endpt := mrnes.EndptDevByName[endptName]
@@ -1060,14 +1060,16 @@ var transferVar *TransferCfg = ClassCreateTransferCfg()
 var transferLoaded bool = RegisterFuncClass(transferVar)
 
 type TransferState struct {
+	Carried bool
 	Calls int
 	Bespoke any
 }
 
 type TransferCfg struct {
-	Carried int               `yaml:"carried" json:"carried"` // message carries xCPID, xLabel
-	XCP     string            `yaml:"xcp" json:"xcp"`         // CmpPtn name of destination
-	XLabel  string            `yaml:"xlabel" json:"xlabel"`   // function label at destination
+	Carried  string           `yaml:"carried" json:"carried"`   // message carries xCPID, xLabel
+	XCP      string           `yaml:"xcp" json:"xcp"`           // CmpPtn name of destination
+	XLabel   string           `yaml:"xlabel" json:"xlabel"`     // function label at destination
+	XMsgType string           `yaml:"xmsgtype" json:"xmsgtype"` // function label at destination
 	Msg2MC  map[string]string `yaml:"msg2mc" json:"msg2mc"`
     Groups    []string        `yaml:"groups" json:"groups"`
 	Trace   string            `yaml:"trace" json:"trace"`
@@ -1080,6 +1082,11 @@ func ClassCreateTransferCfg() *TransferCfg {
 
 func createTransferState(tcfg *TransferCfg) *TransferState {
 	transfer := new(TransferState)
+	if tcfg.Carried == "1" {
+		transfer.Carried = true
+	} else {
+		transfer.Carried = false
+	}
 	return transfer
 }
 
@@ -1098,9 +1105,9 @@ func (trnsfr *TransferCfg) CreateCfg(cfgStr string) any {
 
 func (trnsfr *TransferCfg) Populate(carried bool, xcp string, xlabel string, trace bool) {
 	if carried {
-		trnsfr.Carried = 1
+		trnsfr.Carried = "1"
 	} else {
-		trnsfr.Carried = 0
+		trnsfr.Carried = "0"
 	}
 	trnsfr.XCP = xcp
 	trnsfr.XLabel = xlabel
@@ -1181,13 +1188,15 @@ func transferEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode s
 	tfrs.Calls += 1
 
 	// the location of the CPID and Label depend on whether the function Carried bit is set
-	if tfrc.Carried != 0 {
+	if tfrs.Carried {
 		// get ID of comp pattern where service to be requested resided
 		msg.CPID = msg.XCPID
 		msg.Label = msg.XLabel
+		msg.MsgType = msg.XMsgType
 	} else {
 		msg.CPID = CmpPtnInstByName[tfrc.XCP].ID
 		msg.Label = tfrc.XLabel
+		msg.MsgType = tfrc.XMsgType
 	}
 
 	// put where ExitFunc will find it
@@ -1341,6 +1350,7 @@ var measureLoaded bool = RegisterFuncClass(measureVar)
 
 type MeasureState struct {
 	Calls int
+	Classify func([]int) string
 	Bespoke any
 }
 
@@ -1460,28 +1470,38 @@ func measureEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode st
 
 	endptName := cpfi.Host
 	endpt := mrnes.EndptDevByName[endptName]
-	AddCPTrace(TraceMgr, cpfi.Trace, evtMgr.CurrentTime(), msg.ExecID, endpt.DevID(), FullFuncName(cpfi, "measureEnter"), msg)
+	AddCPTrace(TraceMgr, cpfi.Trace, evtMgr.CurrentTime(), msg.ExecID, 
+		endpt.DevID(), FullFuncName(cpfi, "measureEnter"), msg)
 
-	// create an initial message
-	if mcfg.MsrOp == "start" || mcfg.MsrOp == "Start" {
-		if Measured == nil {
-			Measured = new(MsrData)
-			Measured.Measurements = make([]PerfRecord, 0)
+	timeNow := evtMgr.CurrentSeconds()
+
+	// if the message is not already passed through a measure function and this is a start
+	// create an MsrRoute to be appended to and mark the message
+	if msg.MsrSrtID == 0 && (mcfg.MsrOp == "start" || mcfg.MsrOp == "Start") {
+		CreateMsrRoute(mcfg.MsrName, msg.ExecID)
+		msg.MsrSrtID = cpfi.ID
+		msg.StartMsr = timeNow
+		MsrID2Name[cpfi.ID] = mcfg.MsrName
+	}
+
+	if mcfg.MsrOp == "end" || mcfg.MsrOp == "End" {
+		// look to see if the message's MsrGrpID is recognized
+		if MsrID2Name[msg.MsrSrtID] == mcfg.MsrName {
+			// recover or create the MsrGroup
+			msrType := "Latency"
+			if len(mcfg.Groups) > 0 {
+				msrType = mcfg.Groups[0]
+			}
+			var msrGrp *MsrGroup
+			if mcfs.Classify == nil {
+				msrGrp = GetMsrGrp(mcfg.MsrName, msg.ExecID, msrType, func([]int) string { return "default" } )
+			} else {
+				msrGrp = GetMsrGrp(mcfg.MsrName, msg.ExecID, msrType, mcfs.Classify)
+			}
+
+			// add the new measurement
+			msrGrp.AddMeasure(msg.StartMsr, timeNow-msg.StartMsr, mcfg.MsrName)
 		}
-		createMeasureRecord(cpfi, mcfg.MsrName, mcfs.Calls, evtMgr.CurrentSeconds(), msg)
-
-		// should be only one edge
-		edge := cpfi.OutEdges[0]
-		msg.MsgType = edge.MsgType
-
-		// put where ExitFunc will find it
-		cpfi.AddResponse(msg.ExecID, []*CmpPtnMsg{msg})
-	} else if (mcfg.MsrName == measureID2Name[msg.MeasureID]) && (mcfg.MsrOp != "end" && mcfg.MsrOp != "End") {
-		// this measurement has the same name as one that was tagged to the message
-		cpfi.AddResponse(msg.ExecID, []*CmpPtnMsg{msg})
-		recordMeasure(msg.MeasureID, evtMgr.CurrentSeconds(), cpfi.Host, CmpPtnInstByID[cpfi.CPID].Name, cpfi.Label)
-	} else if mcfg.MsrOp == "end" || mcfg.MsrOp == "End" {
-		endMeasure(msg.MeasureID, evtMgr.CurrentSeconds(), cpfi.Host, CmpPtnInstByID[cpfi.CPID].Name, cpfi.Label)
 	}
 
 	// empty message type flags assertion that there is only one edge, so select it

@@ -463,13 +463,18 @@ type CmpPtnMsg struct {
 	PrevCPID  int    // ID of the comp pattern through which the message most recently passed
 	PrevLabel string // label of the func through which the message most recently passed
 
-	XCPID  int    // cross-CP id
-	XLabel string // cross-CP label
-	CPID   int    // identity of the destination comp pattern
-	Label  string // label of the destination function
+	XCPID  int      // cross-CP id
+	XLabel string   // cross-CP label
+	XMsgType string // cross-CP message type
+	CPID   int      // identity of the destination comp pattern
+	Label  string   // label of the destination function
 
 	MsgType string // describes function of message
 	MsgLen  int    // number of bytes
+
+	MsrSrtID   int      // if of measurement function ID that started measurememnt
+
+	StartMsr   float64  // time when measurement started
 
 	RtnCPID    int    // used on service calls
 	RtnLabel   string // used on service calls
@@ -478,8 +483,6 @@ type CmpPtnMsg struct {
 	PcktLen    int     // parameter impacting execution time
 	Rate       float64 // when non-zero, a rate limiting attribute that might used, e.g., in modeling IO
 	FlowState  string  // "srt", "end", "chg"
-	Start      bool    // start the timer
-	StartTime  float64 // when the timer started
 	NetLatency float64
 	NetBndwdth float64
 	NetPrLoss  float64
@@ -750,6 +753,12 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 	// treat each msg individually
 	for _, msg := range msgs {
 
+		// if the function is one that adds time (srvRsp, processPckt) then log
+		// it on an MsrRoute if the message is on one
+		if (cpfi.Class == "srvRsp" || cpfi.Class == "processPckt") && msg.MsrSrtID > 0 {
+			MsrAppendID(msg.ExecID, cpfi.ID)
+		}
+
 		// allow for possibility that the next comp pattern is different, noticed
 		xcpi := cpi
 		if msg.CPID != cpfi.CPID {
@@ -832,6 +841,14 @@ func ReEnter(evtMgr *evtm.EventManager, cpFunc any, rtnmsg any) any {
 	// msg is of type *mrnes.RtnMsgStruct
 	rtnMsg := rtnmsg.(*mrnes.RtnMsgStruct)
 	msg := rtnMsg.Msg.(*CmpPtnMsg)
+
+	if msg.MsrSrtID > 0 {
+		execID := msg.ExecID
+		for _, devID := range rtnMsg.DevIDs {
+			MsrAppendID(execID, devID) 
+		}
+	}
+
 	msg.NetLatency = rtnMsg.Latency
 	msg.NetBndwdth = rtnMsg.Rate
 	msg.NetPrLoss = rtnMsg.PrLoss
@@ -860,5 +877,5 @@ func LostCmpPtnMsg(evtMgr *evtm.EventManager, context any, msg any) any {
 	return nil
 }
 
-// numExecThreads is used to place a unique integer code on every newly created initiation message
-var numExecThreads int = 1
+// NumExecThreads is used to place a unique integer code on every newly created initiation message
+var NumExecThreads int = 1

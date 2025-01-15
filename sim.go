@@ -32,12 +32,13 @@ func cmdlineParams() *cmdline.CmdParser {
 	cp.AddFlag(cmdline.StringFlag, "map", true)      // file with mapping of comp pattern functions to hosts
 	cp.AddFlag(cmdline.StringFlag, "exp", true)      // name of file used for run-time experiment parameters
 	cp.AddFlag(cmdline.StringFlag, "mdfy", false)    // name of file used to modify exp experiment parameters
-	cp.AddFlag(cmdline.StringFlag, "topo", false)    // name of output file used for topo templates
+	cp.AddFlag(cmdline.StringFlag, "topo", true)    // name of output file used for topo templates
+	cp.AddFlag(cmdline.StringFlag, "experiments", true)  // name of input file describing experiment parameters
 	cp.AddFlag(cmdline.StringFlag, "trace", false)   // path to output file of trace records
 	cp.AddFlag(cmdline.IntFlag, "rngseed", false)    // RNG seed 
 	cp.AddFlag(cmdline.FloatFlag, "stop", false)      // run the simulation until this time (in seconds)
 	cp.AddFlag(cmdline.BoolFlag, "json", false)      // input/output files in YAML, or JSON
-	cp.AddFlag(cmdline.StringFlag, "msr", true)      // name of file where measurements will be written
+	cp.AddFlag(cmdline.StringFlag, "csv", true)      // name of file where measurements will be written
 	cp.AddFlag(cmdline.BoolFlag, "verbose", false)  // measure output is terse
 	cp.AddFlag(cmdline.StringFlag, "tunits", true)   // units used in reporting time
 	cp.AddFlag(cmdline.BoolFlag, "container", false)  // name of file where measurements will be written
@@ -49,11 +50,12 @@ var evtMgr *evtm.EventManager = evtm.New()
 var useTrace bool
 var termination float64
 var traceFile string
-var msrFile string
+var csvFile string
 var cp *cmdline.CmdParser
-var exprmnt string
+var ExprmntName string
 var TimeUnits string
 var MsrVerbose bool
+var ExprmntsFile string
 
 var GlobalSeed int64 = 1234567
 
@@ -66,7 +68,7 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 	// parse the command line
 	cp.Parse()
 
-	exprmnt = cp.GetVar("exprmnt").(string)
+	ExprmntName = cp.GetVar("exprmnt").(string)
 
 	// string for the input directory
 	inputDir := cp.GetVar("inputLib").(string)
@@ -123,8 +125,8 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 
 	// check for access to input files
 	fullpathmap := make(map[string]string)
-	inFiles := []string{"cp", "cpInit", "funcExec", "devExec", "exp", "mdfy", "topo", "map"}
-	optionalFiles := []string{"mdfy"}
+	inFiles := []string{"cp", "cpInit", "funcExec", "devExec", "exp", "mdfy", "topo", "map", "experiments"}
+	optionalFiles := []string{"mdfy", "experiments"}
 
 	fullpath := []string{}
 	errs := []error{}
@@ -133,6 +135,7 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 			if !slices.Contains(optionalFiles, filename) {
 				errs = append(errs, fmt.Errorf("command flag %s not included on the command line", filename))
 			}
+			syn[filename] = ""
 			continue
 		}
 		basefile := cp.GetVar(filename).(string)
@@ -142,6 +145,8 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 		fullpathmap[filename] = fullfile
 		syn[filename] = fullfile
 	}
+
+	ExprmntsFile = syn["experiments"]
 
 	err = ReportErrs(errs)
 	if err != nil {
@@ -167,16 +172,18 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 		}
 		outputFiles = append(outputFiles, traceFile)
 	} 
+
+
 	
-	if cp.IsLoaded("msr") {
-		msrFile = cp.GetVar("msr").(string)
+	if cp.IsLoaded("csv") {
+		csvFile = cp.GetVar("csv").(string)
 		if !container {
-			msrFile = filepath.Join(outputDir, msrFile)
+			csvFile = filepath.Join(outputDir, csvFile)
 		} else {
-			baseFile := filepath.Base(msrFile)
-			msrFile = filepath.Join("/tmp/extern/output", baseFile)
+			baseFile := filepath.Base(csvFile)
+			csvFile = filepath.Join("/tmp/extern/output", baseFile)
 		}
-		outputFiles = append(outputFiles, msrFile)
+		outputFiles = append(outputFiles, csvFile)
 	} 
 	
 	_, err = CheckOutputFiles(outputFiles)
@@ -197,7 +204,7 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 
 func RunExperiment(expCntrl evtm.EventHandlerFunction, expCmplt evtm.EventHandlerFunction) {
 
-	TraceMgr = mrnes.CreateTraceManager(exprmnt, useTrace)
+	TraceMgr = mrnes.CreateTraceManager(ExprmntName, useTrace)
 
 	// build the experiment.  First the network stuff
 	// start the id counter at 1 (value passed is incremented before use)
@@ -221,7 +228,7 @@ func RunExperiment(expCntrl evtm.EventHandlerFunction, expCmplt evtm.EventHandle
 	evtMgr.Run(termination)
 
 	// call function expComplete to complete the experiment, write out measurements
-	expCmplt(evtMgr, &msrFile, &exprmnt) 
+	expCmplt(evtMgr, &csvFile, &ExprmntName) 
 }
 
 

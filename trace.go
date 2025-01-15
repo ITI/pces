@@ -27,6 +27,10 @@ func (cpt *CPTrace) TraceType() mrnes.TraceRecordType {
 }
 
 func (cpt *CPTrace) Serialize() string {
+	if !useTrace {
+		return ""
+	}
+
 	var bytes []byte
 	var merr error
 
@@ -40,9 +44,11 @@ func (cpt *CPTrace) Serialize() string {
 
 // AddCPTrace creates a record of the trace using its calling arguments, and stores it
 func AddCPTrace(tm *mrnes.TraceManager, flag bool, vrt vrtime.Time, execID int, objID int, op string, cpm *CmpPtnMsg) {
-	if !flag {
+
+	if !flag || !useTrace {
 		return
 	}
+	
 	cpt := new(CPTrace)
 	cpt.Time = vrt.Seconds()
 	cpt.Ticks = vrt.Ticks()
