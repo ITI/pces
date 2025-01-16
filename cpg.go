@@ -24,6 +24,7 @@ import (
 // and associate a pointer to its struct
 var CmpPtnInstByName map[string]*CmpPtnInst = make(map[string]*CmpPtnInst)
 var CmpPtnInstByID map[int]*CmpPtnInst = make(map[int]*CmpPtnInst)
+var CmpPtnFuncInstByID map[int]*CmpPtnFuncInst = make(map[int]*CmpPtnFuncInst)
 
 type execRecord struct {
 	cpID  int     // identity of comp pattern starting this execution

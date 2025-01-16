@@ -121,6 +121,8 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYA
 		cpfi.Cfg = funcInstToSharedCfg[gfid]
 	}
 
+	CmpPtnFuncInstByID[cpfi.ID] = cpfi
+
 	if cpfi.funcTrace() {
 		TraceMgr.AddName(cpfi.ID, cpfi.GlobalName(), "application")
 	}

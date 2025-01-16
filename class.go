@@ -1489,14 +1489,26 @@ func measureEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode st
 		if MsrID2Name[msg.MsrSrtID] == mcfg.MsrName {
 			// recover or create the MsrGroup
 			msrType := "Latency"
+			msrAgg := false
 			if len(mcfg.Groups) > 0 {
-				msrType = mcfg.Groups[0]
-			}
+				for _, grp := range mcfg.Groups {
+					if grp == "Bndwdth" {
+						msrType = "Bndwdth"
+					} 
+					if grp == "PrLoss" {
+						msrType = "PrLoss" 
+					} 
+					if grp == "Aggregate" {
+						msrAgg = true
+					}
+				}
+			}	
+
 			var msrGrp *MsrGroup
 			if mcfs.Classify == nil {
-				msrGrp = GetMsrGrp(mcfg.MsrName, msg.ExecID, msrType, func([]int) string { return "default" } )
+				msrGrp = GetMsrGrp(mcfg.MsrName, msg.ExecID, msrType, msrAgg, func([]int) string { return "default" } )
 			} else {
-				msrGrp = GetMsrGrp(mcfg.MsrName, msg.ExecID, msrType, mcfs.Classify)
+				msrGrp = GetMsrGrp(mcfg.MsrName, msg.ExecID, msrType, msrAgg, mcfs.Classify)
 			}
 
 			// add the new measurement

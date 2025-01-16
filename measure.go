@@ -22,7 +22,11 @@ type Measurement struct {
 type MsrGroup struct {
 	GroupDesc  string          // text description of the group
 	GroupType  string		   // one of the constants Latency, Bndwdth, PrLoss  
+	MsrAgg     bool            // aggregate additions or not
 	ID uint32                  // index for identity
+	Sum float64				   // sum of all entities
+	SqrSum float64			   // sum of square of each entity
+	N int					   // number of samples included
 	Measures []Measurement     // list of measurements observed
 }
 
@@ -32,6 +36,10 @@ type MsrData struct {
 	Params map[string]string
 	GroupDesc string
 	GroupType string
+	MsrAgg bool
+	Sum float64
+	SqrSum float64
+	N int
 	Measures []string
 }
 
@@ -60,7 +68,6 @@ func CreateMsrRoute(msrName string, execID int) {
 		MsrRouteByExecID = make(map[int]*MsrRoute)
 	}
 	MsrRouteByExecID[execID] = mr	
-	MsrMapsInit()
 }
 
 func MsrAppendID(execID int, ID int) {
@@ -89,11 +96,11 @@ func IntToByteArray(i int) []byte {
 	return b	
 }
 
-var MsrID2Name map[int]string
-var MsrRouteByExecID map[int]*MsrRoute
-var MsrGrpByID map[uint32]*MsrGroup
+var MsrID2Name map[int]string = make(map[int]string)
+var MsrRouteByExecID map[int]*MsrRoute = make(map[int]*MsrRoute)
+var MsrGrpByID map[uint32]*MsrGroup = make(map[uint32]*MsrGroup)
 
-func GetMsrGrp(msrName string, execID int, msrType string, classify func([]int) string) *MsrGroup {
+func GetMsrGrp(msrName string, execID int, msrType string, msrAgg bool, classify func([]int) string) *MsrGroup {
 	mr := MsrRouteByExecID[execID]	
 	grpID := ComputeMsrGrpHash(msrName, mr.Visited) 
 	msrGrp, present := MsrGrpByID[grpID]
@@ -101,32 +108,19 @@ func GetMsrGrp(msrName string, execID int, msrType string, classify func([]int) 
 		return msrGrp
 	}
 	desc := classify(mr.Visited)	
-	msrGrp = CreateMsrGroup(desc, msrType)
+	msrGrp = CreateMsrGroup(desc, msrType, msrAgg)
 	MsrGrpByID[grpID] = msrGrp
 	msrGrp.ID = grpID
 	return msrGrp
 }
 
-
-func MsrMapsInit() {
-	if MsrID2Name == nil {
-		MsrID2Name = make(map[int]string)
-	}
-	if MsrGrpByID == nil {
-		MsrGrpByID = make(map[uint32]*MsrGroup)
-	}
-	if MsrRouteByExecID == nil {
-		MsrRouteByExecID = make(map[int]*MsrRoute)
-	}
-}
-
 // CreateMsrGroup establishes a struct that holds a description of a group of measurements,
 // and the measurements themselves
-func CreateMsrGroup(desc string, groupType string) *MsrGroup {
-	MsrMapsInit()
+func CreateMsrGroup(desc string, groupType string, msrAgg bool) *MsrGroup {
 	msrg := new(MsrGroup)
 	msrg.GroupDesc = desc
 	msrg.GroupType = groupType
+	msrg.MsrAgg = msrAgg
 	msrg.Measures = make([]Measurement,0)
 	return msrg
 }
@@ -137,6 +131,10 @@ func (msrg *MsrGroup) CreateMsrData(exprmntName string) *MsrData {
 	md.ExprmntName = exprmntName
 	md.GroupDesc = msrg.GroupDesc
 	md.GroupType = msrg.GroupType
+	md.MsrAgg    = msrg.MsrAgg
+	md.Sum = msrg.Sum
+	md.SqrSum = msrg.SqrSum
+	md.N = msrg.N
 	md.Measures = make([]string, len(msrg.Measures))
 
 	for idx:=0; idx<len(msrg.Measures); idx++ {
@@ -151,7 +149,12 @@ func (msrg *MsrGroup)AddMeasure(startMsr, measure float64, msrName string) {
 	m.StartMsr = startMsr
 	m.Value = timeInUnits(measure, TimeUnits)
 	m.MsrName = msrName
-	msrg.Measures = append(msrg.Measures, *m) 
+	msrg.Sum += measure
+	msrg.SqrSum += measure*measure
+	msrg.N += 1
+	if !msrg.MsrAgg {
+		msrg.Measures = append(msrg.Measures, *m) 
+	}
 }
 
 var Samples int = 0
@@ -162,6 +165,14 @@ var Batch int = 1
 // The mean may be computed by batch-means, batch size given, and
 // the number of initial samples to skip to avoid initialization bias
 func (msrg *MsrGroup) MsrStats(batchmeans bool) (int, float64, float64) {
+	if msrg.MsrAgg {
+		fN := float64(msrg.N)
+		mean := msrg.Sum/fN
+		sqrMean := msrg.SqrSum/fN
+		stddev := math.Sqrt(sqrMean-mean*mean)
+		return msrg.N, mean, stddev
+	}
+
 	var skip, batch int
 	if batchmeans {
 		skip = Skip
