@@ -390,7 +390,7 @@ func (msrg *MsrGroup) AddCSVData(csvFileName, exprmntName string, data []string 
 			dataRow[len(dataRow)-2] = strconv.Itoa(idx+1)
 		
 			// write in the value
-			dataRow[len(dataRow)-1] = strconv.FormatFloat(msrg.Measures[idx].Value, 'g', 4, 64)	
+			dataRow[len(dataRow)-1] = strconv.FormatFloat(msrg.Measures[idx].Value, 'g', 6, 64)	
 
 			// make the row and write it in	
 			csvRow := strings.Join(dataRow,",")+"\n"
@@ -408,8 +408,8 @@ func (msrg *MsrGroup) AddCSVData(csvFileName, exprmntName string, data []string 
 		samples, mean, stddev := msrg.MsrStats(false) 
 
 		// convert numeric values into strings	
-		stats := []string{strconv.Itoa(samples), strconv.FormatFloat(mean, 'g', 4, 64), 
-			strconv.FormatFloat(stddev, 'g', 2, 64)}
+		stats := []string{strconv.Itoa(samples), strconv.FormatFloat(mean, 'g', 6, 64), 
+			strconv.FormatFloat(stddev, 'g', 6, 64)}
 
 		// add to the dataRow
 		dataRow = append(dataRow, stats...)
@@ -424,7 +424,7 @@ func (msrg *MsrGroup) AddCSVData(csvFileName, exprmntName string, data []string 
 			ci = 1.96*stddev/math.Sqrt(float64(samples-1))
 		} 
 		// convert numeric outputs into string
-		stats := []string{strconv.Itoa(samples), strconv.FormatFloat(mean, 'g', 4, 64), strconv.FormatFloat(ci, 'g', 2, 64)}
+		stats := []string{strconv.Itoa(samples), strconv.FormatFloat(mean, 'g', 6, 64), strconv.FormatFloat(ci, 'g', 6, 64)}
 
 		// extend dataRow with results
 		dataRow = append(dataRow, stats...)
@@ -439,7 +439,7 @@ func (msrg *MsrGroup) AddCSVData(csvFileName, exprmntName string, data []string 
 
 		// include every statistical result
 		for idx:=0; idx<len(pstats); idx++ {
-			stats = append(stats, strconv.FormatFloat(pstats[idx], 'g', 4, 64))
+			stats = append(stats, strconv.FormatFloat(pstats[idx], 'g', 6, 64))
 		}
 
 		// extend the dataRow		
