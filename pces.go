@@ -24,7 +24,9 @@ type NetSimPortal interface {
 // pces pointers to mrnes implemenations of the NetworkPortal and TraceManager interfaces
 var netportal *mrnes.NetworkPortal
 
+// CmpPtnMapDict is a global variable that holds a description of the mapping of CmpPtn function instances to hosts
 var CmpPtnMapDict *CompPatternMapDict
+
 var funcExecTimeTbl map[string]map[string]map[int]float64
 var nameToSharedCfg map[string]any
 var funcInstToSharedCfg map[GlobalFuncID]any
@@ -45,18 +47,21 @@ type CmpPtnGraphEdge struct {
 	DstLabel string
 }
 
+// EdgeStr constructs a string describing the inforamation on an edge
 func (cpge *CmpPtnGraphEdge) EdgeStr() string {
 	rtn := fmt.Sprintf("src %s, type %s, dst %s",
 		cpge.SrcLabel, cpge.MsgType, cpge.DstLabel)
 	return rtn
 }
 
+// ExtCmpPtnGraphEdge holds attributes of an edge that traverses comp patterns
 type ExtCmpPtnGraphEdge struct {
 	SrcCP string
 	DstCP string
 	CPGE  CmpPtnGraphEdge
 }
 
+// CreateCmpPtnGraphEdge is a constructor
 func CreateCmpPtnGraphEdge(srcLabel, msgType, dstLabel string) *CmpPtnGraphEdge {
 	cpge := &CmpPtnGraphEdge{SrcLabel: srcLabel, MsgType: msgType, DstLabel: dstLabel}
 	return cpge
@@ -237,6 +242,8 @@ func BuildExperimentCP(syn map[string]string, useYAML bool, idCounter int, tm *m
 	return err
 }
 
+// ContinueBuildExperimentCP builds the simulation model after the dictionaries of its various objects have been
+// read in
 func ContinueBuildExperimentCP(cpd *CompPatternDict, cpid *CPInitListDict,
 	fel *FuncExecList, cpmd *CompPatternMapDict, syn map[string]string,
 	idCounter int, tm *mrnes.TraceManager, evtMgr *evtm.EventManager) error {
@@ -425,6 +432,7 @@ func checkSharedCfgAssignment(ssgl *SharedCfgGroupList) {
 	}
 }
 
+// ReportStatistics reports quantile ranges of measurements from various trace groups that have been created
 func ReportStatistics() {
 	// gather data by trace group
 	tgData := make(map[string][]float64)

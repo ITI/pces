@@ -1,91 +1,86 @@
 package pces
 
 import (
-	"strconv"
-	"strings"
 	"gopkg.in/yaml.v3"
-	"unsafe"
 	"hash/fnv"
-	"sort"
 	"math"
 	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"unsafe"
 )
 
 // Measurement holds a floating point measurement, and the time when the measurement was started
 type Measurement struct {
-	StartMsr float64	// simulation time when measurement started
-	Value float64       // measurement
-	MsrName string      // measurement name
+	StartMsr float64 // simulation time when measurement started
+	Value    float64 // measurement
+	MsrName  string  // measurement name
 }
 
-// MsrGroup holds observations that are in a common class, defined by the user.   
+// MsrGroup holds observations that are in a common class, defined by the user.
 type MsrGroup struct {
-	GroupDesc  string          // text description of the group
-	GroupType  string		   // one of the constants Latency, Bndwdth, PrLoss  
-	MsrAgg     bool            // aggregate additions or not
-	ID uint32                  // index for identity
-	Sum float64				   // sum of all entities
-	SqrSum float64			   // sum of square of each entity
-	N int					   // number of samples included
-	Measures []Measurement     // list of measurements observed
+	GroupDesc string        // text description of the group
+	GroupType string        // one of the constants Latency, Bndwdth, PrLoss
+	MsrAgg    bool          // aggregate additions or not
+	ID        uint32        // index for identity
+	Sum       float64       // sum of all entities
+	SqrSum    float64       // sum of square of each entity
+	N         int           // number of samples included
+	Measures  []Measurement // list of measurements observed
 }
 
 // MsrData holds the information from an MsrGroup, plus more, in a data structure suitable for serialization
 type MsrData struct {
 	ExprmntName string
-	Params map[string]string
-	GroupDesc string
-	GroupType string
-	MsrAgg bool
-	Sum float64
-	SqrSum float64
-	N int
-	Measures []string
+	Params      map[string]string
+	GroupDesc   string
+	GroupType   string
+	MsrAgg      bool
+	Sum         float64
+	SqrSum      float64
+	N           int
+	Measures    []string
 }
 
+// MsrRoute holds the sequence of time-increasing function ids visited on the measurement route
 type MsrRoute struct {
 	MsrName string
 	Visited []int
 }
 
+// ComputeMsrGrpHash computes a hash for a sequence of measurements on a measurement route,
+// used for matching
 func ComputeMsrGrpHash(msrName string, visits []int) uint32 {
 	h := fnv.New32()
 	b := []byte(msrName)
 	h.Write(b)
-	
-	for idx:=0; idx< len(visits); idx++ {
-		b = IntToByteArray( visits[idx] )
+
+	for idx := 0; idx < len(visits); idx++ {
+		b = IntToByteArray(visits[idx])
 		h.Write(b)
 	}
 	return h.Sum32()
-}	
+}
 
+// CreateMsrRoute is a constructor
 func CreateMsrRoute(msrName string, execID int) {
 	mr := new(MsrRoute)
 	mr.MsrName = msrName
-	mr.Visited = make([]int,0)
+	mr.Visited = make([]int, 0)
 	if MsrRouteByExecID == nil {
 		MsrRouteByExecID = make(map[int]*MsrRoute)
 	}
-	MsrRouteByExecID[execID] = mr	
+	MsrRouteByExecID[execID] = mr
 }
 
+// MsrAppendID extends the list of timing-increase functions visited on a measured route
 func MsrAppendID(execID int, ID int) {
 	mr := MsrRouteByExecID[execID]
 	mr.Visited = append(mr.Visited, ID)
 }
 
-/*
-func IntToByteArray(i int64) []byte {
-	var b []byte
-	sh := (*reflect.SliceHeader)(unsafe.Pointer(&b))
-	sh.Len = 8
-	sh.Cap = 8
-	sh.Data = uintptr(unsafe.Pointer(&i))
-	return b[:]
-}
-*/
-
+// IntToByteArray is a utility used to create a byte-slice representation of an integer
 func IntToByteArray(i int) []byte {
 	s := []int{i}
 
@@ -93,21 +88,28 @@ func IntToByteArray(i int) []byte {
 	data := unsafe.SliceData(s)
 	// b := unsafe.Slice((*byte)(unsafe.Pointer(data)), len(s)*unsafe.Sizeof(s[0]))
 	b := unsafe.Slice((*byte)(unsafe.Pointer(data)), 8)
-	return b	
+	return b
 }
 
+// MsrID2Name gives the ID of a measurement, given its string name
 var MsrID2Name map[int]string = make(map[int]string)
+
+// MsrRouteByExecID gives a pointer to an MsrRoute, given the ExecID of a computation taking that route
 var MsrRouteByExecID map[int]*MsrRoute = make(map[int]*MsrRoute)
+
+// MsrGrpByID gives a pointer to a measurement group, given the ID of the measurement
 var MsrGrpByID map[uint32]*MsrGroup = make(map[uint32]*MsrGroup)
 
-func GetMsrGrp(msrName string, execID int, msrType string, msrAgg bool, classify func([]int) string) *MsrGroup {
-	mr := MsrRouteByExecID[execID]	
-	grpID := ComputeMsrGrpHash(msrName, mr.Visited) 
+// GetMsrGrp returns a pointer to a measurement group it creates given a number of parameters, including
+// a name for the group, the route taken by a trace with a given execID
+func GetMsrGrp(msrName string, execID int, msrType string, msrAgg bool, classify func(int, []int) string) *MsrGroup {
+	mr := MsrRouteByExecID[execID]
+	grpID := ComputeMsrGrpHash(msrName, mr.Visited)
 	msrGrp, present := MsrGrpByID[grpID]
 	if present {
 		return msrGrp
 	}
-	desc := classify(mr.Visited)	
+	desc := classify(execID, mr.Visited)
 	msrGrp = CreateMsrGroup(desc, msrType, msrAgg)
 	MsrGrpByID[grpID] = msrGrp
 	msrGrp.ID = grpID
@@ -121,7 +123,7 @@ func CreateMsrGroup(desc string, groupType string, msrAgg bool) *MsrGroup {
 	msrg.GroupDesc = desc
 	msrg.GroupType = groupType
 	msrg.MsrAgg = msrAgg
-	msrg.Measures = make([]Measurement,0)
+	msrg.Measures = make([]Measurement, 0)
 	return msrg
 }
 
@@ -131,32 +133,33 @@ func (msrg *MsrGroup) CreateMsrData(exprmntName string) *MsrData {
 	md.ExprmntName = exprmntName
 	md.GroupDesc = msrg.GroupDesc
 	md.GroupType = msrg.GroupType
-	md.MsrAgg    = msrg.MsrAgg
+	md.MsrAgg = msrg.MsrAgg
 	md.Sum = msrg.Sum
 	md.SqrSum = msrg.SqrSum
 	md.N = msrg.N
 	md.Measures = make([]string, len(msrg.Measures))
 
-	for idx:=0; idx<len(msrg.Measures); idx++ {
+	for idx := 0; idx < len(msrg.Measures); idx++ {
 		md.Measures[idx] = strconv.FormatFloat(msrg.Measures[idx].Value, 'g', -1, 64)
 	}
 	return md
 }
 
 // AddMeasure creates a new Measurement and adds it to the MsrGroup
-func (msrg *MsrGroup)AddMeasure(startMsr, measure float64, msrName string) {
-    m := new(Measurement)
+func (msrg *MsrGroup) AddMeasure(startMsr, measure float64, msrName string) {
+	m := new(Measurement)
 	m.StartMsr = startMsr
 	m.Value = timeInUnits(measure, TimeUnits)
 	m.MsrName = msrName
 	msrg.Sum += measure
-	msrg.SqrSum += measure*measure
+	msrg.SqrSum += measure * measure
 	msrg.N += 1
 	if !msrg.MsrAgg {
-		msrg.Measures = append(msrg.Measures, *m) 
+		msrg.Measures = append(msrg.Measures, *m)
 	}
 }
 
+// Samples, Skip, and Batch are parameters used in constructing batch means estimates of mean values
 var Samples int = 0
 var Skip int = 0
 var Batch int = 1
@@ -167,9 +170,9 @@ var Batch int = 1
 func (msrg *MsrGroup) MsrStats(batchmeans bool) (int, float64, float64) {
 	if msrg.MsrAgg {
 		fN := float64(msrg.N)
-		mean := msrg.Sum/fN
-		sqrMean := msrg.SqrSum/fN
-		stddev := math.Sqrt(sqrMean-mean*mean)
+		mean := msrg.Sum / fN
+		sqrMean := msrg.SqrSum / fN
+		stddev := math.Sqrt(sqrMean - mean*mean)
 		return msrg.N, mean, stddev
 	}
 
@@ -188,15 +191,15 @@ func (msrg *MsrGroup) MsrStats(batchmeans bool) (int, float64, float64) {
 	}
 
 	// compute the index range over the non-aggregated samples
-	srtIdx := skip*batch
-	endIdx := batch*(len(msrg.Measures)/batch)
+	srtIdx := skip * batch
+	endIdx := batch * (len(msrg.Measures) / batch)
 
-	n := 0		// number of batch-means samples
-	sum := 0.0	// sum of batch-means samples
-	sum2 := 0.0	// sum of squares of batch-means samples
+	n := 0      // number of batch-means samples
+	sum := 0.0  // sum of batch-means samples
+	sum2 := 0.0 // sum of squares of batch-means samples
 
-	for idx := srtIdx; idx<endIdx; idx += batch {
-		avg := 0.0		// total over batch
+	for idx := srtIdx; idx < endIdx; idx += batch {
+		avg := 0.0 // total over batch
 
 		// visit every sample in batch
 		for jdx := idx; jdx < idx+batch; jdx++ {
@@ -204,18 +207,22 @@ func (msrg *MsrGroup) MsrStats(batchmeans bool) (int, float64, float64) {
 			avg += value
 		}
 
-		avg /= float64(batch)	// compute the batch-mean sample
+		avg /= float64(batch) // compute the batch-mean sample
 		sum += avg
-		sum2 += avg*avg
+		sum2 += avg * avg
 		n += 1
 	}
 
-	fn := float64(n)		// floating point needed for arithmetic with floats
-	mean := sum/fn			// batch-means mean
-	sqrMean := sum2/fn		// batch-means avg sample^2
+	fn := float64(n) // floating point needed for arithmetic with floats
+	mean := sum / fn // batch-means mean
+	var std float64
 
+	if n > 1 {
+		sqrMean := sum2 / fn // batch-means avg sample^2
+		std = math.Sqrt(math.Abs(sqrMean - mean*mean))
+	}
 	// results
-	return n, mean, math.Sqrt(sqrMean-mean*mean)
+	return n, mean, std
 }
 
 // MsrRange returns the min, 25% percentile, median, 75% percentile, and maximum value
@@ -229,39 +236,38 @@ func (msrg *MsrGroup) MsrRange() (int, []float64) {
 	}
 	sort.Float64s(data)
 
-
 	// quartiles depend on whether we need to split values or not
 	var lower, median, upper float64
 	if len(data)%4 == 0 {
 
 		// Four equal sized bins
-		quarter := len(data)/4
-		half    := len(data)/2
-		lower = (data[quarter-1]+data[quarter])/2.0
-		upper = (data[3*quarter-1]+data[3*quarter])/2.0
-		median = (data[half-1]+data[half])/2.0		
+		quarter := len(data) / 4
+		half := len(data) / 2
+		lower = (data[quarter-1] + data[quarter]) / 2.0
+		upper = (data[3*quarter-1] + data[3*quarter]) / 2.0
+		median = (data[half-1] + data[half]) / 2.0
 	} else if len(data)%2 == 0 {
 		// two equal sized bins
-		half    := len(data)/2
-		quarter := len(data)/4
-		
-		// the two halfs are both odd 
+		half := len(data) / 2
+		quarter := len(data) / 4
+
+		// the two halfs are both odd
 		lower = data[quarter]
 		upper = data[half+quarter]
-		median = (data[half-1]+data[half])/2.0		
-	} else {	
-		// sample size is odd so median is middle element	
-		half    := len(data)/2
+		median = (data[half-1] + data[half]) / 2.0
+	} else {
+		// sample size is odd so median is middle element
+		half := len(data) / 2
 		median = data[half]
 
-		if half%2 == 0 {	
-			quarter := half/2
+		if half%2 == 0 {
+			quarter := half / 2
 			lower = data[quarter]
 			upper = data[half+quarter]
 		} else {
-			quarter := half/2
-			lower = (data[quarter]+data[quarter+1])/2.0
-			upper = (data[half+quarter]+data[half+quarter+1])/2.0
+			quarter := half / 2
+			lower = (data[quarter] + data[quarter+1]) / 2.0
+			upper = (data[half+quarter] + data[half+quarter+1]) / 2.0
 		}
 	}
 	rtn := []float64{data[0], lower, median, upper, data[len(data)-1]}
@@ -270,16 +276,15 @@ func (msrg *MsrGroup) MsrRange() (int, []float64) {
 
 var paramCodes []string
 var columnHdr []string
-var fixedRow  []string
+var fixedRow []string
 var paramsDict map[string]string
 var rowType string
 
 // PrepCSVRow is called at the end of a run to create a header for the experiment's
 // csv output file, if needed (actually only needed on the first call), and set up
 // other data structures
-
-func (msrg *MsrGroup) PrepCSVRow(csvFileName string, expFileName string, 
-		exprmntName string, hdr []string, data []string, rType string) []string {
+func (msrg *MsrGroup) PrepCSVRow(csvFileName string, expFileName string,
+	exprmntName string, hdr []string, data []string, rType string) []string {
 
 	paramsDict := make(map[string]string)
 	if len(expFileName) > 0 {
@@ -287,7 +292,7 @@ func (msrg *MsrGroup) PrepCSVRow(csvFileName string, expFileName string,
 	}
 
 	// we'll put in the measure name with the samples
-	fixedRow  = []string{exprmntName,""}
+	fixedRow = []string{exprmntName, ""}
 	rowType = rType
 
 	columnHdr := []string{"Experiment", "MeasureName"}
@@ -296,12 +301,12 @@ func (msrg *MsrGroup) PrepCSVRow(csvFileName string, expFileName string,
 	columnHdr = append(columnHdr, hdr...)
 
 	// make room for the user specified data
-	for idx:=0; idx<len(hdr); idx++ {
+	for idx := 0; idx < len(hdr); idx++ {
 		fixedRow = append(fixedRow, "")
 	}
 
 	// copy the user specified data
-	for idx := 0; idx<len(data); idx++ {
+	for idx := 0; idx < len(data); idx++ {
 		fixedRow[idx+2] = data[idx]
 	}
 
@@ -320,28 +325,27 @@ func (msrg *MsrGroup) PrepCSVRow(csvFileName string, expFileName string,
 		fixedRow = append(fixedRow, paramsDict[param])
 	}
 
-	// Needed to create fixedRow, but that's done now 
+	// Needed to create fixedRow, but that's done now
 	// if the csvFile exists already the header has been made and written and there is nothing to do
-	_, err := os.Stat(csvFileName)	
-	if err==nil {
+	_, err := os.Stat(csvFileName)
+	if err == nil {
 		return []string{}
 	}
 
-
 	// The remainder of the header depends on what type of output is being asked for
 	if rType == "Samples" {
-		AddOn := []string{"Index", "Sample"+"("+TimeUnits+")"} 
+		AddOn := []string{"Index", "Sample" + "(" + TimeUnits + ")"}
 		columnHdr = append(columnHdr, AddOn...)
 	} else if rType == "Mean" {
-		AddOn := []string{"Samples", "Mean"+"("+TimeUnits+")", "StdDev"} 
+		AddOn := []string{"Samples", "Mean" + "(" + TimeUnits + ")", "StdDev"}
 		columnHdr = append(columnHdr, AddOn...)
 	} else if rType == "CI" {
-		AddOn := []string{"Samples", "Mean"+"("+TimeUnits+")", "CI"} 
+		AddOn := []string{"Samples", "Mean" + "(" + TimeUnits + ")", "CI"}
 		columnHdr = append(columnHdr, AddOn...)
 	} else if rType == "Range" {
-		AddOn := []string{"Samples", "Min"+"("+TimeUnits+")", "Q1", "Q2", "Q3", "Max"+"("+TimeUnits+")"}
+		AddOn := []string{"Samples", "Min" + "(" + TimeUnits + ")", "Q1", "Q2", "Q3", "Max" + "(" + TimeUnits + ")"}
 		columnHdr = append(columnHdr, AddOn...)
-	} 
+	}
 
 	// write it out
 	f, err0 := os.OpenFile(csvFileName, os.O_CREATE|os.O_WRONLY, 0644)
@@ -349,24 +353,23 @@ func (msrg *MsrGroup) PrepCSVRow(csvFileName string, expFileName string,
 		panic(err0)
 	}
 
-
-	headerLine := strings.Join(columnHdr, ",")+"\n"
+	headerLine := strings.Join(columnHdr, ",") + "\n"
 	f.WriteString(headerLine)
 	written := []string{headerLine}
 	return written
 }
 
 // AddCSVData puts in one or more data rows to the csv file output
-func (msrg *MsrGroup) AddCSVData(csvFileName, exprmntName string, data []string ) []string {
+func (msrg *MsrGroup) AddCSVData(csvFileName, exprmntName string, data []string) []string {
 
 	written := []string{}
 
 	// copy the fixedRow data into a new slice
 	dataRow := make([]string, len(fixedRow))
 	copy(dataRow, fixedRow)
-	
+
 	// add the user data that goes in starting at index 2
-	for idx:=0; idx< len(data); idx++ {
+	for idx := 0; idx < len(data); idx++ {
 		dataRow[idx+2] = data[idx]
 	}
 
@@ -381,19 +384,19 @@ func (msrg *MsrGroup) AddCSVData(csvFileName, exprmntName string, data []string 
 
 	if rowType == "Samples" {
 		// list the measured samples.  Add the index and value to the dataRow
-		dataRow = append(dataRow,"")  // for the index
-		dataRow = append(dataRow,"")  // for the value
+		dataRow = append(dataRow, "") // for the index
+		dataRow = append(dataRow, "") // for the value
 
 		// visit every sample
-		for idx:=0; idx<len(msrg.Measures); idx++ {
+		for idx := 0; idx < len(msrg.Measures); idx++ {
 
-			dataRow[len(dataRow)-2] = strconv.Itoa(idx+1)
-		
+			dataRow[len(dataRow)-2] = strconv.Itoa(idx + 1)
+
 			// write in the value
-			dataRow[len(dataRow)-1] = strconv.FormatFloat(msrg.Measures[idx].Value, 'g', 6, 64)	
+			dataRow[len(dataRow)-1] = strconv.FormatFloat(msrg.Measures[idx].Value, 'g', 6, 64)
 
-			// make the row and write it in	
-			csvRow := strings.Join(dataRow,",")+"\n"
+			// make the row and write it in
+			csvRow := strings.Join(dataRow, ",") + "\n"
 			_, err0 := f.WriteString(csvRow)
 			if err0 != nil {
 				panic(err0)
@@ -405,24 +408,24 @@ func (msrg *MsrGroup) AddCSVData(csvFileName, exprmntName string, data []string 
 	} else if rowType == "Mean" {
 
 		// report mean and standard deviation of measurements in group
-		samples, mean, stddev := msrg.MsrStats(false) 
+		samples, mean, stddev := msrg.MsrStats(false)
 
-		// convert numeric values into strings	
-		stats := []string{strconv.Itoa(samples), strconv.FormatFloat(mean, 'g', 6, 64), 
+		// convert numeric values into strings
+		stats := []string{strconv.Itoa(samples), strconv.FormatFloat(mean, 'g', 6, 64),
 			strconv.FormatFloat(stddev, 'g', 6, 64)}
 
 		// add to the dataRow
 		dataRow = append(dataRow, stats...)
 
 	} else if rowType == "CI" {
-		
+
 		// report
 		var ci float64
-		samples, mean, stddev := msrg.MsrStats(true) 
+		samples, mean, stddev := msrg.MsrStats(true)
 		if samples > 1 {
 			// formula for 95% confidence interval
-			ci = 1.96*stddev/math.Sqrt(float64(samples-1))
-		} 
+			ci = 1.96 * stddev / math.Sqrt(float64(samples-1))
+		}
 		// convert numeric outputs into string
 		stats := []string{strconv.Itoa(samples), strconv.FormatFloat(mean, 'g', 6, 64), strconv.FormatFloat(ci, 'g', 6, 64)}
 
@@ -438,16 +441,16 @@ func (msrg *MsrGroup) AddCSVData(csvFileName, exprmntName string, data []string 
 		stats := []string{strconv.Itoa(samples)}
 
 		// include every statistical result
-		for idx:=0; idx<len(pstats); idx++ {
+		for idx := 0; idx < len(pstats); idx++ {
 			stats = append(stats, strconv.FormatFloat(pstats[idx], 'g', 6, 64))
 		}
 
-		// extend the dataRow		
+		// extend the dataRow
 		dataRow = append(dataRow, stats...)
 	}
 
-	// make the row and write it in	
-	csvRow := strings.Join(dataRow,",")+"\n"
+	// make the row and write it in
+	csvRow := strings.Join(dataRow, ",") + "\n"
 	_, err0 = f.WriteString(csvRow)
 	if err0 != nil {
 		panic(err0)
@@ -457,35 +460,36 @@ func (msrg *MsrGroup) AddCSVData(csvFileName, exprmntName string, data []string 
 	return written
 }
 
-
 func timeInUnitsStr(t float64, TimeUnits string) string {
 	switch TimeUnits {
-		case "sec":
-			return strconv.FormatFloat(t, 'f', -1, 64)+" (sec)"
-		case "msec":
-			return strconv.FormatFloat(t, 'f', -1, 64)+" (msec)"
-		case "musec":
-			return strconv.FormatFloat(t, 'f', -1, 64)+" (musec)"
-		case "nsec":
-			return strconv.FormatFloat(t, 'f', -1, 64)+" (nsec)"
+	case "sec":
+		return strconv.FormatFloat(t, 'f', -1, 64) + " (sec)"
+	case "msec":
+		return strconv.FormatFloat(t, 'f', -1, 64) + " (msec)"
+	case "musec":
+		return strconv.FormatFloat(t, 'f', -1, 64) + " (musec)"
+	case "nsec":
+		return strconv.FormatFloat(t, 'f', -1, 64) + " (nsec)"
 	}
 	return ""
 }
- 
+
 func timeInUnits(t float64, TimeUnits string) float64 {
 	switch TimeUnits {
-		case "sec":
-			return t
-		case "msec":
-			return t*1e3
-		case "musec":
-			return t*1e6
-		case "nsec":
-			return t*1e9
+	case "sec":
+		return t
+	case "msec":
+		return t * 1e3
+	case "musec":
+		return t * 1e6
+	case "nsec":
+		return t * 1e9
 	}
 	return 0.0
 }
 
+// ReturnParamsDict reads in the parameter's dictionary, called as part of constructing a csv report of the 
+// simulation run's output 
 func ReturnParamsDict(exprFileName string, exprName string) map[string]string {
 	if len(exprFileName) == 0 {
 		rtn := make(map[string]string)
@@ -496,10 +500,10 @@ func ReturnParamsDict(exprFileName string, exprName string) map[string]string {
 		panic(err)
 	}
 
-	example := make([]map[string]string,1)
+	example := make([]map[string]string, 1)
 	example[0] = make(map[string]string)
 
-    err = yaml.Unmarshal(paramList, &example)
+	err = yaml.Unmarshal(paramList, &example)
 	if err != nil {
 		panic(err)
 	}
@@ -507,11 +511,11 @@ func ReturnParamsDict(exprFileName string, exprName string) map[string]string {
 		if paramDict["name"] == exprName {
 			rtnDict := make(map[string]string)
 			for key, value := range paramDict {
-				if key=="name" {
+				if key == "name" {
 					continue
 				}
-				pieces := strings.Split(key,",")
-				rtnDict[pieces[0]] = value	
+				pieces := strings.Split(key, ",")
+				rtnDict[pieces[0]] = value
 			}
 			return rtnDict
 		}
@@ -520,14 +524,13 @@ func ReturnParamsDict(exprFileName string, exprName string) map[string]string {
 	return emptyParams
 }
 
-
 // SaveMeasureCSV constructs a csv representation of a measurement
 func SaveMeasureCSV(dataFile string, hdr, values []string) []string {
-	headerMap := ReturnParamsDict(ExprmntsFile, ExprmntName) 
+	headerMap := ReturnParamsDict(ExprmntsFile, ExprmntName)
 
-	written := make([]string,0)
+	written := make([]string, 0)
 
-	columnNames := make([]string,0)
+	columnNames := make([]string, 0)
 	for key := range headerMap {
 		columnNames = append(columnNames, key)
 	}
@@ -543,7 +546,7 @@ func SaveMeasureCSV(dataFile string, hdr, values []string) []string {
 
 		hdr = append(hdr, columnNames...)
 
-		headerLine := strings.Join(hdr, ",")+"\n"
+		headerLine := strings.Join(hdr, ",") + "\n"
 		f.WriteString(headerLine)
 		written = append(written, headerLine)
 		f.Close()
@@ -553,15 +556,15 @@ func SaveMeasureCSV(dataFile string, hdr, values []string) []string {
 		values = append(values, headerMap[column])
 	}
 
-	resultsCSV := strings.Join(values,",")+"\n"
+	resultsCSV := strings.Join(values, ",") + "\n"
 	written = append(written, resultsCSV)
- 
+
 	// write to file
 	f, err0 := os.OpenFile(dataFile, os.O_APPEND|os.O_WRONLY, 0644)
 	if err0 != nil {
 		panic(err0)
 	}
-	f.WriteString(resultsCSV) 
+	f.WriteString(resultsCSV)
 	f.Close()
 	return written
 }

@@ -36,7 +36,7 @@ type CmpPtnFuncInst struct {
 	Measure     bool               // If true start device-to-device measurement
 	IsService   bool               // when a service the processing does not depend on the CP asking for a response
 	PrevEdge    map[int]edgeStruct // saved selection edge
-	Priority    int				   // scheduling priority
+	Priority    int                // scheduling priority
 	Cfg         any                // holds string-coded state for string-code configuratin variable names
 	State       any                // holds string-coded state for string-code state variable names
 
@@ -72,7 +72,7 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYA
 	cpfi.CPID = cpID          // remember the ID of the Comp Pattern in which this func resides
 	cpfi.Trace = false        // flag whether we should trace execution through this function
 	cpfi.IsService = false
-	cpfi.Class = fnc.Class // remember the class
+	cpfi.Class = fnc.Class                    // remember the class
 	cpfi.MsgResp = make(map[int][]*CmpPtnMsg) // prepare to be initialized
 
 	// inEdges, outEdges, and methodCode filled in after all function instances for a comp pattern created
@@ -82,7 +82,7 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYA
 
 	cpfi.RespMethods = make(map[string]*RespMethod) // prepare to be initialized
 
-	cpfi.Groups = make([]string,0)
+	cpfi.Groups = make([]string, 0)
 
 	// if the ClassMethods map for the cpfi's class exists,
 	// initialize respMethods to be that
@@ -129,6 +129,8 @@ func createFuncInst(cpInstName string, cpID int, fnc *Func, cfgStr string, useYA
 	return cpfi
 }
 
+
+// GlobalName returns a string for a CompPattern function instance that is globally unique
 func (cpfi *CmpPtnFuncInst) GlobalName() string {
 	return cpfi.PtnName + ":" + cpfi.Label
 }
@@ -214,9 +216,11 @@ func (cpfi *CmpPtnFuncInst) AddEndMethod(methodCode string, end evtm.EventHandle
 	return true
 }
 
+// CmpPtnFuncHost returns the string name identity of the mrnes endpoint
+// to which the function is mapped
 func CmpPtnFuncHost(cpfi *CmpPtnFuncInst) string {
-	// note binding of pattern to dictionary map to function map.  
-	ptnMap := CmpPtnMapDict.Map[cpfi.PtnName] 
+	// note binding of pattern to dictionary map to function map.
+	ptnMap := CmpPtnMapDict.Map[cpfi.PtnName]
 	hostPri := ptnMap.FuncMap[cpfi.Label]
 	if strings.Contains(hostPri, ",") {
 		pieces := strings.Split(hostPri, ",")
@@ -225,6 +229,8 @@ func CmpPtnFuncHost(cpfi *CmpPtnFuncInst) string {
 	return hostPri
 }
 
+// CmpPtnFuncPriority returns the execution priority code of the
+// function on the host on which it runs
 func CmpPtnFuncPriority(cpfi *CmpPtnFuncInst) int {
 	ptnMap := CmpPtnMapDict.Map[cpfi.PtnName] // note binding of pattern to dictionary map to function map.  Shared needs something different
 	hostPri := ptnMap.FuncMap[cpfi.Label]

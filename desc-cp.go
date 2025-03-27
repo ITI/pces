@@ -17,11 +17,13 @@ import (
 	"strings"
 )
 
+// funcDesc holds the CmpPtn name and functional label as identifier
 type funcDesc struct {
 	CP    string
 	Label string
 }
 
+// createFuncDesc is a constructor
 func createFuncDesc(cp, label string) funcDesc {
 	fd := new(funcDesc)
 	fd.CP = cp
@@ -98,7 +100,7 @@ func (cpt *CompPattern) DeepCopy() *CompPattern {
 	return ncp
 }
 
-// local dictionary that gives access to a CompPattern give its name
+// cmptnByName is a local dictionary that gives access to a CompPattern give its name
 var cmptnByName map[string]*CompPattern = make(map[string]*CompPattern)
 
 // AddFunc includes a function specification to a CompPattern
@@ -201,6 +203,7 @@ type XCPEdge struct {
 	MsgType  string
 }
 
+// extEdge returns a boolean indicating whether two externa edge descriptions are identical
 func extEdgeEq(xe1 *XCPEdge, xe2 *XCPEdge) bool {
 	if (xe1.SrcCP != xe2.SrcCP) || (xe1.DstCP != xe2.DstCP) {
 		return false

@@ -1,18 +1,17 @@
 package pces
 
 import (
-	"fmt"
-	"os"
 	"errors"
-	"math"
+	"fmt"
 	"github.com/iti/cmdline"
-	"github.com/iti/mrnes"
 	"github.com/iti/evt/evtm"
+	"github.com/iti/mrnes"
 	"github.com/iti/rngstream"
 	"golang.org/x/exp/slices"
+	"math"
+	"os"
 	"path/filepath"
 )
-
 
 // cmdlineParams defines the parameters recognized
 // on the command line
@@ -22,26 +21,25 @@ func cmdlineParams() *cmdline.CmdParser {
 	// keep them here so that all the programs that build templates can use the same arguments file
 	// create an argument parser
 	cp := cmdline.NewCmdParser()
-	cp.AddFlag(cmdline.StringFlag, "exprmnt", true)  // string name of experiment being run
-	cp.AddFlag(cmdline.StringFlag, "inputLib", true) // directory where model parameters are read from
-	cp.AddFlag(cmdline.StringFlag, "outputLib", true) // directory where measurements and traces are stored
-	cp.AddFlag(cmdline.StringFlag, "cp", true)       //
-	cp.AddFlag(cmdline.StringFlag, "cpInit", true)   //
-	cp.AddFlag(cmdline.StringFlag, "funcExec", true) // name of input file holding descriptions of functional timings
-	cp.AddFlag(cmdline.StringFlag, "devExec", true)  // name of input file holding descriptions of device timings
-	cp.AddFlag(cmdline.StringFlag, "map", true)      // file with mapping of comp pattern functions to hosts
-	cp.AddFlag(cmdline.StringFlag, "exp", true)      // name of file used for run-time experiment parameters
-	cp.AddFlag(cmdline.StringFlag, "mdfy", false)    // name of file used to modify exp experiment parameters
-	cp.AddFlag(cmdline.StringFlag, "topo", true)    // name of output file used for topo templates
-	cp.AddFlag(cmdline.StringFlag, "experiments", true)  // name of input file describing experiment parameters
-	cp.AddFlag(cmdline.StringFlag, "trace", false)   // path to output file of trace records
-	cp.AddFlag(cmdline.IntFlag, "rngseed", false)    // RNG seed 
-	cp.AddFlag(cmdline.FloatFlag, "stop", false)      // run the simulation until this time (in seconds)
-	cp.AddFlag(cmdline.BoolFlag, "json", false)      // input/output files in YAML, or JSON
-	cp.AddFlag(cmdline.StringFlag, "csv", true)      // name of file where measurements will be written
-	cp.AddFlag(cmdline.BoolFlag, "verbose", false)  // measure output is terse
-	cp.AddFlag(cmdline.StringFlag, "tunits", true)   // units used in reporting time
-	cp.AddFlag(cmdline.BoolFlag, "container", false)  // name of file where measurements will be written
+	cp.AddFlag(cmdline.StringFlag, "exprmnt", true)     // string name of experiment being run
+	cp.AddFlag(cmdline.StringFlag, "inputLib", true)    // directory where model parameters are read from
+	cp.AddFlag(cmdline.StringFlag, "outputLib", true)   // directory where measurements and traces are stored
+	cp.AddFlag(cmdline.StringFlag, "cp", true)          //
+	cp.AddFlag(cmdline.StringFlag, "cpInit", true)      //
+	cp.AddFlag(cmdline.StringFlag, "funcExec", true)    // name of input file holding descriptions of functional timings
+	cp.AddFlag(cmdline.StringFlag, "devExec", true)     // name of input file holding descriptions of device timings
+	cp.AddFlag(cmdline.StringFlag, "map", true)         // file with mapping of comp pattern functions to hosts
+	cp.AddFlag(cmdline.StringFlag, "exp", true)         // name of file used for run-time experiment parameters
+	cp.AddFlag(cmdline.StringFlag, "topo", true)        // name of output file used for topo templates
+	cp.AddFlag(cmdline.StringFlag, "experiments", true) // name of input file describing experiment parameters
+	cp.AddFlag(cmdline.StringFlag, "trace", false)      // path to output file of trace records
+	cp.AddFlag(cmdline.IntFlag, "rngseed", false)       // RNG seed
+	cp.AddFlag(cmdline.FloatFlag, "stop", false)        // run the simulation until this time (in seconds)
+	cp.AddFlag(cmdline.BoolFlag, "json", false)         // input/output files in YAML, or JSON
+	cp.AddFlag(cmdline.StringFlag, "csv", true)         // name of file where measurements will be written
+	cp.AddFlag(cmdline.BoolFlag, "verbose", false)      // measure output is terse
+	cp.AddFlag(cmdline.StringFlag, "tunits", true)      // units used in reporting time
+	cp.AddFlag(cmdline.BoolFlag, "container", false)    // name of file where measurements will be written
 	return cp
 }
 
@@ -57,6 +55,7 @@ var TimeUnits string
 var MsrVerbose bool
 var ExprmntsFile string
 
+// GlobalSeed is used to initiate the creation of other rng streams
 var GlobalSeed int64 = 1234567
 
 // ReadSimArgs defines the command line parameters expected, and reads them
@@ -100,7 +99,7 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 				panic(errors.New("unable to create /tmp/extern/output"))
 			}
 
-		}	
+		}
 	}
 
 	// if there is no stop argument, termination is left at the largest possible time
@@ -125,8 +124,8 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 
 	// check for access to input files
 	fullpathmap := make(map[string]string)
-	inFiles := []string{"cp", "cpInit", "funcExec", "devExec", "exp", "mdfy", "topo", "map", "experiments"}
-	optionalFiles := []string{"mdfy", "experiments"}
+	inFiles := []string{"cp", "cpInit", "funcExec", "devExec", "exp", "topo", "map", "experiments"}
+	optionalFiles := []string{"experiments"}
 
 	fullpath := []string{}
 	errs := []error{}
@@ -171,10 +170,8 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 			traceFile = filepath.Join("/tmp/extern/output", baseFile)
 		}
 		outputFiles = append(outputFiles, traceFile)
-	} 
+	}
 
-
-	
 	if cp.IsLoaded("csv") {
 		csvFile = cp.GetVar("csv").(string)
 		if !container {
@@ -184,13 +181,12 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 			csvFile = filepath.Join("/tmp/extern/output", baseFile)
 		}
 		outputFiles = append(outputFiles, csvFile)
-	} 
-	
+	}
+
 	_, err = CheckOutputFiles(outputFiles)
 	if err != nil {
 		panic(err)
 	}
-
 
 	// if requested, set the rng seed
 	if cp.IsLoaded("rngseed") {
@@ -201,15 +197,20 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 	return cp, evtMgr
 }
 
-
+// RunExperiment is called from the main simulation program to read in 
+// model files and start the simulation.  Its two arguments are pointers to callback
+// functions, expCntrl being called after the model is built but before events are executed,
+// and expCmplt after the termination condition of the simulation is reached.  The code expCntrl
+// points to tends to be simulation model specific, e.g., looking for certain types of model elements
+// and scheduling events to initialize them before execution.   expCmplt pulls together data gathered
+// at run-time and writes it out for analysis.
 func RunExperiment(expCntrl evtm.EventHandlerFunction, expCmplt evtm.EventHandlerFunction) {
 
 	TraceMgr = mrnes.CreateTraceManager(ExprmntName, useTrace)
 
-	// build the experiment.  First the network stuff
+	// build the experiment.  First the network (mrnes) stuff
 	// start the id counter at 1 (value passed is incremented before use)
-	mrnes.BuildExperimentNet(syn, true, 0, TraceMgr)
-
+	mrnes.BuildExperimentNet(evtMgr, syn, true, 0, TraceMgr)
 	// now get the computation patterns and initialization structures
 	// cpd  *CompPatternDict
 	// cpid *CPInitDict
@@ -223,14 +224,9 @@ func RunExperiment(expCntrl evtm.EventHandlerFunction, expCmplt evtm.EventHandle
 	}
 
 	// call function expControl to find start functions and run them
-
-	expCntrl(evtMgr, nil, nil) 
+	expCntrl(evtMgr, nil, nil)
 	evtMgr.Run(termination)
 
 	// call function expComplete to complete the experiment, write out measurements
-	expCmplt(evtMgr, &csvFile, &ExprmntName) 
+	expCmplt(evtMgr, &csvFile, &ExprmntName)
 }
-
-
-
-

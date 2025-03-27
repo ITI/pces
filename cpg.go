@@ -12,8 +12,8 @@ import (
 	"github.com/iti/rngstream"
 	"gopkg.in/yaml.v3"
 	"math"
-	"strings"
 	"sort"
+	"strings"
 )
 
 // CompPattern functions, messages, and edges are described by structs in the desc package,
@@ -45,19 +45,19 @@ type execSummary struct {
 // CmpPtnInst describes a particular instance of a CompPattern,
 // built from information read in from CompPatternDesc struct and used at runtime
 type CmpPtnInst struct {
-	Name      string // this instance's particular name
-	CpType    string
-	ID        int                        // unique id
-	Funcs     map[string]*CmpPtnFuncInst // use func label to get to func in that pattern with that label
+	Name         string // this instance's particular name
+	CpType       string
+	ID           int                          // unique id
+	Funcs        map[string]*CmpPtnFuncInst   // use func label to get to func in that pattern with that label
 	FuncsByGroup map[string][]*CmpPtnFuncInst // index is group name, list of functions in the CmpPtn belonging to that group
-	Services  map[string]funcDesc        // map an offered service (e.g., "auth", "encrypt", "hash") to a function label
-	Msgs      map[string]CompPatternMsg  // MsgType indexes msgs
-	Rngs      *rngstream.RngStream
-	Graph     *CmpPtnGraph                      // graph describing structure of funcs and edges
-	Active    map[int]execRecord                // executions that are active now
-	ActiveCnt map[int]int                       // number of instances of executions with common execID (>1 by branching)
-	LostExec  map[int]evtm.EventHandlerFunction // call this handler when a packet for a given execID is lost
-	Finished  map[string]execSummary            // summary of completed executions
+	Services     map[string]funcDesc          // map an offered service (e.g., "auth", "encrypt", "hash") to a function label
+	Msgs         map[string]CompPatternMsg    // MsgType indexes msgs
+	Rngs         *rngstream.RngStream
+	Graph        *CmpPtnGraph                      // graph describing structure of funcs and edges
+	Active       map[int]execRecord                // executions that are active now
+	ActiveCnt    map[int]int                       // number of instances of executions with common execID (>1 by branching)
+	LostExec     map[int]evtm.EventHandlerFunction // call this handler when a packet for a given execID is lost
+	Finished     map[string]execSummary            // summary of completed executions
 }
 
 // createCmpPtnInst is a constructor.  Inputs given by two structs from desc package.
@@ -138,7 +138,6 @@ func (cpi *CmpPtnInst) AddFuncToGroup(cpfi *CmpPtnFuncInst, groupName string) {
 	}
 	cpi.FuncsByGroup[groupName] = append(cpi.FuncsByGroup[groupName], cpfi)
 }
- 
 
 // createSrvFuncLinks establishes the Services table for the computational patterns
 func createSrvFuncLinks(cpd CompPattern) {
@@ -351,7 +350,6 @@ func buildAllEdgeTablesOld(cpd *CompPatternDict) {
 	}
 }
 
-
 type trackingGroup struct {
 	Name      string
 	Active    map[int]execRecord
@@ -459,23 +457,22 @@ type EndPtFuncs struct {
 type CmpPtnMsg struct {
 	ExecID    int    // initialize when with an initating comp pattern message.  Carried by every resulting message.
 	FlowID    int    // identity of flow when message involves flows
-	ClassID   int    // identity of transportation class when message hits network
-	MeasureID int    // when carrying a measure, the identity of that measure
+	MsrID     int    // when carrying a measure, the identity of that measure
 	PrevCPID  int    // ID of the comp pattern through which the message most recently passed
 	PrevLabel string // label of the func through which the message most recently passed
 
-	XCPID  int      // cross-CP id
-	XLabel string   // cross-CP label
+	XCPID    int    // cross-CP id
+	XLabel   string // cross-CP label
 	XMsgType string // cross-CP message type
-	CPID   int      // identity of the destination comp pattern
-	Label  string   // label of the destination function
+	CPID     int    // identity of the destination comp pattern
+	Label    string // label of the destination function
 
 	MsgType string // describes function of message
 	MsgLen  int    // number of bytes
 
-	MsrSrtID   int      // if of measurement function ID that started measurememnt
+	MsrSrtID int // ID of measurement function ID that started measurememnt
 
-	StartMsr   float64  // time when measurement started
+	StartMsr float64 // time when measurement started
 
 	RtnCPID    int    // used on service calls
 	RtnLabel   string // used on service calls
@@ -490,10 +487,9 @@ type CmpPtnMsg struct {
 	Payload    any // free for "something else" to carry along and be used in decision logic
 }
 
-func (cpm *CmpPtnMsg) Populate(execID, flowID, classID int, rate float64, msgLen int, flowState string) {
+func (cpm *CmpPtnMsg) Populate(execID, flowID int, rate float64, msgLen int, flowState string) {
 	cpm.ExecID = execID
 	cpm.FlowID = flowID
-	cpm.ClassID = classID
 	cpm.Rate = rate
 	cpm.FlowState = flowState
 }
@@ -501,8 +497,7 @@ func (cpm *CmpPtnMsg) Populate(execID, flowID, classID int, rate float64, msgLen
 type CmpPtnMsgTrace struct {
 	ExecID int // initialize when with an initating comp pattern message.  Carried by every resulting message.
 
-	NxtLabel string // string label of the function the message next visits
-
+	NxtLabel  string // string label of the function the message next visits
 	MsgType   string // describes function of message
 	MsgLen    int    // number of bytes
 	PcktLen   int    // parameter impacting execution time
@@ -561,6 +556,8 @@ func AccelFuncExecTime(cpfi *CmpPtnFuncInst, accelname, op string, msg *CmpPtnMs
 	return funcExecTime(accelmodel, op, msg)
 }
 
+var funcExecTimeCache map[string]map[string]map[int]float64 = make(map[string]map[string]map[int]float64)
+
 // funcExecTime returns the increase in execution time resulting from executing the
 // CmpPtnFuncInst offered as argument, to the message also offered as argument.
 // If the pcktlen of the message does not exactly match the pcktlen parameter of a func timing entry,
@@ -571,76 +568,108 @@ func funcExecTime(model string, op string, msg *CmpPtnMsg) float64 {
 		return 0.0
 	}
 
-	// if we don't have an entry for this function type, complain
+	// no msg means no message length.  Use zero as code
+	pcktLen := 0
+	if msg != nil {
+		pcktLen = msg.PcktLen
+	}
+
 	_, present := funcExecTimeTbl[op]
 	if !present {
-		panic(fmt.Errorf("no function timing look up for operation %s", op))
+		panic(fmt.Errorf("expected function execution timing for operation %s", op))
 	}
 
-	// if we don't have an entry for the named CPU for this function type, throw an error
-	lenMap, here := funcExecTimeTbl[op][model]
-	if !here || lenMap == nil {
-		panic(fmt.Errorf("no function timing look for operation %s on cpu model %s", op, model))
+	_, present = funcExecTimeTbl[op][model]
+	if !present {
+		panic(fmt.Errorf("expected function execution timing for operation %s on model %s", op, model))
 	}
 
-	// if msg is nil return the timing from the first entry in the map
-	if msg == nil {
-		keys := []int{}
-		for key := range lenMap {
-			keys = append(keys,key)
+	value, here := funcExecTimeCache[op][model][pcktLen]
+	if here {
+		return value
+	}
+
+	// the packetlen is not in the map and not in the cache
+	//   if msg is nil find the smallest entry in the table
+	// and call that the value for pcktlen 0.
+
+	pls := []int{}
+	for pl := range funcExecTimeTbl[op][model] {
+		pls = append(pls, pl)
+	}
+	sort.Ints(pls)
+
+	_, present = funcExecTimeCache[op]
+	if !present {
+		funcExecTimeCache[op] = make(map[string]map[int]float64)
+	}
+	_, present = funcExecTimeCache[op][model]
+	if !present {
+		funcExecTimeCache[op][model] = make(map[int]float64)
+	}
+
+	if pcktLen == 0 {
+		value := funcExecTimeTbl[op][model][pls[0]]
+		funcExecTimeCache[op][model][0] = value
+		return value
+	}
+
+	fmap := funcExecTimeTbl[op][model]
+	//   not in the cache, not in the table.  Estimate based on
+	//     pcktLen relative to sorted list of known packet lengths
+	//   case len(pls) = 1 --- estimate based on straight line from origin to pls[0]
+	//   case: pcktLen < pls[0] and len(pls) > 1 --- use slope between pls[0] and pls[1]
+	//   case: pls[0] <= pcktLen < pls[len(pls)-1] --- do a linear interpolation
+	//   case: pls[len(pls)-1] < pcktLen and len(pls) > 1 --- use slope between last two points
+	if len(pls) == 1 {
+		value := float64(pcktLen) * fmap[pls[0]] / float64(pls[0])
+		funcExecTimeCache[op][model][pcktLen] = value
+		return value
+	}
+
+	// there are at least two measurements, find the closest way to estimate
+	// linear approximation
+	leftIdx := 0
+	rightIdx := 1
+	if pls[len(pls)-1] < pcktLen {
+		leftIdx = len(pls) - 2
+		rightIdx = leftIdx + 1
+	} else {
+		if pls[0] <= pcktLen && pcktLen <= pls[len(pls)-1] {
+			for pls[rightIdx] < pcktLen {
+				rightIdx += 1
+			}
+			leftIdx = rightIdx - 1
 		}
-		sort.Ints(keys)
-		return lenMap[keys[0]]
 	}
+	dely := fmap[pls[rightIdx]] - fmap[pls[leftIdx]]
+	delx := float64(pls[rightIdx] - pls[leftIdx])
+	slope := dely / delx
+	intercept := fmap[pls[rightIdx]] - slope*float64(pls[rightIdx])
+	value = intercept + slope*float64(pcktLen)
+	funcExecTimeCache[op][model][pcktLen] = value
+	return value
+	/*
+		// do a linear regression on the others
+		sumX := float64(0.0)
+		sumX2 := float64(0.0)
+		sumY := float64(0.0)
+		sumY2 := float64(0.0)
+		sumXY := float64(0.0)
 
-	// lenMap is map[int]string associating an execution time for a packet with the stated length,
-	// so long as we have that length
-	timing, present2 := lenMap[msg.PcktLen]
-	if present2 {
-		return timing // we have the length, so just return the timing
-	}
+		for _, point := range points {
+			sumX += point.x
+			sumX2 += point.x * point.x
+			sumY += point.y
+			sumY2 += point.y * point.y
+			sumXY += point.x * point.y
+		}
+		N := float64(len(points))
+		m := (N*sumXY - sumX*sumY) / (N*sumX2 - sumX*sumX)
+		b := (sumY - m*sumX) / N
 
-	// length not present so estimate from data we do have about this function type and CPU.
-	// If at least two measurements are present create a least-squares model and interpolate or
-	// extrapolate to the argument pcklen.  If only one measurement is present compute the
-	// 'time per byte' from that measurement and extrapolate to the message pcktlen.
-	type XYPoint struct {
-		x float64
-		y float64
-	}
-
-	points := []XYPoint{}
-
-	for pcktLen, timing := range lenMap {
-		points = append(points, XYPoint{x: float64(pcktLen), y: timing})
-	}
-
-	// if there is only one point, extrapolate from time per unit length
-	if len(points) == 1 {
-		timePerUnit := points[0].y / points[0].x
-
-		return float64(msg.PcktLen) * timePerUnit
-	}
-
-	// do a linear regression on the others
-	sumX := float64(0.0)
-	sumX2 := float64(0.0)
-	sumY := float64(0.0)
-	sumY2 := float64(0.0)
-	sumXY := float64(0.0)
-
-	for _, point := range points {
-		sumX += point.x
-		sumX2 += point.x * point.x
-		sumY += point.y
-		sumY2 += point.y * point.y
-		sumXY += point.x * point.y
-	}
-	N := float64(len(points))
-	m := (N*sumXY - sumX*sumY) / (N*sumX2 - sumX*sumX)
-	b := (sumY - m*sumX) / N
-
-	return float64(msg.PcktLen)*m + b
+		return float64(msg.PcktLen)*m + b
+	*/
 }
 
 // EnterFunc is an event-handling routine, scheduled by an evtm.EventManager to execute and simulate the results of
@@ -693,8 +722,8 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 		}
 	}
 	if cpm != nil {
-		AddCPTrace(TraceMgr, cpfi.Trace, evtMgr.CurrentTime(), cpm.ExecID, cpfi.ID, FullFuncName(cpfi,"EnterFunc"), cpm)
-	} 
+		AddCPTrace(TraceMgr, cpfi.Trace, evtMgr.CurrentTime(), cpm.ExecID, cpfi.ID, FullFuncName(cpfi, "EnterFunc"), cpm)
+	}
 
 	methods, present := cpfi.RespMethods[methodCode]
 	if !present {
@@ -706,7 +735,13 @@ func EnterFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 		methods = &classMethods
 		cpfi.RespMethods[methodCode] = methods
 	}
-	
+
+	// if the function is one that adds time (srvRsp, processPckt) then log
+	// it on an MsrRoute if the message is on one
+	if (cpfi.Class == "srvRsp" || cpfi.Class == "processPckt") && cpm.MsrSrtID > 0 {
+		MsrAppendID(cpm.ExecID, cpfi.ID)
+	}
+
 	methods.Start(evtMgr, cpfi, methodCode, cpm)
 	return nil
 }
@@ -739,7 +774,7 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 	msgs := cpfi.funcResp(cpm.ExecID)
 
 	// note exit from function
-	AddCPTrace(TraceMgr, cpfi.Trace, evtMgr.CurrentTime(), cpm.ExecID, cpfi.ID, FullFuncName(cpfi,"ExitFunc"), cpm)
+	AddCPTrace(TraceMgr, cpfi.Trace, evtMgr.CurrentTime(), cpm.ExecID, cpfi.ID, FullFuncName(cpfi, "ExitFunc"), cpm)
 
 	// a problem if there are no messages, because the controled end of a thread
 	// is supposed always to be a "finish" function
@@ -753,12 +788,6 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 
 	// treat each msg individually
 	for _, msg := range msgs {
-
-		// if the function is one that adds time (srvRsp, processPckt) then log
-		// it on an MsrRoute if the message is on one
-		if (cpfi.Class == "srvRsp" || cpfi.Class == "processPckt") && msg.MsrSrtID > 0 {
-			MsrAppendID(msg.ExecID, cpfi.ID)
-		}
 
 		// allow for possibility that the next comp pattern is different, noticed
 		xcpi := cpi
@@ -815,7 +844,7 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 					connDesc.Action = mrnes.None
 				}
 
-				IDs := mrnes.NetMsgIDs{ExecID: msg.ExecID, FlowID: msg.FlowID, ClassID: msg.ClassID}
+				IDs := mrnes.NetMsgIDs{ExecID: msg.ExecID, FlowID: msg.FlowID}
 
 				// indicate where the returning event is to be delivered
 				rtnDesc := new(mrnes.RtnDesc)
@@ -829,7 +858,8 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 
 				rtns := mrnes.RtnDescs{Rtn: rtnDesc, Src: nil, Dst: nil, Loss: lossDesc}
 
-				netportal.EnterNetwork(evtMgr, cpfi.Host, dstHost, msg.MsgLen, connDesc, IDs, rtns, msg.Rate, msg)
+				netportal.EnterNetwork(evtMgr, cpfi.Host, dstHost, msg.MsgLen,
+					connDesc, IDs, rtns, msg.Rate, msg.MsrID, msg)
 			}
 		} else {
 			panic(errors.New("exit function fails to find next function"))
@@ -846,7 +876,7 @@ func ReEnter(evtMgr *evtm.EventManager, cpFunc any, rtnmsg any) any {
 	if msg.MsrSrtID > 0 {
 		execID := msg.ExecID
 		for _, devID := range rtnMsg.DevIDs {
-			MsrAppendID(execID, devID) 
+			MsrAppendID(execID, devID)
 		}
 	}
 
@@ -879,4 +909,16 @@ func LostCmpPtnMsg(evtMgr *evtm.EventManager, context any, msg any) any {
 }
 
 // NumExecThreads is used to place a unique integer code on every newly created initiation message
-var NumExecThreads int = 1
+var NumExecThreads int
+var NumFlows int
+
+var ExecIDCP map[int]string = make(map[int]string)
+var ExecIDLabel map[int]string = make(map[int]string)
+
+func NewExecID(cmptn, label string) int {
+	execID := NumExecThreads
+	NumExecThreads += 1
+	ExecIDCP[execID] = cmptn
+	ExecIDLabel[execID] = label
+	return execID
+}
