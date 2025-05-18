@@ -859,7 +859,7 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 				rtns := mrnes.RtnDescs{Rtn: rtnDesc, Src: nil, Dst: nil, Loss: lossDesc}
 
 				netportal.EnterNetwork(evtMgr, cpfi.Host, dstHost, msg.MsgLen,
-					connDesc, IDs, rtns, msg.Rate, msg.MsrID, msg)
+					connDesc, IDs, rtns, msg.Rate, msg.MsrID, false, 0, msg)
 			}
 		} else {
 			panic(errors.New("exit function fails to find next function"))
@@ -909,7 +909,7 @@ func LostCmpPtnMsg(evtMgr *evtm.EventManager, context any, msg any) any {
 }
 
 // NumExecThreads is used to place a unique integer code on every newly created initiation message
-var NumExecThreads int
+var NumExecThreads int = 1
 var NumFlows int
 
 var ExecIDCP map[int]string = make(map[int]string)

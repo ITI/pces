@@ -1,6 +1,6 @@
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+#### Introduction to **pces**
 
-### Patterned Computation Evaluation Simulator 
+(last update May 16, 2025)
 
 The Patterned Computation Evaluation System (**pces**) is a simulation/emulation tool whose modeling constructs are optimized to express so-called 'patterned' computations.   These are computations that can be expressed as a sequence of function calls with known input/output patterns that are largely known in advance, with the transfer of control from one function to another being expressed as a data-bearing message being passed between them.  It is natural then to represent a patterned computation as a graph, with nodes representing functions and directed edges representing that the output of one function serves as the input to another.   Details are given in [PCES-Internals.pdf](#https://github.com/ITI/pces/blob/main/docs/PCES-Internals.pdf) .
 
@@ -47,9 +47,3 @@ Using only default models of function behavior it is possible to assemble and ex
 ##### Execution Control
 
 A **pces** simulation is a program in the Go language.   There are a number of complete examples given in the [github.com/iti/pcesapps](#https://github.com/iti/pcesapps) repository.   Each has a 'main' program (main.go) comprised of just a few lines,  that call **pces** library functions to load and initialized a simulation model from input files (or execute code that generates those files).  The initialization typically involves creation of initial discrete events to be executed when the simulation is started.   Another statement in main.go calls a method that starts the execution of the simulation, passing as an argument a termination time.   The simulation runs until either the event with least time-stamp has a time that exceeds the termination time, or when there are no events left to execute in the event queue.   To wrap up then, main.go typically calls a method that has been written for the application which gathers the measurements made in the course of the simulation, summarizes them, and writes these summaries out to file.  The model has the option of letting **pces** present the output in one of three formats.  The first is a list of raw measurements, the second is a list of measurement types (defined by initialization parameters), with the mean and standard deviation of measurements of that type, and the third is a sample mean and confidence interval around that mean.
-
-
-
-Copyright 2024 Board of Trustees of the University of Illinois.
-See [the license](LICENSE) for details.
-

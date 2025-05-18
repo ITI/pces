@@ -1,67 +1,16 @@
-#### Overview of PCES Models
+#### **pces** Internals
 
-(last update March 26,2025)
-
-The **pces** modeling abstraction is built to support the evaluation of the time it takes to complete a computation that is expressed as a chain of computations (called functions).  Each function receives input in the form of 'messages', and produces as output other messages.   There may be an associated simulation time duration associated with the processing of the message, and a defining feature of **pces** is that that time can be looked up in a table whose entries depend on the function, the length of the message, and the type of processor on which the computation is modeled to have been performed.   A compelling use case for **pces** is to define functions (e.g., the AES encryption of a 256 byte block using a 192 byte key and CBC cipher mode) and measure their execution times on testbed hardware, and use the timing measurements to populate the **pces** function execution time tables.
-
-**pces** uses the notion of 'Computational Patterns', or CmpPtn, to organize expression of the functions.  Every instance of a function is associated with some particular named CmpPtn.  The global identity of a function is the pair comprised of its CmpPtn's name, and its own 'label'.   Different instances of a function with a given label are permitted so long as they are associated with different CmpPtn's.
-
-A **pces** model identifies the functions, their interactions, their execution times, the architecture of the computer network on which they execute, and various parameters for the functions and the architecture that impact the behavior and the computed execution times of interest.  The **pces** API defines the inputs needed to express a model and run an experiment, and the **pces** distribution includes two ways to support the creation of those inputs.  One is a library written (like **pces**) in the Go language, and the other is a system for expressing the **pces** model using an Excel spreadsheet, with python scripts that transform the spreadsheet expression into the formats expected by the simulator (see [Building a PCES Model](#https://github.com/ITI/pcesbld/blob/main/docs/xlsxPCES-v1.pdf)).  Examples of models and their expression in xlsx are documented in [Running a PCES Simulation](#https://github.com/ITI/pcesapps/blob/main/docs/RunningPCES.pdf), and techniques a **pces** modeler may use to integrate their own functionality is documented in [User Extensions to PCES](#https://github.com/ITI/pcesapps/blob/main/docs/User-Extensions.pdf). 
-
-**pces** relies on a separate-but-integrated discrete-event simulation of a computer network; part of the **pces** input configuration maps the application-oriented **pces** functions to particular computer hosts in that network.   The API for **pces** admits (with some work) integration of different network simulators, but we have developed one, the Multi-Resolution Network-Emulation Simulator (**mrnes**), and to date all the **pces** code we've pushed to github.com/iti has imported **mrnes** modules.   [Documentation](#https://github.com/ITI/mrnes/blob/main/docs/mrnes.pdf)  for **mrnes** is under the 'docs' directory on the **mrnes** github site.
-
-Steps in creating and running a **pces** model are
-
-1. Create the required inputs, and place them together in a subdirectory on your host computer, say, *input*.    The path to this directory is given to the simulator as its command-line input, *-inputDir*.
-2. Ensure the existence of another directory on your host computer, say, *output*, to hold the output of a simulation run.
-3. Run the simulator, ensuring that its various command line arguments are specified,  with *-outputDir* giving the path to the output directory specified above.
-4. The simulator writes its outputs into directory *output*, and reports completion.
-
-Importantly, note that step 1 of creating a model can be accomplished with the help of a tool [xlsxPCES](#https://github.com/ITI/pcesbld/blob/main/docs/xlsxPCES.pdf), where models are described using an xlsx spreadheet, and the necessary input files are created and placed automatically.   Examples of models and their expression in xlsx are documented in ()
-
-There are of course many details to be fleshed out; the key take-away from this description is to call out that the input and output directories are user-specified, and that some command line action applied to the simulator program is required to launch the simulation.
-
-#### pces Functions
-
-The simulation of a function is triggered by the receipt of a message directed to that specific function.   A field of that message, *MsgType*, is of particular importance.  A function instance may have a number of code methods to use in responding to a message, and the value of *MsgType* is used to look up which of those methods is called in response.   
-
-The nature of a function's response to a message depends on its **pces**-defined 'class'.   Note that the Go language does not offer a traditional programming language class, but what **pces** does is to differentiate between different functionalities at a relatively fine grained level of abstraction, and to define for each distinct class the format of a 'configuration' data structure and the format of a 'state' data structure.  The methods associated with a given class are written to access these class-specific data structures to use in their response to a message.
-
-To illustrate the idea, consider Figure 1 below.  Each blue box is a function, the arrows indicate message flows.
-
-![func-chain-1](./images/func-chain-1.png)
-
-*Figure 1: Chain of **pces** functions*
-
-
-
-A certain amount of book-keeping is needed to track the computation that starts at one of the chain and ends at the other, and the logic for that is built into the *start* class of functions, an instance here being named 'srtThread'. The data structure read by this function includes specification of the message to be emitted, and the simulation time at which it should be emitted.    Likewise, in order to make measurements related to the chain of executions initiated by this message, a certain amount of book-keeping needs to be set up, and a function of the *measure* class---here 'srtMeasure'---does that.   No simulation time advance is associated with the execution of either function; indeed these functions are not describing activity that actually happens in the system, rather, they describe activity involved in performing the simulation.
-
-With the measurement clock now ticking, the message is passed to a function here named 'generate packet', the purpose of which is to wait a period of simulation time to account for the amount of time spent creating a packet that will have a number of things happen to it downstream.  Functionally the message comes in, some period of simulation time elapses, and the message passes out.   The only variables in this are the source of the message (which is assumed to not matter), the destination of the departing message (to be derived from a topological description of the relationships between instances of functions),  and the length of the delay.   **pces** uses the 'MsgType' field of the incoming message to look up a code for the operation whose execution time is being modeled, and for which there will be an entry in the function execution time table.   This is the default behavior of functions of the *processPckt* class.
-
-A message leaves the 'generate packet` function and is delivered to an 'encrypt' function, whose role is (merely) to introduce a delay in the forward progress of the messages based on the execution time needed to perform some computation.   It happens that this computation is encryption, but the response of this function is no different than the response of the 'generate packet' function to its message, the only difference being the length of time the message is delayed.  So the 'encrypt' function is of the *processPckt* class, as is the 'decrypt' and 'process packet' functions.  For all of these the 'MsgType' code and per-function-specific data structures are used come up with an operation code found in the function execution time table, and delay the message for a time uniquely uniquely identified by the function.
-
-Function 'endMeasure' is also of the *measure* class.  A configuration flag tells the **pces** code handling an arrival there that a measurement is ending, and it branches to a different block of logic that completes the measurement bookeeping.   With no elapse of simulation time the message is passed, finally, to the 'endThread' function, which is of the 'finish' class.   That function does a last bit of bookkeeping cleaning up after the thread of execution just completed, and the chain of function calls triggered by 'srtThread' ends.  We call this chain of function calls an *execution thread*.
-
-Another pair of **pces** class functions are worthy of notice.  Consider Figure 2, closely related to Figure 1.
-
-![func-chain-2](./images/func-chain-2.png)
-
-*Figure 2: Chain of **pces** functions including server*
-
-The difference here is that the 'encrypt' function is replaced by 'request encrypt', 'decrypt' is replaced by 'request decrypt', and both of these have some kind of connection to a function called 'crypto server'.   What **pces** is aiming to capture here is a common kind of relationship where a client asks a server for some data, or computation, the server performs what it is asked to do and returns a result to the client.  It happens that here we're modeling that the server is performing some cryptographic operation, but what is important here is the request-response-continue pattern of behavior, with some simulation delay associated with the server fulfilling its request.
-
-The 'request encrypt' and 'request decrypt' functions are from the **pces** 'srvReq' class, and the 'crypto server' function is from the 'srvRsp' class.   As with the other classes, a class-specific data structure associated with a function governs its behavior, e.g., what operation to request of the server.
-
-There are two other **pces** classes, 'transfer', and 'open', that we'll later introduce as needed.
+(last update May 16, 2025)
 
 ##### CmpPtnMsg
 
-The **pces** functions send, modify, and receive pointers to structs from the type *CmpPtnMsg*.   For clarity and reference it is worthwhile discussing the fields of this type.
+As we have outlined in [Introduction to **pces**](#https://github.com/ITI/pces/blob/main/docs/PCES-Introduction.pdf),  the **pces** tool expresses patterned computations in terms of functions that receive messages as input, and produce messages as output.  The simulation of a function is triggered by the receipt of a message directed to that specific function.   A field of that message, *MsgType*, is of particular importance.  A function instance may have a number of code methods to use in responding to a message, and the value of *MsgType* is used to look up which of those methods is called in response.   
+
+For clarity and reference it is worthwhile discussing the data structure describing inter-function messages.
 
 ```
 type CmpPtnMsg struct {
-    ExecID    int    // initialize when with an initating comp pattern message. Carried forward.
+    ExecID    int    // initialize when with an initating comp pattern message. 
     FlowID    int    // identity of flow when message involves flows
     MsrID     int    // when carrying a measure, the identity of that measure
     PrevCPID  int    // ID of the previous comp pattern 
@@ -97,7 +46,15 @@ A unique *ExecID* value is established with the creation of a first message to p
 
 **pces** and **mrnes** support a network object called a *Flow*, which is traffic whose description is given in terms of average bitrate rather than a particular packet.  A *CmpPtnMsg* can carry information about a *Flow*, in particular an edge where a bitrate change is propogated through the network.   Flows have identities, *FlowID* is a unique id given when a flow is created.   Both flows and messages get different levels of priority when competing for resources, the *ClassID* identifies the priority class.  The larger the class id, the greater the priority.
 
-Figures 1 and 2 illustrate functions of the *measure* class, some starting a measure, another ending a measure. (It is possible also to just 'include' a measure without starting or stopping one.)   To correlate measurements on the same execution thread across different measurement points, when a measure is first started the identity of the measurement point is written into the message, and like the *ExecID* is preserved through function calls.
+Figures 1 and 2 illustrate computation patterns that are a chain of functions. The second function executed, here labeled 'srtMeasure', begins a measurement, while 'endMeasure' completes the measurement.  To correlate measurements on the same execution thread across different measurement points, when a measure is first started the identity of the measurement point is written into the message (field *MsrSrtID*), and like the *ExecID* is preserved through function calls.
+
+![func-chain-1](./images/func-chain-1.png)
+
+*Figure 1: Chain of **pces** functions*
+
+![func-chain-2](./images/func-chain-2.png)
+
+*Figure 2: Chain of **pces** functions including server*
 
 It is sometimes useful for a function to know the source of a message it is processing.  Therefore the *PrevCPID*  and *PrevLabel* fields identify the *CmpPtn* of the source function, and its label within that CmpPtn.
 
@@ -109,7 +66,7 @@ It is sometimes useful for a function to know the source of a message it is proc
 
 *MsgSrtID* is an ID for a measurement that was started earlier in the execution thread this message is part of.  *StartMsr* is the simulation time when that measurement started.
 
-*RtnCPID*, *RtnLabel*, and *RtnMsgType* are fields set by a function of the *srvReq* class, that requests service from some server that is typically in a different CmpPtn.   After service is provided there, the message is returned to the CmpPtn and function indicated by the first two of these fields, with a *MsgType* field given by in message's *RtnMsgType* field.  
+*RtnCPID*, *RtnLabel*, and *RtnMsgType* are fields set by a function of the *srvReq* class, that requests service from some server that is typically in a different CmpPtn.   After service is provided there, the message is returned to the CmpPtn and function indicated by the first two of these fields, with a *MsgType* field given by in message's *RtnMsgType* field.  These fields are involved in the communication from 'request encrypt' to 'crypto server' in Figure 2.
 
 When the message is associated with a *Flow*, the *Rate* field gives the bitrate of the edge of the flow described in the message.  *FlowState* is a code that indicates whether the message describes the leading edge of a new *Flow*, the trailing edge of a flow that is disappearing, or a rate change to a flow that has already been established and it not now terminating (even if the *Rate* drops to 0.0).
 
@@ -119,13 +76,23 @@ Finally, a *CmpPtnMsg* struct can carry a pointer along the execution thread to 
 
 ##### pces Function Organization
 
-The input/output relationships between functions can be expressed by thinking of the functions as nodes in a graph, and defining a directed edge from one function to another when a message leaving the source function *may* be presented as input to the destination function.  We emphasize *may* here rather than *will* because there is nothing in the **pcecs** semantics that requires the transfer when an edge is defined in the **pces** model expression of topology.  That said,  in the default message handling functions provided in the *github.com/iti/pces* repository, with one exception a function has at most one output edge.  We will (eventually) document how users can augment **pces** model expression by writing their own message-processing methods, and these may well generate multiple outputs from a single function execution.
+The input/output relationships between functions can be expressed by thinking of the functions as nodes in a graph, and defining a directed edge from one function to another when a message leaving the source function *may* be presented as input to the destination function.  We emphasize *may* here rather than *will* because there is nothing in the **pcecs** semantics that requires the transfer when an edge is defined in the **pces** model expression of topology.  That said,  in the default message handling functions provided in the *github.com/iti/pces* repository, with one exception a function has at most one output edge.  We document document how users can augment **pces** model expression by writing their own message-processing methods in [User Extensions to **pces**](#https://github.com/ITI/pcesapps/blob/main/docs/User-Extensions.pdf), and these may well generate multiple outputs from a single function execution.
 
  A particular **pces** input file (nominally called 'cp.yaml') defines the CmpPtn's, identifies the functions assigned to them with their 'labels', and identifies known input/output relationships between functions though the definition of 'edges'.    Each edge is labeled with the MsgType of the message that may pass from one function to the other.
 
-Simple *CmpPtn*s can be a chain of functions, just as in Figure 1.    In Figure 2 we could have the crypto server reside in a *CmpPtn* different from the other functions, or the same.    There is a certain coherence in presentation if functions in multiple CmpPtns request service from it, it then has no particular binding to any one of them.
+Simple *CmpPtn*s can be a chain of functions, just as in Figure 1.    In Figure 2 we could have the crypto server reside in a *CmpPtn* different from the other functions, or the same.    There is a certain coherence in presentation if functions in multiple CmpPtns request service from it, it then has no particular binding to any one of them.  As suggested by the explanation that the crypto server may be in a different *CmpPtn* than the functions that request its service, communication between functions in different CmpPtns is possible.
 
-As suggested by the explanation that the crypto server may be in a different *CmpPtn* than the functions that request its service, communication between functions in different CmpPtns is possible.
+##### Processing/Routing
+
+The logic of delivering messages from one Func to another has two layers.   At the application layer the routing is governed by the information applied to Func outbound messages.   When a message is presented to a Func, **pces** determines what computational logic will be applied.  The message delivery is associated with an edge directed from one Func to the recipient,  and combination of source Func identity (both its label and the computational pattern that holds it) and message type on that edge define the method code to use.   This mapping is inferred at start-up time by analysis of all the CompPatternEdge and XCPEdge dictionaries defined by the model in cp.yaml.
+
+To handle the message receipt, **pces** scheduled execution of an event (EnterFunc) that starts the execution of every Func response, and provides the identity of the Func receiving the message, and the particular message being delivered. EnterFunc looks up the method code, and uses this to look up the method-code-specific routine that starts the message processing.  This routine may analyze and alter the Func's internal configuration and state,  and use the results of that to look up an execution time requirement.   It then requests from the hosting Endpt CPU that amount of service, and in the request records the specific method code, message, and identity of the event handler to schedule to report the service request completion.
+
+When the service request completion handler executes it handles generation of messages that model the Func's response.  It may generate any number of messages, including none.  For each message it selects one of the Func's egress edges to 'carry' it to the next Func, and notes the destination Func's computation pattern and label on the message.  Finally, it places all the response messages in a data structure accessible outside of the event handler, and schedules the pces event handler ExitFunc to execute immediately.
+
+The corresponding ExitFunc execution acquires the list of responding messages. For each it determines whether the destination Func resides on the current Endpt CPU, and if so schedules the EnterFunc routine to execute immediately.  Here then the model edges define application level routing within an Endpt.  If it happens that the destination Func resides on a different Endpt, then ExitFunc hands the message off to the mrnes network simulator.  The handoff request names the identities of the present and destination Endpts, and the global identity of the destination Func.  It also names the pces routine ReEnter for the mrnes simulator to schedule when the message has traversed the network and arrived at its destination Endpt.
+
+The network route the message takes and the accued simulation time are all governed by the **mrnes** model.  At present **mrnes** finds the shortest path between source and destination Endpts, where the waypoints on the path are switches and routers,  and edges in the network graph are defined by the declared connections between device interfaces (see 3.6).  The cost of every edge it assumed to be 1.  mrnes discovers paths on a per-demand basis, and caches the results of the calculation so (at the cost of memory) the path between any given source and destination Endpt is done at most once.
 
 ##### pces Function Execution
 
@@ -134,8 +101,6 @@ The processing associated with executing a function in response to a message is 
 Figure 3 illustrates these relationships.
 
 <img src="./images/pces-func-op.png" alt="pces-func-op" style="zoom:80%;" />
-
-
 
 ***Figure 3: Selection and operation of response function for a given function instance.***
 
@@ -219,7 +184,7 @@ When the processing associated with a message is completed, the message is place
 
 *ExitFunc* is given a pointer to the function that is completing and a pointer to the original message that triggered the evaluation.  It uses the latter in particular to acquire the *ExecID* of the message, as the messages created in response will all carry that same *ExecID* code, and pulls up that list.    It enters a loop where for each resulting message it determines if the destination function is mapped to a processor other than the current one, and if so sets up and executes a transfer of that message to a network simulation, here, **mrnes**.   Part of the transfer setup is to record the particulars of the destination function so that when the message arrives at the targeted processor, the message is handed back to **pces** logic, and it has the information needed to re-introduce the message into **pces** level processing by scheduling an execution of *EnterFunc()* at the destination function, with the carried message, to occur at the  simulation time the message reached the target processor.
 
-##### pces Function Class 
+##### pces Function Classes 
 
 Now consider each of the **pces** function classes, the data expected of a user to configure their use, and a description of what the default response function does when called.    It is worth noting the functional signature of all routines called to process an arriving message (called type *StartMethod* in the **pces** code base).   One argument is a pointer to a data structure that manages event scheduling, another is a pointer to the function to be executed, another is a string, and the final one a pointer to the message being processed.
 
@@ -319,15 +284,15 @@ The default subroutine for *srvReq* functions is *pces/class.go/srvReqEnter*.   
 
 <img src="./images/srvReq-1.png" alt="srvReq-1" style="zoom:50%;" />
 
+
+
 ​	*Figure 3: Direct methods for specifying server function that responds to srvReq Function query*
 
 There is another means of identifying the server function, that is driven by a use case where, in order to capture the dynamics of a 'zero trust'  network architecture, every message that crosses processor boundaries must have the authenticity of the server checked.   There are a variety of ways of implementing that in practice, one of which has the receiving entity issuing a challenge to the sender, e.g., sends a back a nonce that should be signed or encrypted and sent back to be checked.   We can capture that pattern  if the first function to be executed in response to a cross-processor message requests a service---authentication---from the sender.    Expecting that executing the authentication computation would be provided in general, whenever needed, we imagine that that function resides potentially in a different *CmpPtn* than the sending function, and need not be the sending function itself. **pces** allows a *CmpPtn* definition to include table of 'Services', indexed by service op code, that points to the global identity of the function providing that service for that *CmpPtn*.    We illustrate that below on the left in Figure 4.  Without a direct use case but to complete the functionality, on the right in Figure 4 we illustrate that if the requesting function's *srvLabel* configuration variable is empty but its *srvCP* variable is not, then the same indirection logic can be used to identify the server, the only difference with the previous case being that the identity of the *CmpPtn* holding the Services table is specified in the configuration.
 
+<img src="./images/srvReq-2.png" alt="srvReq2" style="zoom:50%;" />      
 
-
-<img src="./images/srvReq-2.png" alt="srvReq2" style="zoom:50%;" />
-
-​	      *Figure 4: Indirect methods for specifying server function that responds to srvReq Function query*
+*Figure 4: Indirect methods for specifying server function that responds to srvReq Function query*
 
 
 

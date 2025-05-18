@@ -227,6 +227,8 @@ func RunExperiment(expCntrl evtm.EventHandlerFunction, expCmplt evtm.EventHandle
 	expCntrl(evtMgr, nil, nil)
 	evtMgr.Run(termination)
 
+	mrnes.StopFlows()
+
 	// call function expComplete to complete the experiment, write out measurements
 	expCmplt(evtMgr, &csvFile, &ExprmntName)
 }

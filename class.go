@@ -828,7 +828,6 @@ type SrvReqState struct {
 
 type SrvReqCfg struct {
 	// map the service request to the message type on departure
-	Bypass   int               `yaml:"bypass" json:"bypass"`
 	SrvCP    string            `yaml:"srvcp" json:"srvcp"`
 	SrvOp    string            `yaml:"srvop" json:"srvop"`
 	RspOp    string            `yaml:"rspop" json:"rspop"`
@@ -865,7 +864,7 @@ func (srvReq *SrvReqCfg) CreateCfg(cfgStr string) any {
 	return srvReqVarAny
 }
 
-func (srvReq *SrvReqCfg) Populate(bypass bool, trace bool) {
+func (srvReq *SrvReqCfg) Populate(trace bool) {
 	if trace {
 		srvReq.Trace = 1
 	} else {
@@ -948,17 +947,6 @@ func srvReqEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode str
 	endptName := cpfi.Host
 	endpt := mrnes.EndptDevByName[endptName]
 	AddCPTrace(TraceMgr, cpfi.Trace, evtMgr.CurrentTime(), msg.ExecID, endpt.DevID(), FullFuncName(cpfi, "srvReqEnter"), msg)
-
-	if srqc.Bypass != 0 {
-		// the outbound message type is the same as the inbound.
-		// Find the outbound edge that matches
-
-		outMsg := AdvanceMsg(cpfi, msg, msg.MsgType)
-
-		// schedule ExitFunc to happen after the genTime delay
-		evtMgr.Schedule(cpfi, outMsg, ExitFunc, vrtime.SecondsToTime(0.0))
-		return
-	}
 
 	// remember incoming message type
 	srqs.MsgTypeIn = msg.MsgType
@@ -1488,11 +1476,13 @@ func measureEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode st
 
 	if mcfg.MsrOp == "start" || mcfg.MsrOp == "Start" {
 		msg.MsrID = MsrID
+        // fmt.Printf("msr %d start at %f\n", MsrID, evtMgr.CurrentSeconds())
 		MsrID += 1
 	}
 
 	if mcfg.MsrOp == "end" || mcfg.MsrOp == "End" {
 		// look to see if the message's MsrGrpID is recognized
+        // fmt.Printf("msr %d end at %f\n", msg.MsrID, evtMgr.CurrentSeconds())
 		if MsrID2Name[msg.MsrSrtID] == mcfg.MsrName {
 			// recover or create the MsrGroup
 			msrType := "Latency"
