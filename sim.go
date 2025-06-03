@@ -102,8 +102,8 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 		}
 	}
 
-	// if there is no stop argument, termination is left at the largest possible time
-	termination = math.MaxFloat64
+	// if there is no stop argument, termination is made very large
+	termination = math.MaxFloat64/10.0
 	if cp.IsLoaded("stop") {
 		termination = cp.GetVar("stop").(float64)
 	}
