@@ -248,7 +248,7 @@ func ContinueBuildExperimentCP(cpd *CompPatternDict, cpid *CPInitListDict,
 	fel *FuncExecList, cpmd *CompPatternMapDict, syn map[string]string,
 	idCounter int, tm *mrnes.TraceManager, evtMgr *evtm.EventManager) error {
 
-	netportal = mrnes.CreateNetworkPortal()
+	netportal = mrnes.ActivePortal
 
 	_, use := syn["qksim"]
 	netportal.SetQkNetSim(use)
@@ -308,7 +308,7 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 	var err error
 
 	// we allow some variation in input names, so apply fixup if needed
-	checkFields := []string{"cpInput", "cpInitInput", "funcExecInput", "mapInput"}
+	checkFields := []string{"cpInput", "cpInitInput", "funcExecInput", "mapInput", "ip"}
 	for _, filename := range checkFields {
 		trimmed := strings.Replace(filename, "Input", "", -1)
 		_, present := syn[trimmed]
@@ -353,11 +353,18 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 	cpmd, err = ReadCompPatternMapDict(syn["mapInput"], useYAML, empty)
 	errs = append(errs, err)
 
+	if len(syn["ipInput"]) > 0 {
+		ext = path.Ext(syn["ipInput"])
+		useYAML = (ext == ".yaml") || (ext == ".yml")
+
+		_, err = mrnes.ReadIPMap(syn["ipInput"], useYAML, empty)
+		errs = append(errs, err)
+	}
+
 	err = ReportErrs(errs)
 	if err != nil {
 		panic(err)
 	}
-
 	return cpd, cpid, fel, cpmd
 }
 

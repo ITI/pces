@@ -29,6 +29,7 @@ func cmdlineParams() *cmdline.CmdParser {
 	cp.AddFlag(cmdline.StringFlag, "funcExec", true)    // name of input file holding descriptions of functional timings
 	cp.AddFlag(cmdline.StringFlag, "devExec", true)     // name of input file holding descriptions of device timings
 	cp.AddFlag(cmdline.StringFlag, "map", true)         // file with mapping of comp pattern functions to hosts
+	cp.AddFlag(cmdline.StringFlag, "ip", false)			// name of input file describing IP and CDIR assignments
 	cp.AddFlag(cmdline.StringFlag, "exp", true)         // name of file used for run-time experiment parameters
 	cp.AddFlag(cmdline.StringFlag, "topo", true)        // name of output file used for topo templates
 	cp.AddFlag(cmdline.StringFlag, "experiments", true) // name of input file describing experiment parameters
@@ -71,6 +72,8 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 
 	// string for the input directory
 	inputDir := cp.GetVar("inputLib").(string)
+    mrnes.InputDir = inputDir
+
 	outputDir := cp.GetVar("outputLib").(string)
 
 	container := false
@@ -124,8 +127,8 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 
 	// check for access to input files
 	fullpathmap := make(map[string]string)
-	inFiles := []string{"cp", "cpInit", "funcExec", "devExec", "exp", "topo", "map", "experiments"}
-	optionalFiles := []string{"experiments"}
+	inFiles := []string{"cp", "cpInit", "funcExec", "ip", "devExec", "exp", "topo", "map", "experiments"}
+	optionalFiles := []string{"ip", "experiments"}
 
 	fullpath := []string{}
 	errs := []error{}
@@ -211,6 +214,7 @@ func RunExperiment(expCntrl evtm.EventHandlerFunction, expCmplt evtm.EventHandle
 	// build the experiment.  First the network (mrnes) stuff
 	// start the id counter at 1 (value passed is incremented before use)
 	mrnes.BuildExperimentNet(evtMgr, syn, true, 0, TraceMgr)
+
 	// now get the computation patterns and initialization structures
 	// cpd  *CompPatternDict
 	// cpid *CPInitDict
@@ -225,8 +229,8 @@ func RunExperiment(expCntrl evtm.EventHandlerFunction, expCmplt evtm.EventHandle
 
 	// call function expControl to find start functions and run them
 	expCntrl(evtMgr, nil, nil)
-	evtMgr.Run(termination)
 
+	evtMgr.Run(termination)
 	mrnes.StopFlows()
 
 	// call function expComplete to complete the experiment, write out measurements

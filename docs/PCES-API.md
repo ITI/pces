@@ -10,6 +10,7 @@ The interface specification for a pces simulation names 8 files that contain the
 - -cpInit <filename> Names a file that defines the initial state of model components.
 - -topo <filename>  Names a file that defines computer and network topology
 - -map <filename> Names a file which describes the assignment of the application's computational elements to processors.
+- -ipmap <filename> Names a file which describes the mapping of IP addresses on pcap packets presented to the simulator to internal IP addresses, and describes external packet feeds
 - -exp <filename> Names a file that contains a description of assigning performance parameters to network entities
 - -funcExec <filename> Names a file that contains all function execution timing information needed by the model.
 - -devExec <filename> Names a file that contains device operation timing information for routers and switches
@@ -152,15 +153,64 @@ map:
 
 Every CompPattern listed in the 'patterns' dictionary of cp.yaml's CompPatternDict dictionary must have a key in this dictionary's 'map' dictionary.  Given such a key, say "cpn",  the value of 'pattername' is of course "cpn", and its 'funcmap' dictionary must have as keys exactly and only the strings referenced by the 'label' key in all Funcs declared in cpn's CompPattern 'funcs' list. The name of an endpoint associated to an function is concatenated with a comma, and then a positive integer. The integer gives a scheduling priority for executing that function in the presence of contention for CPU resources.
 
-#### 5. exp.yaml
+#### 5. ipmap.yaml
+
+A pces/mrnes model may accept inputs from external sources, e.g.,  pcap packets that were previously recorded or that are being captured on-line.   Those packets will contain IP source and destination addresses,  but we do not require that the simulation model explicitly use the IP address space from which the packets are derived.    ipmap.yaml contains three lists of dictionaries.  
+
+```
+devices: [deviceDict]
+networks: [networkDict]
+feeds: [feedDict]
+
+```
+
+Here
+
+```
+deviceDict:
+	device : ENDPTNAME
+	network: NETWORKNAME
+	intIP: string
+	extIP: string
+```
+
+IP addresses are bound to network interfaces, and so we identify an interface by specifying the name of the device it is bound to, and the name of the network it faces.  Here we declare that the interface is known within the simulation model by an IP address specified by `intIP`, and if an external packet with source or destination address `extIP` arrives, it is understood that the interface being referenced is the one specified by this dictionary.
+
+The network list maps CIDR blocks to a named network
+
+```
+networkDict:
+	network: NETWORKNAME
+	intCIDR: string
+	extCIDR: string
+```
+
+This dictionary just states the equivalence of the external network identified by `extCIDR` to be the named network, and gives it an internal CIDR block assignment of `intCIDR`.
+
+One can introduce a feed of packets to the simulator in a number of ways, and the `feedDict` dictionary defines these.
+
+```
+feedDict:
+	name: string
+	active: int
+	dilation: float
+	srctype: {"file", "unix-socket", "net-socket"}
+	srcspec: string
+	start: float
+	time: {"packet", "clock"}
+```
+
+Every feed has name, for reference.  We can leave the specifications for a feed in the ipmap.yaml file but declare it to be inactive.  `active` is an integer encoding of boolean values to specify whether the simulation ought to expect packets to arrive from this feed.   Packets can read into the simulator from a file.  This involves no inter-process communication, but does require one to specify the source is a file (through the "file" assignment to attribute `srctype`) and the path to the PCAP file to read, given in attribute `srcspec`. The requirement is that the path specified be relative to the directory where the model input files discussed here are declared to be.   Packets may be presented to the simulator through sockets also,  in which case attribute `srctype` is either "unix-socket" or "net-socket" depending on whether the socket is in the file system shared by both the packet source and the simulator, or through the network.   In the former case `srcspec` is the absolute path to the file used to implement the socket, and in the latter case `srcspec` is assigned the port number the simulator will bind to in order to receive packets.    The remainder of the feedDict dictionary attributes relate to the assignment of virtual time to the arrival of the feed's packets.   When the `time` attribute is set to "packet" the simulator will create a virtual time base on the time stamp reported as being derived from the packet, assumed to be the number of micro-seconds in the Unix epoch (expressed in a 64-bit integer).   `start` is set to the virtual time to be ascribed to the first packet to be observed in the feed.  By saving the 1st packet's native time, on arrival of a subsequent packet one can compute the number of microseconds that elapsed between the dispatch of the first packet and the subsequent one.   This difference is scaled by the floating point attribute assigned to `dilation`, which either increase that difference in virtual time coordinates or decrease it, depending on whether `dilation` is great than or less than 1.0.
+
+#### 6. exp.yaml
 
 When a mrnes model is loaded to run, the file exp.yaml is read to find performance parameters to assign to network devices, e.g., the speed of a network interface. The API for this file is given in [**mrnes**-API](#https://github.com/ITI/mrnes/blob/main/docs/MRNES-API.pdf) .
 
-#### 6. funcExec.yaml
+#### 7. funcExec.yaml
 
 funcExec.yaml holds descriptions of function timings, dependent on the type of computer on which the execution occurs, and the length of the data packet being processed. A given Func in a CompPattern may perform different computations, depending on the source Func and message type of its input.   We therefore call the simulated computations 'operations' and the timings file describes timings of different operations. The FuncExecList dictionary that funcExec.yaml holds contains a dictionary indexed by a string naming the timing, mapping to a description of the timing.
 
-**6.1	FuncExecList**
+**7.1	FuncExecList**
 
 ```
 listname: string
@@ -169,7 +219,7 @@ times:
 
 ```
 
-**6.2	FuncExecDesc**
+**7.2	FuncExecDesc**
 
 Description of a timing includes the operation identifier (which is referenced in the executing model code), a modeler-included 'param' attribute which may be used by model code to refine its operations, identity of the model of CPU on which the measurement was taken, the length of the data packet driving the computation, and the measured execution time (in seconds)
 
@@ -181,7 +231,7 @@ pcktlen: int
 exectime: float
 ```
 
-#### 7. devExec.yaml
+#### 8. devExec.yaml
 
 devExec.yaml holds a dictionary DevExecList of timings of routers and switches as they route, and switch. The API for this file is given in [**mrnes**-API](#https://github.com/ITI/mrnes/blob/main/docs/MRNES-API.pdf) .
 

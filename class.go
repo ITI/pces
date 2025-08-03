@@ -9,6 +9,8 @@ import (
 	"github.com/iti/evt/evtm"
 	"github.com/iti/evt/vrtime"
 	"github.com/iti/mrnes"
+	_ "github.com/google/gopacket"
+	_ "github.com/google/gopacket/layers"
 	"gopkg.in/yaml.v3"
 	"math"
 	"strings"
@@ -48,6 +50,7 @@ var FuncClassNames map[string]bool = map[string]bool{
 	"transfer":    true,
 	"start":       true,
 	"finish":      true,
+    "feed":        true,
 	"bckgrndLd":   true}
 
 // RegisterFuncClass is called to tell the system that a particular
@@ -71,6 +74,8 @@ var FuncClasses map[string]FuncClassCfg = make(map[string]FuncClassCfg)
 
 // HndlrMap maps a string name for an event handling function to the function itself
 var HndlrMap map[string]evtm.EventHandlerFunction = map[string]evtm.EventHandlerFunction{"empty": EmptyInitFunc}
+
+var extIPToCPFI = make(map[string]*CmpPtnFuncInst)
 
 // AddHndlrMap includes a new association between string and event handler
 func AddHndlrMap(name string, hndlr evtm.EventHandlerFunction) {
@@ -100,6 +105,11 @@ func CreateClassMethods() bool {
 	fmap = make(map[string]RespMethod)
 	fmap["default"] = RespMethod{Start: startEnter, End: ExitFunc}
 	ClassMethods["start"] = fmap
+
+	// build table for feed class
+	fmap = make(map[string]RespMethod)
+	fmap["default"] = RespMethod{Start: startFeed, End: ExitFunc}
+	ClassMethods["feed"] = fmap
 
 	// build table for finish class
 	fmap = make(map[string]RespMethod)
@@ -140,11 +150,13 @@ func checkMCValidity(funcClass string, mc string) bool {
 	return present
 }
 
+// CreateNewClass adds a new class name to the ClassMethods map
 func CreateNewClass(className string) {
 	fmap := make(map[string]RespMethod)
 	ClassMethods[className] = fmap
 }
 
+// AddClassMethod adds a RespMethod to an existing class
 func AddClassMethod(className string, methodName string, rm RespMethod) {
 	ClassMethods[className][methodName] = rm
 }
@@ -166,6 +178,10 @@ func validFuncClass(class string) bool {
 	return present
 }
 
+// AdvanceMsg finds the output edge the message should traverse,
+// depending on the input msgTypeOut and labels on output edges.
+// It modifies the message (in place) and puts a pointer to it where
+// ExitFunc will find it to move the messsage along
 func AdvanceMsg(cpfi *CmpPtnFuncInst, msg *CmpPtnMsg, msgTypeOut string) *CmpPtnMsg {
 	var nxtCPID int
 	var nxtMsgType string
@@ -207,6 +223,8 @@ func copyDict(dict1, dict2 map[string]string) {
 	}
 }
 
+// FullFuncName creates a global name for a method, including
+// its CompPattern name, function label within the CmpPtn, and a method name given as input
 func FullFuncName(cpfi *CmpPtnFuncInst, methodName string) string {
 	rtn := cpfi.PtnName + "/" + cpfi.Label + "/" + methodName
 	return rtn
@@ -397,6 +415,7 @@ type StartState struct {
 }
 
 type StartCfg struct {
+    Feed      string            `yaml:"feed" json:"feed"`
 	PcktLen   int               `yaml:"pcktlen" json:"pcktlen"`
 	MsgLen    int               `yaml:"msglen" json:"msglen"`
 	MsgType   string            `yaml:"msgtype" json:"msgtype"`
@@ -419,7 +438,7 @@ func createStartState(scfg *StartCfg) *StartState {
 	srt.MsgLen = scfg.MsgLen
 	srt.PcktLen = scfg.PcktLen
 	srt.MsgType = scfg.MsgType
-	srt.StartTime = scfg.StartTime
+    srt.StartTime = scfg.StartTime
 	return srt
 }
 
@@ -441,7 +460,9 @@ func (srt *StartCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, cf
 	srtv := srtVarAny.(*StartCfg)
 	cpfi.Cfg = srtv
 	copyDict(cpfi.Msg2MC, srtv.Msg2MC)
+
 	cpfi.State = createStartState(srtv)
+
 	cpfi.Trace = (srtv.Trace != 0)
 	cpfi.Groups = make([]string, len(srtv.Groups))
 	copy(cpfi.Groups, srtv.Groups)
@@ -529,6 +550,219 @@ func startEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode stri
 
 	cpfi.AddResponse(cpm.ExecID, []*CmpPtnMsg{cpm})
 	evtMgr.Schedule(cpfi, cpm, ExitFunc, vrtime.SecondsToTime(srtTime))
+}
+
+
+// state and methods for Feed class
+
+
+var feedVar *FeedCfg = ClassCreateFeedCfg()
+var feedLoaded bool = RegisterFuncClass(feedVar)
+
+type FeedCfg struct {
+    IP  string                  `yaml:"ip" json:"ip"`           // IP:port (and port may be '*')
+	MsgType   string            `yaml:"msgtype" json:"msgtype"`
+	Data      string            `yaml:"data" json:"data"`
+	Groups    []string          `yaml:"groups" json:"groups"`
+	Trace     int               `yaml:"trace" json:"trace"`
+}
+
+type FeedState struct {
+    IP        string        // legitimate IP number
+    Port      string        // either a port number or '*'
+	MsgType   string
+	Calls     int
+	Bespoke   any
+}
+
+func ClassCreateFeedCfg() *FeedCfg {
+	feed := new(FeedCfg)
+	return feed 
+}
+
+func createFeedState(fg *FeedCfg) *FeedState {
+	feed := new(FeedState)
+	feed.MsgType = fg.MsgType
+    pieces := strings.Split(fg.IP,":") 
+    ip := pieces[0]
+    port := pieces[1]
+    feed.IP = ip 
+    feed.Port = port
+	return feed
+}
+
+func (feed *FeedCfg) FuncClassName() string {
+	return "feed"
+}
+
+func (feed *FeedCfg) CreateCfg(cfgStr string) any {
+	useYAML := cfgStr[0] != '{'
+	feedVarAny, err := feed.Deserialize(cfgStr, useYAML)
+	if err != nil {
+		panic(fmt.Errorf("start.InitCfg sees deserialization error with %s", cfgStr))
+	}
+	return feedVarAny
+}
+
+func (feed *FeedCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, 
+            cfgStr string, useYAML bool) {
+
+	feedVarAny := feed.CreateCfg(cfgStr)
+	feedv := feedVarAny.(*FeedCfg)
+	cpfi.Cfg = feedv
+
+    feedState := createFeedState(feedv)
+    cpfi.State = feedState
+
+    srcIPStr := feedState.IP+":"+feedState.Port
+
+    // index to cpfi depends on whether '*' used as port
+    if feedState.Port != "*" { 
+        extIPToCPFI[srcIPStr] = cpfi
+    } else {
+        // with a wildcard port we index on just the IP number
+        extIPToCPFI[feedState.IP] = cpfi
+    }
+
+    endpt := mrnes.EndptDevByName[cpfi.Host]
+    
+    // put the IP:port string in the endpoint's Extern table
+    if feedState.Port != "*" {
+        endpt.EndptState.Extern[srcIPStr] = true
+    } else {
+        endpt.EndptState.Extern[feedState.IP] = true
+    }
+    endpt.EndptState.ExternArrival = feedExternEntry 
+
+	cpfi.Trace = (feedv.Trace != 0)
+	cpfi.Groups = make([]string, len(feedv.Groups))
+	copy(cpfi.Groups, feedv.Groups)
+}
+
+func (feed *FeedCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
+	return nil
+}
+
+// Serialize transforms the start into string form for
+// inclusion through a file
+func (feed *FeedCfg) Serialize(useYAML bool) (string, error) {
+	var bytes []byte
+	var merr error
+
+	if useYAML {
+		bytes, merr = yaml.Marshal(*feed)
+	} else {
+		bytes, merr = json.Marshal(*feed)
+	}
+
+	if merr != nil {
+		return "", merr
+	}
+
+	return string(bytes[:]), nil
+}
+
+func (feed *FeedCfg) CfgStr() string {
+	rtn, err := feed.Serialize(true)
+	if err != nil {
+		panic(fmt.Errorf("start cfg serialization error"))
+	}
+	return rtn
+}
+
+// Deserialize recovers a serialized representation of a start structure
+func (feed *FeedCfg) Deserialize(fss string, useYAML bool) (any, error) {
+	// turn the string into a slice of bytes
+	var err error
+	fsb := []byte(fss)
+
+	example := FeedCfg{Trace: 0}
+
+	// Select whether we read in json or yaml
+	if useYAML {
+		err = yaml.Unmarshal(fsb, &example)
+	} else {
+		err = json.Unmarshal(fsb, &example)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return &example, nil
+}
+
+// scheduled from mrnes to transform an external arrival into 
+// the entry into a comp pattern function.  Context is
+func feedExternEntry(evtMgr *evtm.EventManager, context any, data any) any {
+
+    // IP:port from included packet
+    dstIPStr := context.(string)
+
+    // separate IP and port number
+    pieces := strings.Split(dstIPStr,":")
+    ip := pieces[0]
+
+    // look up CmpPtnFuncInst.  
+    cpfi, present := extIPToCPFI[dstIPStr]
+
+    // possible the observed port number was not registered,
+    // but if the wildcard was we can use that
+    if !present {
+        cpfi, present = extIPToCPFI[ip]
+        if !present {
+            panic(fmt.Errorf("Unexpected feed source %s received", dstIPStr))
+        }
+    }
+
+    // craft CmpPtnMsg to be injected
+    state := cpfi.State.(*FeedState)
+    feedMsgType := state.MsgType
+
+    rms := data.(*mrnes.RtnMsgStruct)
+    bfr := rms.Msg.([]byte)
+
+    hdr := mrnes.GetPCAPCaptureInfo(bfr, true)
+
+	// msg := bfr[16:]
+	// pckt := gopacket.NewPacket(msg, layers.LayerTypeEthernet, gopacket.Default)
+
+	cpm := new(CmpPtnMsg)
+
+	cpm.PcktLen = int(hdr.Length)
+	cpm.MsgLen =  int(hdr.Length)
+
+    if len(feedMsgType) == 0 {
+	    cpm.MsgType = "default"
+    } else {
+        cpm.MsgType = feedMsgType
+    }
+
+    cpm.Payload = bfr
+
+	cpm.ExecID = NewExecID(cpfi.PtnName, cpfi.Label)
+
+    // enter pces the same way a start entry would
+    evtMgr.Schedule(cpfi, cpm, EnterFunc, vrtime.SecondsToTime(0.0))
+    return nil 
+}
+
+// start an execution thread, main thing here is creating the initial
+// message and giving it an execID
+func startFeed(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
+	feeds := cpfi.State.(*FeedState)
+	feeds.Calls += 1
+
+	endptName := cpfi.Host
+	endpt := mrnes.EndptDevByName[endptName]
+
+	AddCPTrace(TraceMgr, cpfi.Trace, evtMgr.CurrentTime(), msg.ExecID, endpt.DevID(),
+		FullFuncName(cpfi, "startEnter"), msg)
+
+	// out edge destination a function of the message type
+	cpm := AdvanceMsg(cpfi, msg, feeds.MsgType)
+
+	cpfi.AddResponse(cpm.ExecID, []*CmpPtnMsg{cpm})
+	evtMgr.Schedule(cpfi, cpm, ExitFunc, vrtime.SecondsToTime(0.0))
 }
 
 //-------- methods and state for function class start
@@ -1467,10 +1701,16 @@ func measureEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode st
 
 	// if the message is not already passed through a measure function and this is a start
 	// create an MsrRoute to be appended to and mark the message
-	if msg.MsrSrtID == 0 && (mcfg.MsrOp == "start" || mcfg.MsrOp == "Start") {
+	if msg.MsrSrtID == 0 && (mcfg.MsrOp == "start" || mcfg.MsrOp == "Start" || mcfg.MsrOp == "start-feed") {
 		CreateMsrRoute(mcfg.MsrName, msg.ExecID)
 		msg.MsrSrtID = cpfi.ID
-		msg.StartMsr = timeNow
+        if mcfg.MsrOp != "start-feed" {
+		    msg.StartMsr = timeNow
+        } else {
+            bfr := msg.Payload.([]byte)
+            hdr := mrnes.GetPCAPCaptureInfo(bfr, true)
+            msg.StartMsr = float64(hdr.Time)
+        }
 		MsrID2Name[cpfi.ID] = mcfg.MsrName
 	}
 

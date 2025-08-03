@@ -1,6 +1,6 @@
 #### **pces** Internals
 
-(last update May 16, 2025)
+(last update August 1, 2025)
 
 ##### CmpPtnMsg
 
@@ -226,18 +226,28 @@ We turn now to a description of the data in each function classes' configuration
 
 A table describing parameters that a user specifies for a start function is given below.
 
-| name      | Data type               | Explanation                                                  |
-| --------- | ----------------------- | ------------------------------------------------------------ |
-| pcktlen   | integer                 | For messages involved in crypto, the block size in bytes     |
-| msglen    | integer                 | The number of bytes in the network frame that carries the message |
-| msgtype   | string                  | A code defined by the user to indicate what should happen with the message at the next function |
-| data      | string                  | A placeholder to allow as-yet-unspecified parameters to be included.  User provided code will need to interpret the string |
-| starttime | float                   | The simulation time at which the message should be defined and passed to the function's output. |
-| msg2mc    | dictionary (str -> str) | The 'start' function is scheduled by some outside simulation control code, which provides a pseudo message as input, mostly so that the start function can be treated likely all the other classes.   Like regular messages, the pseudo message has a MsgType field, which, like other functions, is used as a key to the msg2mc dictionary, producing a 'method code' used as a key in a dictionary for the  *start* class, which leads to a subroutine call that performs the start function actions. |
-| groups    | list (str)              | A list of names of user-defined 'groups' this function is assigned to |
-| trace     | int                     | When equal to 1 the executions of this function are included in the trace generated for the simulation run, otherwise not. |
+| name      | Data type  | Explanation                                                  |
+| --------- | ---------- | ------------------------------------------------------------ |
+| pcktlen   | integer    | For messages involved in crypto, the block size in bytes     |
+| msglen    | integer    | The number of bytes in the network frame that carries the message |
+| msgtype   | string     | A code defined by the user to indicate what should happen with the message at the next function |
+| data      | string     | A placeholder to allow as-yet-unspecified parameters to be included.  User provided code will need to interpret the string |
+| starttime | float      | The simulation time at which the message should be defined and passed to the function's output. |
+| groups    | list (str) | A list of names of user-defined 'groups' this function is assigned to |
+| trace     | int        | When equal to 1 the executions of this function are included in the trace generated for the simulation run, otherwise not. |
 
 A start function's default subroutine is called *startEnter()* (in file pces/class.go).  It creates a message (of type *CmpPtnMsg*), and sets its *PcktLen*, *MsgLen*, and *MsgType* fields to the values described above in its configuration structure.   It also sets an 'execution thread ID' in field *ExecID*, which is maintained as the message traverses its chain of functions. Some bookeeping is done, and the created message is placed in a a list that control function *ExitFunc()* will examine for forwarding.   It then schedules *ExitFunc()* to execute with zero simulation delay, passing to it a pointer to this start function, and the created list.
+
+###### class feed
+
+A pces model may accept as input packets generated externally.   These may be introduced as the source of CmpPtn, in much the same way that a start function is the source of a CmpPtn. A table describing parameters that a user specifies for a feed function is given below.
+
+| name    | Data type  | Explanation                                                  |
+| ------- | ---------- | ------------------------------------------------------------ |
+| IP      | string     | "IP:port" where IP it the internal IP assigned to some model interface, which acts as the ingress point for the feed's packets. If "port" is "*" than any feed packet with the given IP as the source will be directed to the function, otherwise, only packets that match both in IP and port specifications. |
+| msgtype | string     | A code defined by the user to indicate what should happen with the message at the next function |
+| groups  | list (str) | A list of names of user-defined 'groups' this function is assigned to |
+| trace   | int        | When equal to 1 the executions of this function are included in the trace generated for the simulation run, otherwise not. |
 
 ###### class measure
 

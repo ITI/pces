@@ -859,7 +859,7 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 				rtns := mrnes.RtnDescs{Rtn: rtnDesc, Src: nil, Dst: nil, Loss: lossDesc}
 
 				netportal.EnterNetwork(evtMgr, cpfi.Host, dstHost, msg.MsgLen,
-					connDesc, IDs, rtns, msg.Rate, msg.MsrID, false, 0, msg)
+					connDesc, IDs, rtns, nil, msg.Rate, msg.MsrID, false, 0, msg)
 			}
 		} else {
 			panic(errors.New("exit function fails to find next function"))
@@ -916,8 +916,7 @@ var ExecIDCP map[int]string = make(map[int]string)
 var ExecIDLabel map[int]string = make(map[int]string)
 
 func NewExecID(cmptn, label string) int {
-	execID := NumExecThreads
-	NumExecThreads += 1
+    execID := netportal.NewExecID()
 	ExecIDCP[execID] = cmptn
 	ExecIDLabel[execID] = label
 	return execID
