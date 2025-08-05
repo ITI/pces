@@ -308,7 +308,7 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 	var err error
 
 	// we allow some variation in input names, so apply fixup if needed
-	checkFields := []string{"cpInput", "cpInitInput", "funcExecInput", "mapInput", "ip"}
+	checkFields := []string{"cpInput", "cpInitInput", "funcExecInput"}
 	for _, filename := range checkFields {
 		trimmed := strings.Replace(filename, "Input", "", -1)
 		_, present := syn[trimmed]
@@ -330,34 +330,23 @@ func GetExperimentCPDicts(syn map[string]string) (*CompPatternDict, *CPInitListD
 	cpid, err = ReadCPInitListDict(syn["cpInitInput"], useYAML, empty)
 	errs = append(errs, err)
 
-	/*
-		scgl := nil
-		if len(syn["sharedCfg"]) > 0 {
-			ext = path.Ext(syn["sharedCfg"])
-			useYAML = (ext == ".yaml") || (ext == ".yml")
-
-			scgl, err = ReadSharedCfgGroupList(syn["sharedCfg"], useYAML, empty)
-			errs = append(errs, err)
-		}
-	*/
-
 	ext = path.Ext(syn["funcExecInput"])
 	useYAML = (ext == ".yaml") || (ext == ".yml")
 
 	fel, err = ReadFuncExecList(syn["funcExecInput"], useYAML, empty)
 	errs = append(errs, err)
 
-	ext = path.Ext(syn["mapInput"])
+	ext = path.Ext(syn["mapping"])
 	useYAML = (ext == ".yaml") || (ext == ".yml")
 
-	cpmd, err = ReadCompPatternMapDict(syn["mapInput"], useYAML, empty)
+	cpmd, err = ReadCompPatternMapDict(syn["mapping"], useYAML, empty)
 	errs = append(errs, err)
 
-	if len(syn["ipInput"]) > 0 {
-		ext = path.Ext(syn["ipInput"])
+	if len(syn["ipmap"]) > 0 {
+		ext = path.Ext(syn["ipmap"])
 		useYAML = (ext == ".yaml") || (ext == ".yml")
 
-		_, err = mrnes.ReadIPMap(syn["ipInput"], useYAML, empty)
+		_, err = mrnes.ReadIPMap(syn["ipmap"], useYAML, empty)
 		errs = append(errs, err)
 	}
 

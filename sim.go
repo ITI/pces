@@ -28,8 +28,8 @@ func cmdlineParams() *cmdline.CmdParser {
 	cp.AddFlag(cmdline.StringFlag, "cpInit", true)      //
 	cp.AddFlag(cmdline.StringFlag, "funcExec", true)    // name of input file holding descriptions of functional timings
 	cp.AddFlag(cmdline.StringFlag, "devExec", true)     // name of input file holding descriptions of device timings
-	cp.AddFlag(cmdline.StringFlag, "map", true)         // file with mapping of comp pattern functions to hosts
-	cp.AddFlag(cmdline.StringFlag, "ip", false)			// name of input file describing IP and CDIR assignments
+	cp.AddFlag(cmdline.StringFlag, "mapping", true)     // file with mapping of comp pattern functions to hosts
+	cp.AddFlag(cmdline.StringFlag, "ipmap", false)		// name of input file describing IP and CDIR assignments
 	cp.AddFlag(cmdline.StringFlag, "exp", true)         // name of file used for run-time experiment parameters
 	cp.AddFlag(cmdline.StringFlag, "topo", true)        // name of output file used for topo templates
 	cp.AddFlag(cmdline.StringFlag, "experiments", true) // name of input file describing experiment parameters
@@ -127,8 +127,8 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 
 	// check for access to input files
 	fullpathmap := make(map[string]string)
-	inFiles := []string{"cp", "cpInit", "funcExec", "ip", "devExec", "exp", "topo", "map", "experiments"}
-	optionalFiles := []string{"ip", "experiments"}
+	inFiles := []string{"cp", "cpInit", "funcExec", "ipmap", "devExec", "exp", "topo", "mapping", "experiments"}
+	optionalFiles := []string{"ipmap", "experiments"}
 
 	fullpath := []string{}
 	errs := []error{}
@@ -147,7 +147,7 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 		fullpathmap[filename] = fullfile
 		syn[filename] = fullfile
 	}
-
+    
 	ExprmntsFile = syn["experiments"]
 
 	err = ReportErrs(errs)
