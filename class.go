@@ -51,6 +51,7 @@ var FuncClassNames map[string]bool = map[string]bool{
 	"start":       true,
 	"finish":      true,
     "feed":        true,
+    "metadata":    true,
 	"bckgrndLd":   true}
 
 // RegisterFuncClass is called to tell the system that a particular
@@ -108,8 +109,13 @@ func CreateClassMethods() bool {
 
 	// build table for feed class
 	fmap = make(map[string]RespMethod)
-	fmap["default"] = RespMethod{Start: startFeed, End: ExitFunc}
+	fmap["default"] = RespMethod{Start: feedEnter, End: ExitFunc}
 	ClassMethods["feed"] = fmap
+
+	// build table for metadata class
+	fmap = make(map[string]RespMethod)
+	fmap["default"] = RespMethod{Start: metaEnter, End: ExitFunc}
+	ClassMethods["metadata"] = fmap
 
 	// build table for finish class
 	fmap = make(map[string]RespMethod)
@@ -526,11 +532,12 @@ func startEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode stri
 	srts := cpfi.State.(*StartState)
 	srts.Calls += 1
 
-	cpm := new(CmpPtnMsg)
-
+    var cpm *CmpPtnMsg
 	if msg != nil {
-		*cpm = *msg
-	}
+        cpm = cloneCmpPtnMsg(msg)
+	} else {
+	    cpm = new(CmpPtnMsg)
+    }
 
 	cpm.PcktLen = srts.PcktLen
 	cpm.MsgLen = srts.MsgLen
@@ -552,15 +559,147 @@ func startEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode stri
 	evtMgr.Schedule(cpfi, cpm, ExitFunc, vrtime.SecondsToTime(srtTime))
 }
 
+// support for metadata function
+var metaVar *MetaCfg = ClassCreateMetaCfg()
+var metaLoaded bool = RegisterFuncClass(metaVar)
+
+type MetaState struct {
+    Add     map[string]string
+    Remove  []string
+}
+
+type MetaCfg struct {
+    Add       map[string]string `yaml:"metadict" json:"metadict"`
+    Remove    []string          `yaml:"remove" json:"remove"`
+	Groups    []string          `yaml:"groups" json:"groups"`
+	Trace     int               `yaml:"trace" json:"trace"`
+}
+
+func ClassCreateMetaCfg() *MetaCfg {
+	meta := new(MetaCfg)
+    meta.Add = make(map[string]string)
+    meta.Remove = make([]string,0)
+    meta.Groups = make([]string,0)
+	meta.Trace = 0
+	return meta
+}
+
+func (meta *MetaCfg) FuncClassName() string {
+	return "metadata"
+}
+
+func (meta *MetaCfg) CreateCfg(cfgStr string) any {
+	useYAML := cfgStr[0] != '{'
+	metaVarAny, err := meta.Deserialize(cfgStr, useYAML)
+	if err != nil {
+		panic(fmt.Errorf("meta.InitCfg sees deserialization error with %s", cfgStr))
+	}
+	return metaVarAny
+}
+
+func (meta *MetaCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, cfgStr string, useYAML bool) {
+	metaVarAny := meta.CreateCfg(cfgStr)
+	metav := metaVarAny.(*MetaCfg)
+	cpfi.Cfg = metav
+
+	cpfi.Trace = (metav.Trace != 0)
+	cpfi.Groups = make([]string, len(metav.Groups))
+	copy(cpfi.Groups, metav.Groups)
+}
+
+func (meta *MetaCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
+	return nil
+}
+
+// Serialize transforms the meta into string form for
+// inclusion through a file
+func (meta *MetaCfg) Serialize(useYAML bool) (string, error) {
+	var bytes []byte
+	var merr error
+
+	if useYAML {
+		bytes, merr = yaml.Marshal(*meta)
+	} else {
+		bytes, merr = json.Marshal(*meta)
+	}
+
+	if merr != nil {
+		return "", merr
+	}
+
+	return string(bytes[:]), nil
+}
+
+func (meta *MetaCfg) CfgStr() string {
+	rtn, err := meta.Serialize(true)
+	if err != nil {
+		panic(fmt.Errorf("meta cfg serialization error"))
+	}
+	return rtn
+}
+
+// Deserialize recovers a serialized representation of a meta structure
+func (meta *MetaCfg) Deserialize(fss string, useYAML bool) (any, error) {
+	// turn the string into a slice of bytes
+	var err error
+	fsb := []byte(fss)
+
+    emptyAdd := make(map[string]string)
+    emptyRm  := make([]string,0)
+    emptyGrps := make([]string,0)
+
+	example := MetaCfg{Add: emptyAdd, Remove: emptyRm, Groups: emptyGrps, Trace: 0,}
+
+	// Select whether we read in json or yaml
+	if useYAML {
+		err = yaml.Unmarshal(fsb, &example)
+	} else {
+		err = json.Unmarshal(fsb, &example)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return &example, nil
+}
+
+// Modify the MetaData map on the passed message 
+func metaEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
+    metacfg := cpfi.Cfg.(*MetaCfg) 
+
+    // remove metadata as directed
+    if len(msg.MetaData) > 0 && len(metacfg.Remove) > 0 {
+        for _, meta := range metacfg.Remove {
+            delete(msg.MetaData, meta)
+        }
+    }
+
+    // add metadata as directed
+    for meta, value := range metacfg.Add {
+        msg.MetaData[meta] = value
+    }
+
+	endptName := cpfi.Host
+	endpt := mrnes.EndptDevByName[endptName]
+
+	AddCPTrace(TraceMgr, cpfi.Trace, evtMgr.CurrentTime(), msg.ExecID, endpt.DevID(),
+		FullFuncName(cpfi, "metaEnter"), msg)
+
+	// out edge destination a function of the message type
+	cpm := AdvanceMsg(cpfi, msg, msg.MsgType)
+
+	cpfi.AddResponse(cpm.ExecID, []*CmpPtnMsg{cpm})
+	evtMgr.Schedule(cpfi, cpm, ExitFunc, vrtime.SecondsToTime(0.0))
+}
+
 
 // state and methods for Feed class
-
-
 var feedVar *FeedCfg = ClassCreateFeedCfg()
 var feedLoaded bool = RegisterFuncClass(feedVar)
 
 type FeedCfg struct {
-    IP  string                  `yaml:"ip" json:"ip"`           // IP:port (and port may be '*')
+    SrcIP     string            `yaml:"srcip" json:"srcip"`           // IP:port (and port may be '*')
+    DstIP     string            `yaml:"dstip" json:"dstip"`   
 	MsgType   string            `yaml:"msgtype" json:"msgtype"`
 	Data      string            `yaml:"data" json:"data"`
 	Groups    []string          `yaml:"groups" json:"groups"`
@@ -568,8 +707,10 @@ type FeedCfg struct {
 }
 
 type FeedState struct {
-    IP        string        // legitimate IP number
-    Port      string        // either a port number or '*'
+    SrcIP     string        // legitimate IP number
+    DstIP     string        // legitimate IP number
+    SrcPort   string        // either a port number or '*'
+    DstPort   string        // either a port number or '*'
 	MsgType   string
 	Calls     int
 	Bespoke   any
@@ -583,11 +724,17 @@ func ClassCreateFeedCfg() *FeedCfg {
 func createFeedState(fg *FeedCfg) *FeedState {
 	feed := new(FeedState)
 	feed.MsgType = fg.MsgType
-    pieces := strings.Split(fg.IP,":") 
+    pieces := strings.Split(fg.SrcIP,":") 
     ip := pieces[0]
     port := pieces[1]
-    feed.IP = ip 
-    feed.Port = port
+    feed.SrcIP = ip 
+    feed.SrcPort = port
+
+    pieces = strings.Split(fg.DstIP,":") 
+    ip = pieces[0]
+    port = pieces[1]
+    feed.DstIP = ip 
+    feed.DstPort = port
 	return feed
 }
 
@@ -599,7 +746,7 @@ func (feed *FeedCfg) CreateCfg(cfgStr string) any {
 	useYAML := cfgStr[0] != '{'
 	feedVarAny, err := feed.Deserialize(cfgStr, useYAML)
 	if err != nil {
-		panic(fmt.Errorf("start.InitCfg sees deserialization error with %s", cfgStr))
+		panic(fmt.Errorf("meta.InitCfg sees deserialization error with %s", cfgStr))
 	}
 	return feedVarAny
 }
@@ -614,23 +761,23 @@ func (feed *FeedCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst,
     feedState := createFeedState(feedv)
     cpfi.State = feedState
 
-    srcIPStr := feedState.IP+":"+feedState.Port
+    dstIPStr := feedState.DstIP+":"+feedState.DstPort
 
     // index to cpfi depends on whether '*' used as port
-    if feedState.Port != "*" { 
-        extIPToCPFI[srcIPStr] = cpfi
+    if feedState.DstPort != "*" { 
+        extIPToCPFI[dstIPStr] = cpfi
     } else {
         // with a wildcard port we index on just the IP number
-        extIPToCPFI[feedState.IP] = cpfi
+        extIPToCPFI[feedState.DstIP] = cpfi
     }
 
     endpt := mrnes.EndptDevByName[cpfi.Host]
     
     // put the IP:port string in the endpoint's Extern table
-    if feedState.Port != "*" {
-        endpt.EndptState.Extern[srcIPStr] = true
+    if feedState.DstPort != "*" {
+        endpt.EndptState.Extern[dstIPStr] = true
     } else {
-        endpt.EndptState.Extern[feedState.IP] = true
+        endpt.EndptState.Extern[feedState.DstIP] = true
     }
     endpt.EndptState.ExternArrival = feedExternEntry 
 
@@ -643,7 +790,7 @@ func (feed *FeedCfg) ValidateCfg(cpfi *CmpPtnFuncInst) error {
 	return nil
 }
 
-// Serialize transforms the start into string form for
+// Serialize transforms the meta into string form for
 // inclusion through a file
 func (feed *FeedCfg) Serialize(useYAML bool) (string, error) {
 	var bytes []byte
@@ -665,12 +812,12 @@ func (feed *FeedCfg) Serialize(useYAML bool) (string, error) {
 func (feed *FeedCfg) CfgStr() string {
 	rtn, err := feed.Serialize(true)
 	if err != nil {
-		panic(fmt.Errorf("start cfg serialization error"))
+		panic(fmt.Errorf("meta cfg serialization error"))
 	}
 	return rtn
 }
 
-// Deserialize recovers a serialized representation of a start structure
+// Deserialize recovers a serialized representation of a meta structure
 func (feed *FeedCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	// turn the string into a slice of bytes
 	var err error
@@ -726,7 +873,7 @@ func feedExternEntry(evtMgr *evtm.EventManager, context any, data any) any {
 	// msg := bfr[16:]
 	// pckt := gopacket.NewPacket(msg, layers.LayerTypeEthernet, gopacket.Default)
 
-	cpm := new(CmpPtnMsg)
+	cpm := createCmpPtnMsg()
 
 	cpm.PcktLen = int(hdr.Length)
 	cpm.MsgLen =  int(hdr.Length)
@@ -748,7 +895,7 @@ func feedExternEntry(evtMgr *evtm.EventManager, context any, data any) any {
 
 // start an execution thread, main thing here is creating the initial
 // message and giving it an execID
-func startFeed(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
+func feedEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
 	feeds := cpfi.State.(*FeedState)
 	feeds.Calls += 1
 

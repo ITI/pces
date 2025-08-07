@@ -484,8 +484,29 @@ type CmpPtnMsg struct {
 	NetLatency float64
 	NetBndwdth float64
 	NetPrLoss  float64
+    MetaData   map[string]string
 	Payload    any // free for "something else" to carry along and be used in decision logic
 }
+
+func createCmpPtnMsg() *CmpPtnMsg {
+    cpm := new(CmpPtnMsg)
+    cpm.MetaData = make(map[string]string)
+    return cpm
+}
+
+func cloneCmpPtnMsg(cln *CmpPtnMsg) *CmpPtnMsg {
+    cpm := createCmpPtnMsg()
+    
+    // make a copy of the source structs MetaData map
+    myMeta := make(map[string]string)
+    for key, value := range cln.MetaData {
+        myMeta[key] = value
+    }
+    *cpm = *cln
+    cpm.MetaData = myMeta
+    return cpm
+}
+
 
 func (cpm *CmpPtnMsg) Populate(execID, flowID int, rate float64, msgLen int, flowState string) {
 	cpm.ExecID = execID
@@ -859,7 +880,7 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 				rtns := mrnes.RtnDescs{Rtn: rtnDesc, Src: nil, Dst: nil, Loss: lossDesc}
 
 				netportal.EnterNetwork(evtMgr, cpfi.Host, dstHost, msg.MsgLen,
-					connDesc, IDs, rtns, nil, msg.Rate, msg.MsrID, false, 0, msg)
+					connDesc, IDs, rtns, nil, msg.Rate, msg.MsrID, false, 0, msg, msg.MetaData)
 			}
 		} else {
 			panic(errors.New("exit function fails to find next function"))
