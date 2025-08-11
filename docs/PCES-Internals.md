@@ -1,6 +1,6 @@
 #### **pces** Internals
 
-(last update August 1, 2025)
+(last update August 7, 2025)
 
 ##### CmpPtnMsg
 
@@ -325,6 +325,23 @@ After the global identity of the server is acquired, *srvReqEnter* prepares the 
 The default subroutine for srvRsp functions is *pces/class.go/srvRspEnter* .  It understands the message type of the input message to carry a code for the service operation to be performed.  *srvRspEnter* determines whether that code has a prefix, and if so, whether that prefix is found in the function's 'DirectPrefix' list.  If a prefix is identified and is found in this list, the service op code is assumed to be an operation with a timing value in the function execution times table, and is used directly in looking up the operation's execution time.   If instead the message's type does not have a prefix, or has a prefix that is not found in the function's directprefix table, *srvRspEnter* assumes that the service op code is a key found in the function's TimingCode dictionary, and uses the string to which the service op code is mapped as an op code that will be recognized in the function execution time table.
 
 One way or the other the message type field of the message is transformed into an operation code used to index into the function execution time table, to retrieve the time delay associated with that operation on the processor to which the 'srvRsp' function is mapped.  *srvRspEnter* next modifies fields of the received message to send it back to the 'srvReq' function that sent it;   the identity of that function was recorded in the message when it was sent, as was a specially crafted value to use now as the message's MsgType field.  *srvRspEnter* places the modified message where *ExitFunc* will find it, and finally schedules *ExitFunc* to execute after the time associated with the service operation execution elapses.
+
+###### class metadata
+
+There are situations where it is useful to associate meta data with a CmpPtnMsg, to be associated also with the network message that travels between endpoints in the midst of executing a CmpPtn.  An example is when we want to model the additional cost of an add-on function in a router, e.g., adding a cryptographic signature or performing a deep packet inspection.   In these cases we'd like to be able to apply this processing to some packets and not others, and can use meta data associated with the packet to recognize the distinction.   Functions of the metadata class enable us to add and subtract meta data to a CmpPtnMsg that passes through it.   
+
+We characterize the meta data as a dictionary that maps strings to strings, which one can view as the name of a piece of meta data mapping to its value.  **pces** has one built in meta data name, *compute*, which **mrnes** recognizes when simulating the passage of a packet through a router or switch.   User extensions can expand this vocabulary.
+
+A CmpPtnMsg message passing through a function of class metadata can have some existing items of meta data removed, and others added.   The configuration is
+
+| Name     | Data Type               | Explanation                                                  |
+| -------- | ----------------------- | ------------------------------------------------------------ |
+| remove   | List(string)            | List of meta data names whose presence in the CmpPtnMsg are removed |
+| metadict | Dictionary (str -> str) | Mapping of meta data variable names to their values          |
+| groups   | list(str)               | A list of names of user-defined 'groups' this function is assigned to |
+| trace    | Int                     | When equal to 1 the executions of this function are included in the trace generated for the simulation run, otherwise not. |
+
+On receipt of a CmpPtnMsg, the removal operations are applied first, followed by the additions.   The CmpPtnMsg carries out message type as it had coming into the function.
 
 ###### class transfer
 

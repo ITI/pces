@@ -249,6 +249,7 @@ func ContinueBuildExperimentCP(cpd *CompPatternDict, cpid *CPInitListDict,
 	idCounter int, tm *mrnes.TraceManager, evtMgr *evtm.EventManager) error {
 
 	netportal = mrnes.ActivePortal
+    netportal.CopyMetaData = copyMetaData
 
 	_, use := syn["qksim"]
 	netportal.SetQkNetSim(use)
@@ -426,6 +427,16 @@ func checkSharedCfgAssignment(ssgl *SharedCfgGroupList) {
 			}
 		}
 	}
+}
+
+func copyMetaData(nm *mrnes.NetworkMsg) {
+    cpm, ok := nm.Msg.(*CmpPtnMsg)
+    if ok && len(nm.MetaData) >0 {
+        cpm.MetaData = make(map[string]string)
+        for key, value := range nm.MetaData {
+            cpm.MetaData[key] = value
+        }
+    }
 }
 
 // ReportStatistics reports quantile ranges of measurements from various trace groups that have been created

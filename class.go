@@ -838,16 +838,28 @@ func (feed *FeedCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	return &example, nil
 }
 
-// scheduled from mrnes to transform an external arrival into 
-// the entry into a comp pattern function.  Context is
+// when a feed packet is read and inserted into the network (at its source),
+// the mrnes layer tells the receiving endpoint that when the packet arrives
+// the feedExternEntry event should be executed.
 func feedExternEntry(evtMgr *evtm.EventManager, context any, data any) any {
 
     // IP:port from included packet
-    dstIPStr := context.(string)
+    IPStrs := context.(string)
+    pieces := strings.Split(IPStrs,",")
+
+    srcIPStr := pieces[0]
+    dstIPStr := pieces[1]
+
+    pieces = strings.Split(srcIPStr,":")
+    srcIP := pieces[0]
+    srcPort := pieces[1]
+
+    pieces = strings.Split(dstIPStr,":")
+    dstIP := pieces[0]
 
     // separate IP and port number
-    pieces := strings.Split(dstIPStr,":")
-    ip := pieces[0]
+    //pieces := strings.Split(dstIPStr,":")
+    //ip := pieces[0]
 
     // look up CmpPtnFuncInst.  
     cpfi, present := extIPToCPFI[dstIPStr]
@@ -855,23 +867,34 @@ func feedExternEntry(evtMgr *evtm.EventManager, context any, data any) any {
     // possible the observed port number was not registered,
     // but if the wildcard was we can use that
     if !present {
-        cpfi, present = extIPToCPFI[ip]
+        cpfi, present = extIPToCPFI[dstIP]
         if !present {
-            panic(fmt.Errorf("Unexpected feed source %s received", dstIPStr))
+            return nil
         }
     }
 
-    // craft CmpPtnMsg to be injected
+    // check that source IP meets specification
     state := cpfi.State.(*FeedState)
+    if state.SrcIP != "*" && state.SrcIP != srcIP {
+        // source doesn't match so drop it
+        return nil
+    }  
+
+    // check that source port meets specification
+    if state.SrcPort != "*" && state.SrcPort != srcPort {
+        // source doesn't match so drop it
+        return nil
+    }  
+
+    // craft CmpPtnMsg to be injected
     feedMsgType := state.MsgType
 
     rms := data.(*mrnes.RtnMsgStruct)
-    bfr := rms.Msg.([]byte)
+    nm  := rms.NetMsg
+
+    bfr := nm.Msg.([]byte)
 
     hdr := mrnes.GetPCAPCaptureInfo(bfr, true)
-
-	// msg := bfr[16:]
-	// pckt := gopacket.NewPacket(msg, layers.LayerTypeEthernet, gopacket.Default)
 
 	cpm := createCmpPtnMsg()
 
@@ -885,6 +908,13 @@ func feedExternEntry(evtMgr *evtm.EventManager, context any, data any) any {
     }
 
     cpm.Payload = bfr
+
+    // if the network message gathered meta data somehow, copy it into the cpm
+    if nm.MetaData != nil && len(nm.MetaData) > 0 {
+        for key, value := range nm.MetaData {
+            cpm.MetaData[key] = value
+        }
+    }
 
 	cpm.ExecID = NewExecID(cpfi.PtnName, cpfi.Label)
 

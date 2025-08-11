@@ -892,7 +892,7 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 func ReEnter(evtMgr *evtm.EventManager, cpFunc any, rtnmsg any) any {
 	// msg is of type *mrnes.RtnMsgStruct
 	rtnMsg := rtnmsg.(*mrnes.RtnMsgStruct)
-	msg := rtnMsg.Msg.(*CmpPtnMsg)
+	msg := rtnMsg.NetMsg.Msg.(*CmpPtnMsg)
 
 	if msg.MsrSrtID > 0 {
 		execID := msg.ExecID
