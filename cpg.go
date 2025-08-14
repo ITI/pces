@@ -881,6 +881,7 @@ func ExitFunc(evtMgr *evtm.EventManager, cpFunc any, cpMsg any) any {
 
 				netportal.EnterNetwork(evtMgr, cpfi.Host, dstHost, msg.MsgLen,
 					connDesc, IDs, rtns, nil, msg.Rate, msg.MsrID, false, 0, msg, msg.MetaData)
+
 			}
 		} else {
 			panic(errors.New("exit function fails to find next function"))

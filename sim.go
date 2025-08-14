@@ -51,10 +51,10 @@ var termination float64
 var traceFile string
 var csvFile string
 var cp *cmdline.CmdParser
-var ExprmntName string
 var TimeUnits string
 var MsrVerbose bool
 var ExprmntsFile string
+var ExprmntName string
 
 // GlobalSeed is used to initiate the creation of other rng streams
 var GlobalSeed int64 = 1234567

@@ -707,10 +707,9 @@ type FeedCfg struct {
 }
 
 type FeedState struct {
-    SrcIP     string        // legitimate IP number
-    DstIP     string        // legitimate IP number
-    SrcPort   string        // either a port number or '*'
-    DstPort   string        // either a port number or '*'
+    Src       bool          // Fed from feed source
+    IP        string        // legitimate IP number
+    Port      string        // either a port number or '*'
 	MsgType   string
 	Calls     int
 	Bespoke   any
@@ -722,20 +721,21 @@ func ClassCreateFeedCfg() *FeedCfg {
 }
 
 func createFeedState(fg *FeedCfg) *FeedState {
-	feed := new(FeedState)
-	feed.MsgType = fg.MsgType
-    pieces := strings.Split(fg.SrcIP,":") 
-    ip := pieces[0]
-    port := pieces[1]
-    feed.SrcIP = ip 
-    feed.SrcPort = port
+	fds := new(FeedState)
+	fds.MsgType = fg.MsgType
+       
+    fds.Src = (len(fg.SrcIP) != 0) 
+    var pieces []string
 
-    pieces = strings.Split(fg.DstIP,":") 
-    ip = pieces[0]
-    port = pieces[1]
-    feed.DstIP = ip 
-    feed.DstPort = port
-	return feed
+    if fds.Src {
+        pieces = strings.Split(fg.SrcIP,":") 
+    } else {
+        pieces = strings.Split(fg.DstIP,":") 
+    }
+
+    fds.IP   = pieces[0]
+    fds.Port = pieces[1]
+	return fds
 }
 
 func (feed *FeedCfg) FuncClassName() string {
@@ -761,25 +761,34 @@ func (feed *FeedCfg) InitCfg(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst,
     feedState := createFeedState(feedv)
     cpfi.State = feedState
 
-    dstIPStr := feedState.DstIP+":"+feedState.DstPort
+    IPStr := feedState.IP+":"+feedState.Port
 
     // index to cpfi depends on whether '*' used as port
-    if feedState.DstPort != "*" { 
-        extIPToCPFI[dstIPStr] = cpfi
+    if feedState.Port != "*" { 
+        extIPToCPFI[IPStr] = cpfi
     } else {
         // with a wildcard port we index on just the IP number
-        extIPToCPFI[feedState.DstIP] = cpfi
+        extIPToCPFI[feedState.IP] = cpfi
     }
 
     endpt := mrnes.EndptDevByName[cpfi.Host]
     
     // put the IP:port string in the endpoint's Extern table
-    if feedState.DstPort != "*" {
-        endpt.EndptState.Extern[dstIPStr] = true
+    if feedState.Src {
+        if feedState.Port != "*" {
+            endpt.EndptState.ExternSrc[IPStr] = true
+        } else {
+            endpt.EndptState.ExternSrc[feedState.IP] = true
+        }
     } else {
-        endpt.EndptState.Extern[feedState.DstIP] = true
+        if feedState.Port != "*" {
+            endpt.EndptState.ExternDst[IPStr] = true
+        } else {
+            endpt.EndptState.ExternDst[feedState.IP] = true
+        }
     }
-    endpt.EndptState.ExternArrival = feedExternEntry 
+    endpt.EndptState.ExternSrcArrival = feedExternSrcEntry 
+    endpt.EndptState.ExternDstArrival = feedExternDstEntry 
 
 	cpfi.Trace = (feedv.Trace != 0)
 	cpfi.Groups = make([]string, len(feedv.Groups))
@@ -837,11 +846,30 @@ func (feed *FeedCfg) Deserialize(fss string, useYAML bool) (any, error) {
 	}
 	return &example, nil
 }
+func feedExternSrcEntry(evtMgr *evtm.EventManager, context any, data any) any {
+    return feedExternEntry(evtMgr, context, data, true)
+}
+
+func feedExternDstEntry(evtMgr *evtm.EventManager, context any, data any) any {
+    // remove pcap related meta data
+    rms := data.(*mrnes.RtnMsgStruct)
+    nm  := rms.NetMsg
+    rmKeys := []string{} 
+    for key := range nm.MetaData {
+        if strings.Contains(key,"pcap") {
+            rmKeys = append(rmKeys, key)
+        }
+    }
+    for _, key := range rmKeys {
+        delete(nm.MetaData,key)
+    }
+    return feedExternEntry(evtMgr, context, data, false)
+}
 
 // when a feed packet is read and inserted into the network (at its source),
 // the mrnes layer tells the receiving endpoint that when the packet arrives
 // the feedExternEntry event should be executed.
-func feedExternEntry(evtMgr *evtm.EventManager, context any, data any) any {
+func feedExternEntry(evtMgr *evtm.EventManager, context any, data any, src bool) any {
 
     // IP:port from included packet
     IPStrs := context.(string)
@@ -856,35 +884,41 @@ func feedExternEntry(evtMgr *evtm.EventManager, context any, data any) any {
 
     pieces = strings.Split(dstIPStr,":")
     dstIP := pieces[0]
+    dstPort := pieces[1]
 
-    // separate IP and port number
-    //pieces := strings.Split(dstIPStr,":")
-    //ip := pieces[0]
+    IPStr := dstIPStr
+    IP    := dstIP
+    if src {
+        IP = srcIP
+        IPStr = srcIPStr
+    }
 
-    // look up CmpPtnFuncInst.  
-    cpfi, present := extIPToCPFI[dstIPStr]
+    cpfi, present := extIPToCPFI[IPStr]
 
     // possible the observed port number was not registered,
     // but if the wildcard was we can use that
     if !present {
-        cpfi, present = extIPToCPFI[dstIP]
+        cpfi, present = extIPToCPFI[IP]
         if !present {
             return nil
         }
     }
 
-    // check that source IP meets specification
+    // check that IP meets specification
     state := cpfi.State.(*FeedState)
-    if state.SrcIP != "*" && state.SrcIP != srcIP {
-        // source doesn't match so drop it
+    if src && state.IP != "*" && state.IP != srcIP {
         return nil
-    }  
+    } else if !src && state.IP != "*" && state.IP != dstIP { 
+        return nil
+    }
 
-    // check that source port meets specification
-    if state.SrcPort != "*" && state.SrcPort != srcPort {
+    // check that port meets specification
+    if src && state.Port != "*" && state.Port != srcPort {
         // source doesn't match so drop it
         return nil
-    }  
+    } else if !src && state.Port != "*" && state.Port != dstPort {
+        return nil
+    }
 
     // craft CmpPtnMsg to be injected
     feedMsgType := state.MsgType
@@ -916,31 +950,36 @@ func feedExternEntry(evtMgr *evtm.EventManager, context any, data any) any {
         }
     }
 
-	cpm.ExecID = NewExecID(cpfi.PtnName, cpfi.Label)
-
     // enter pces the same way a start entry would
     evtMgr.Schedule(cpfi, cpm, EnterFunc, vrtime.SecondsToTime(0.0))
     return nil 
 }
 
-// start an execution thread, main thing here is creating the initial
-// message and giving it an execID
 func feedEnter(evtMgr *evtm.EventManager, cpfi *CmpPtnFuncInst, methodCode string, msg *CmpPtnMsg) {
-	feeds := cpfi.State.(*FeedState)
-	feeds.Calls += 1
+	fds := cpfi.State.(*FeedState)
+	fds.Calls += 1
+
+    var cpm *CmpPtnMsg
+	if msg != nil {
+        cpm = cloneCmpPtnMsg(msg)
+	} else {
+	    cpm = new(CmpPtnMsg)
+    }
+
+	cpm.ExecID = NewExecID(cpfi.PtnName, cpfi.Label)
 
 	endptName := cpfi.Host
 	endpt := mrnes.EndptDevByName[endptName]
-
-	AddCPTrace(TraceMgr, cpfi.Trace, evtMgr.CurrentTime(), msg.ExecID, endpt.DevID(),
-		FullFuncName(cpfi, "startEnter"), msg)
+	AddCPTrace(TraceMgr, cpfi.Trace, evtMgr.CurrentTime(), cpm.ExecID, endpt.DevID(),
+		FullFuncName(cpfi, "feedEnter"), cpm)
 
 	// out edge destination a function of the message type
-	cpm := AdvanceMsg(cpfi, msg, feeds.MsgType)
+	cpm = AdvanceMsg(cpfi, cpm, fds.MsgType)
 
 	cpfi.AddResponse(cpm.ExecID, []*CmpPtnMsg{cpm})
 	evtMgr.Schedule(cpfi, cpm, ExitFunc, vrtime.SecondsToTime(0.0))
 }
+
 
 //-------- methods and state for function class start
 

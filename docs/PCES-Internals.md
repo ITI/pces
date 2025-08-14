@@ -1,6 +1,6 @@
 #### **pces** Internals
 
-(last update August 7, 2025)
+(last update August 14, 2025)
 
 ##### CmpPtnMsg
 
@@ -244,8 +244,10 @@ A pces model may accept as input packets generated externally.   These may be in
 
 | name    | Data type  | Explanation                                                  |
 | ------- | ---------- | ------------------------------------------------------------ |
-| IP      | string     | "IP:port" where IP it the internal IP assigned to some model interface, which acts as the ingress point for the feed's packets. If "port" is "*" than any feed packet with the given IP as the source will be directed to the function, otherwise, only packets that match both in IP and port specifications. |
+| srcIP   | string     | The format "IP:port" where IP it the internal IP assigned to some model interface, which acts as the ingress point for the feed's packets. The packet's own source IP address is declared elsewhere in the model to be mapped to this srcIP. If "port" is "*" than any feed packet with the given IP as the source will be directed to the function, otherwise, only packets that match both in IP and port specifications. Exactly one of 'srcIP' and 'dstIP' below may be non-empty. |
+| dstIP   | string     | The format "IP:port" where IP it the internal IP assigned to some model interface, which acts as the ingress point for the feed's packets. The packet's own destination IP address is declared elsewhere in the model to be mapped to this dstIP. If "port" is "*" than any feed packet with the given IP as the source will be directed to the function, otherwise, only packets that match both in IP and port specifications. Exactly one of 'dstIP' and 'srcIP' above may be non-empty. |
 | msgtype | string     | A code defined by the user to indicate what should happen with the message at the next function |
+| data    | string     | A placeholder for data that might be used by a user extension to the feed class. Otherwise undefined. |
 | groups  | list (str) | A list of names of user-defined 'groups' this function is assigned to |
 | trace   | int        | When equal to 1 the executions of this function are included in the trace generated for the simulation run, otherwise not. |
 
