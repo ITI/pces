@@ -9,6 +9,7 @@ import (
 	"github.com/iti/rngstream"
 	"golang.org/x/exp/slices"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 )
@@ -35,6 +36,7 @@ func cmdlineParams() *cmdline.CmdParser {
 	cp.AddFlag(cmdline.StringFlag, "experiments", true) // name of input file describing experiment parameters
 	cp.AddFlag(cmdline.StringFlag, "trace", false)      // path to output file of trace records
 	cp.AddFlag(cmdline.IntFlag, "rngseed", false)       // RNG seed
+	cp.AddFlag(cmdline.IntFlag, "hashseed", false)      // seed for controlling deterministic hash IDs
 	cp.AddFlag(cmdline.FloatFlag, "stop", false)        // run the simulation until this time (in seconds)
 	cp.AddFlag(cmdline.BoolFlag, "json", false)         // input/output files in YAML, or JSON
 	cp.AddFlag(cmdline.StringFlag, "csv", true)         // name of file where measurements will be written
@@ -194,6 +196,21 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 	// if requested, set the rng seed
 	if cp.IsLoaded("rngseed") {
 		seed := cp.GetVar("rngseed").(int)
+		rngstream.SetRngStreamMasterSeed(uint64(seed))
+		GlobalSeed = int64(seed)
+	}
+
+	// if requested, set the rng seed
+	if cp.IsLoaded("hashseed") {
+		seed := cp.GetVar("hashseed").(int)
+		// if the hashseed is present and negative that means one should
+		// randomly chose one
+		if seed < 0 {
+			mrnes.HashSeed = fmt.Sprintf("seed%f", rand.Float64())
+		} else if seed > 0 {
+			mrnes.HashSeed = fmt.Sprintf("seed%d", seed)
+		}
+
 		rngstream.SetRngStreamMasterSeed(uint64(seed))
 		GlobalSeed = int64(seed)
 	}
