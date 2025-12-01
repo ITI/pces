@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/iti/cmdline"
 	"github.com/iti/evt/evtm"
+	"github.com/iti/evt/vrtime"
 	"github.com/iti/mrnes"
 	"github.com/iti/rngstream"
 	"golang.org/x/exp/slices"
@@ -103,7 +104,9 @@ func ReadSimArgs() (*cmdline.CmdParser, *evtm.EventManager) {
 	}
 
 	// if there is no stop argument, termination is made very large
-	termination = math.MaxFloat64/10.0
+	// termination CANNOT be the max float value because it will overflow vrtime's internal
+	// (int64) tick counter and become VERY negative.
+	termination = vrtime.TicksToSeconds(math.MaxInt64 / 2)
 	if cp.IsLoaded("stop") {
 		termination = cp.GetVar("stop").(float64)
 	}
